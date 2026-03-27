@@ -1,5 +1,12 @@
 # Modelli TTS scaricati (GB di dati - MAI in git!)
-audiobook_generator/tts_models/
+audiobook_generator/tts_models/kokoro/*
+!audiobook_generator/tts_models/kokoro/.gitkeep
+audiobook_generator/tts_models/qwen3tts/*
+!audiobook_generator/tts_models/qwen3tts/.gitkeep
+audiobook_generator/tts_models/vibevoice/*
+!audiobook_generator/tts_models/vibevoice/.gitkeep
+audiobook_generator/tts_models/xttsv2/*
+!audiobook_generator/tts_models/xttsv2/.gitkeep
 tts_models/
 
 # Virtualenv
