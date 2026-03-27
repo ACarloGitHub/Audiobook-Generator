@@ -63,8 +63,10 @@ Reference_Voices/*
 *.swo
 
 # Binari esterni
-ffmpeg/
-sox/
+ffmpeg/*
+!ffmpeg/.gitkeep
+sox/*
+!sox/.gitkeep
 
 # OS files
 .DS_Store
