@@ -1,0 +1,6 @@
+{
+  "kokoro": false,
+  "xttsv2": false,
+  "qwen3tts": false,
+  "vibevoice": false
+}

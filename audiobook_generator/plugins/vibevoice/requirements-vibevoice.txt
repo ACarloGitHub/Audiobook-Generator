@@ -1,0 +1,13 @@
+# Dipendenze per l'ambiente isolato di VibeVoice (modello non quantizzato)
+transformers==4.51.3
+torch>=2.3.0
+# Assicurati che torchaudio e torchvision siano installati con la versione corretta di PyTorch
+# Non è necessario specificarli qui se lo script di installazione di PyTorch li gestisce
+accelerate
+# bitsandbytes (rimosso perché usiamo modello non quantizzato)
+diffusers
+soundfile
+numpy
+scipy
+librosa
+# onnxruntime-gpu (opzionale, se necessario per ottimizzazioni GPU)

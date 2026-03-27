@@ -1,0 +1,7 @@
+# Requisiti per l'ambiente isolato di Qwen3-TTS
+# Nota: Richiede Python >= 3.12
+transformers==4.57.3 
+torch>=2.1 # Assicuriamoci che sia compatibile con transformers
+torchaudio
+qwen-tts
+# Per ora escludiamo flash-attn per massimizzare la compatibilità

@@ -1,0 +1,62 @@
+# Modelli TTS scaricati (GB di dati - MAI in git!)
+audiobook_generator/tts_models/
+tts_models/
+
+# Virtualenv
+venv/
+setup_venv/
+.venv/
+env/
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python/
+
+# Output e risultati
+Demo_Outputs/
+Generated_Audiobooks/
+Intermediate_Audio_Chunks/
+
+# Log
+setup_logs/
+setup/setup_logs/
+*.log
+audiobook_generator/Logs/
+
+# Input files
+Ebooks_to_Convert/
+
+# Reference audio
+Reference_Voices/
+
+# Backup files
+*.backup
+*.BACKUP*
+*.bak
+
+# Sync tool
+.stfolder/
+.stversions/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Binari esterni
+ffmpeg/
+sox/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Config locale (se presente)
+local_config.json
+
+# Documentazione interna (privata)
+Documentazione/

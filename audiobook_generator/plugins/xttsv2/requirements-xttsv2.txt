@@ -1,0 +1,6 @@
+TTS==0.22.0
+trainer==0.0.36
+coqpit==0.0.17
+transformers==4.36.2  # Pinning to a compatible version for TTS 0.22.0
+# Note: Other dependencies of TTS will be pulled automatically
+# if they are not already in the base requirements.
