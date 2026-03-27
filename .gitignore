@@ -16,21 +16,29 @@ __pycache__/
 .Python/
 
 # Output e risultati
-Demo_Outputs/
-Generated_Audiobooks/
-Intermediate_Audio_Chunks/
+Demo_Outputs/*
+!Demo_Outputs/.gitkeep
+Generated_Audiobooks/*
+!Generated_Audiobooks/.gitkeep
+Intermediate_Audio_Chunks/*
+!Intermediate_Audio_Chunks/.gitkeep
 
 # Log
-setup_logs/
+setup_logs/*
+!setup_logs/.gitkeep
 setup/setup_logs/
 *.log
 audiobook_generator/Logs/
 
 # Input files
-Ebooks_to_Convert/
+Ebooks_to_Convert/*
+!Ebooks_to_Convert/.gitkeep*
+!Ebooks_to_Convert/.gitkeep
 
 # Reference audio
-Reference_Voices/
+Reference_Voices/*
+!Reference_Voices/.gitkeep
+!Reference_Voices/*/.gitkeep
 
 # Backup files
 *.backup
