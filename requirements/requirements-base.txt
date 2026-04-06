@@ -2,7 +2,7 @@
 gradio==3.50.2 # Downgrade to a known stable 3.x version
 fastapi
 uvicorn
-starlette
+starlette==0.27.0 # Pin to compatible version for Gradio 3.x
 aiohttp
 websockets
 httpx
