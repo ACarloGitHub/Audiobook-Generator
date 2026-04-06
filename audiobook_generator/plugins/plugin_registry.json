@@ -1,6 +1,56 @@
-{
-  "kokoro": false,
-  "xttsv2": false,
-  "qwen3tts": false,
-  "vibevoice": false
-}
+[
+  {
+    "name": "VibeVoice-7B",
+    "type": "subprocess",
+    "entry_point": "audiobook_generator.plugins.vibevoice.plugin:VibeVoicePlugin",
+    "installed": true
+  },
+  {
+    "name": "VibeVoice-1.5B",
+    "type": "subprocess",
+    "entry_point": "audiobook_generator.plugins.vibevoice.plugin:VibeVoicePlugin",
+    "installed": true
+  },
+  {
+    "name": "VibeVoice-Realtime-0.5B",
+    "type": "subprocess",
+    "entry_point": "audiobook_generator.plugins.vibevoice.plugin:VibeVoicePlugin",
+    "installed": true
+  },
+  {
+    "name": "XTTSv2",
+    "type": "subprocess",
+    "entry_point": "audiobook_generator.plugins.xttsv2.plugin:XTTSv2Plugin",
+    "installed": true
+  },
+  {
+    "name": "Kokoro",
+    "type": "subprocess",
+    "entry_point": "audiobook_generator.plugins.kokoro.plugin:KokoroPlugin",
+    "installed": true
+  },
+  {
+    "name": "Qwen3-TTS-0.6B-Base",
+    "type": "subprocess",
+    "entry_point": "audiobook_generator.plugins.qwen3tts.plugin_0_6B:Qwen3TTS_0_6B_Plugin",
+    "installed": true
+  },
+  {
+    "name": "Qwen3-TTS-1.7B-Base",
+    "type": "subprocess",
+    "entry_point": "audiobook_generator.plugins.qwen3tts.plugin_1_7B:Qwen3TTS_1_7B_Plugin",
+    "installed": true
+  },
+  {
+    "name": "Qwen3-TTS-1.7B-CustomVoice",
+    "type": "subprocess",
+    "entry_point": "audiobook_generator.plugins.qwen3tts.plugin:Qwen3TTSPlugin",
+    "installed": true
+  },
+  {
+    "name": "Qwen3-TTS-1.7B-VoiceDesign",
+    "type": "subprocess",
+    "entry_point": "audiobook_generator.plugins.qwen3tts.plugin:Qwen3TTSPlugin",
+    "installed": true
+  }
+]

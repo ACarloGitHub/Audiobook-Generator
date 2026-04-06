@@ -219,7 +219,22 @@ def application_phase():
             return []
         try:
             with open(registry_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                data = json.load(f)
+            # Convert dict format {"plugin_name": bool} to list format [{"name": ...}]
+            if isinstance(data, dict):
+                registry = []
+                # Map plugin keys to full model names expected by the UI
+                model_mapping = {
+                    "kokoro": "Kokoro",
+                    "xttsv2": "XTTSv2",
+                    "qwen3tts": "Qwen3-TTS-0.6B-Base",  # Generic fallback
+                    "vibevoice": "VibeVoice-Realtime-0.5B"  # Generic fallback
+                }
+                for key, installed in data.items():
+                    name = model_mapping.get(key, key)
+                    registry.append({"name": name, "version": "1.0", "installed": installed})
+                return registry
+            return data
         except Exception as e:
             logger.error(f"Error reading plugin registry: {e}")
             return []
@@ -309,6 +324,12 @@ def application_phase():
                 if model_name == "XTTSv2":
                     model_dir = BASE_DIR.parent / "audiobook_generator" / "tts_models" / "xttsv2"
                     essential_files = ["config.json", "model.pth", "dvae.pth"]
+                    # Check if folder is empty or only contains .gitkeep
+                    if model_dir.exists():
+                        actual_files = [f for f in model_dir.iterdir() if f.name != ".gitkeep"]
+                        if not actual_files:
+                            status = "❌ Missing"
+                            status_already_set = True
                 elif model_name == "Kokoro":
                     # Kokoro uses HuggingFace cache structure
                     model_dir = BASE_DIR.parent / "audiobook_generator" / "tts_models" / "kokoro" / "models" / "hub" / "models--hexgrad--Kokoro-82M" / "snapshots"
