@@ -397,46 +397,32 @@ def get_model_specific_config(model_name):
     return {}
 
 def update_model_specific_options(selected_model, xtts_lang, kokoro_lang, vibevoice_lang, current_chunking_strategy, current_max_chars, current_separator, current_replace_guillemets):
-    # Estrai il nome base (rimuovi "(da scaricare)" se presente)
-    base_model = selected_model.split(" (da scaricare)")[0]
-    
     model_config = get_model_specific_config(selected_model)
     updates = []
     if "chunking_strategy" in model_config: updates.append(gr.update(value=model_config["chunking_strategy"]))
     else: updates.append(gr.update())
     new_max_chars = current_max_chars
     if "char_limit_recommended" in model_config: new_max_chars = model_config["char_limit_recommended"]
-    elif base_model == "Kokoro" and "char_limits_by_lang" in model_config:
+    elif selected_model == "Kokoro" and "char_limits_by_lang" in model_config:
         current_lang = kokoro_lang if kokoro_lang else config.DEFAULT_LANGUAGE
         lang_limits = model_config["char_limits_by_lang"].get(current_lang, {})
         if "max" in lang_limits: new_max_chars = lang_limits["max"]
         elif "min" in lang_limits: new_max_chars = lang_limits["min"]
     updates.append(gr.update(value=new_max_chars))
-    if base_model == "XTTSv2": updates.append(gr.update(value="Pipe (|)"))
+    if selected_model == "XTTSv2": updates.append(gr.update(value="Pipe (|)"))
     else: updates.append(gr.update(value="Standard Period (.)"))
-    if base_model == "XTTSv2": updates.append(gr.update(value=True))
+    if selected_model == "XTTSv2": updates.append(gr.update(value=True))
     else: updates.append(gr.update(value=False))
-    
-    # Verifica stato installazione modello in tempo reale
-    status_msg = ""
-    if base_model.startswith("VibeVoice") or base_model.startswith("Qwen3-TTS") or base_model in ["XTTSv2", "Kokoro"]:
-        try:
-            status = get_model_status(base_model)
-            if "❌" in status:
-                status_msg = f"{status}\n\n"
-        except Exception:
-            pass  # Se la verifica fallisce, continua senza messaggio di stato
-    
     note_text = ""
     if "note" in model_config: note_text = model_config["note"]
-    if base_model.startswith("VibeVoice") and "time_warning" in model_config: note_text += f"\n\n⚠️ {model_config['time_warning']}"
-    if base_model == "Kokoro" and "char_limits_by_lang" in model_config:
+    if selected_model.startswith("VibeVoice") and "time_warning" in model_config: note_text += f"\n\n⚠️ {model_config['time_warning']}"
+    if selected_model == "Kokoro" and "char_limits_by_lang" in model_config:
         current_lang = kokoro_lang if kokoro_lang else config.DEFAULT_LANGUAGE
         lang_limits = model_config["char_limits_by_lang"].get(current_lang, {})
         if "note" in lang_limits: note_text += f"\n\n📝 {lang_limits['note']}"
         if "max" in lang_limits: note_text += f"\n✅ Limite caratteri automaticamente impostato a {lang_limits['max']} (circa {int(lang_limits['max']/6)}-{int(lang_limits['max']/5)} parole)."
-    if base_model == "XTTSv2": note_text += "\n\nℹ️ Replace Guillemets e Pipe separator sono attivati automaticamente per XTTSv2, che non interpreta bene alcuni simboli."
-    updates.append(gr.update(value=status_msg + note_text, visible=bool(status_msg or note_text)))
+    if selected_model == "XTTSv2": note_text += "\n\nℹ️ Replace Guillemets e Pipe separator sono attivati automaticamente per XTTSv2, che non interpreta bene alcuni simboli."
+    updates.append(gr.update(value=note_text, visible=bool(note_text)))
     return tuple(updates)
 
 def update_qwen_mode_for_model(selected_model):
