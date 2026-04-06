@@ -15,6 +15,9 @@ setup_venv/
 .venv/
 env/
 
+# Model venvs (created by setup in tts_models folders)
+**/venv/
+
 # Cache Python
 __pycache__/
 *.pyc
