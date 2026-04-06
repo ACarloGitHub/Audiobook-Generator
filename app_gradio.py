@@ -596,6 +596,9 @@ def _load_tts_model_instance(selected_model, language, technical_voice_id):
         return None, str(e)
 
 def _process_ebook_chapters(epub_filepath, book_final_output_dir, book_chunk_output_dir, model_instance_wrapper, selected_lang, selected_model, technical_voice_id, final_tts_params, final_proc_opts, selected_chapter_keys, update_callback, logger):
+    # Estrai il nome base del modello (rimuovi "(da scaricare)" se presente)
+    base_model = selected_model.split(" (da scaricare)")[0]
+    
     def _send_update(message, level=logging.INFO):
         if update_callback:
             try: yield from update_callback(message, level=level)
@@ -648,7 +651,7 @@ def _process_ebook_chapters(epub_filepath, book_final_output_dir, book_chunk_out
             
             all_params = {**final_tts_params, **extra_params}
             
-            if not tts_handler.synthesize_audio(selected_model, model_instance_wrapper, chunk_text, chunk_output_path, **all_params):
+            if not tts_handler.synthesize_audio(base_model, model_instance_wrapper, chunk_text, chunk_output_path, **all_params):
                 logger.error(f"Failed to synthesize chunk {j+1} of chapter '{chapter_key}'.")
                 chapter_failed_indices.append(j+1); chapter_failed_texts[str(j+1)] = chunk_text; chapter_error_types.append("synthesis_failed")
             else:
@@ -678,6 +681,9 @@ def _process_ebook_chapters(epub_filepath, book_final_output_dir, book_chunk_out
     return final_message, final_mp3s
 
 def run_demo_gradio(demo_text, selected_model, xtts_wav_file, piper_kokoro_voice, xtts_temp, xtts_speed, xtts_rep_pen, piper_speed, piper_noise_scale, piper_noise_scale_w, kokoro_speed, replace_guillemets_demo, separator_dropdown, qwen_mode_radio, qwen_custom_voice_dropdown, qwen_custom_language_dropdown, qwen_custom_instruct_textbox, qwen_clone_ref_audio, qwen_clone_ref_text, qwen_clone_fast_mode_checkbox, qwen_clone_language_dropdown, qwen_design_instruct_textbox, qwen_design_language_dropdown, qwen_speed_slider, qwen_pitch_slider, qwen_volume_slider, qwen_temperature_slider, qwen_top_p_slider, qwen_top_k_slider, qwen_repetition_penalty_slider, qwen_seed_number, vibevoice_temp, vibevoice_top_p, vibevoice_cfg_scale, vibevoice_diffusion_steps, vibevoice_speed_factor, vibevoice_seed, vibevoice_use_sampling, vibevoice_top_k, xtts_lang, kokoro_lang, vibevoice_lang, vibevoice_realtime_speaker, vibevoice_realtime_cfg_scale, vibevoice_realtime_ddpm_steps, vibevoice_realtime_seed, vibevoice_realtime_temperature, vibevoice_realtime_top_p, vibevoice_realtime_top_k, xtts_top_k_slider, xtts_top_p_slider, xtts_length_penalty_slider, xtts_gpt_cond_len_slider):
+    # Estrai il nome base del modello (rimuovi "(da scaricare)" se presente)
+    base_model = selected_model.split(" (da scaricare)")[0]
+    
     yield "Starting demo...", gr.update(value=None, visible=False)
     try:
         if not demo_text or not demo_text.strip(): raise ValueError("Please enter some text.")
@@ -726,7 +732,7 @@ def run_demo_gradio(demo_text, selected_model, xtts_wav_file, piper_kokoro_voice
         
         all_params = {**extra_params, **final_tts_params}
         start_time = time.time()
-        success = tts_handler.synthesize_audio(selected_model, model_instance, processed_text, demo_output_path, **all_params)
+        success = tts_handler.synthesize_audio(base_model, model_instance, processed_text, demo_output_path, **all_params)
         duration = time.time() - start_time
 
         if success: yield f"Demo generated in {duration:.2f}s.", gr.Audio(value=demo_output_path, label="Demo Output", visible=True)
