@@ -4,6 +4,7 @@ from typing import Any
 from audiobook_generator.base_subprocess_plugin import BaseSubprocessPlugin
 from audiobook_generator import config
 from audiobook_generator.model_manager import model_manager
+from audiobook_generator.payload_types import Qwen3TTSPayload
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ class Qwen3TTSPlugin(BaseSubprocessPlugin):
 
         return {"status": "ready"}
 
-    def _build_payload(self, text: str, output_path: str, **kwargs) -> dict:
+    def _build_payload(self, text: str, output_path: str, **kwargs) -> Qwen3TTSPayload:
         mode = kwargs.get("qwen_mode")
         if mode is None:
             mode = "clone"

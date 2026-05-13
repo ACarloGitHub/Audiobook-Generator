@@ -3,6 +3,7 @@ import logging
 from typing import Any
 from audiobook_generator.base_subprocess_plugin import BaseSubprocessPlugin
 from audiobook_generator import config
+from audiobook_generator.payload_types import VibeVoicePayload
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ class VibeVoicePlugin(BaseSubprocessPlugin):
 
         return super().synthesize(model_instance, text, output_path, **kwargs)
 
-    def _build_payload(self, text: str, output_path: str, **kwargs) -> dict:
+    def _build_payload(self, text: str, output_path: str, **kwargs) -> VibeVoicePayload:
         speaker_wav = kwargs.get('speaker_wav')
         temperature = kwargs.get('temperature', 0.9)
         top_p = kwargs.get('top_p', 0.9)

@@ -3,6 +3,7 @@ import logging
 from typing import Any
 from audiobook_generator.base_subprocess_plugin import BaseSubprocessPlugin
 from audiobook_generator import config
+from audiobook_generator.payload_types import XTTSv2Payload
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +13,7 @@ class XTTSv2Plugin(BaseSubprocessPlugin):
     def _get_python_executable(self) -> str:
         return config.XTTSV2_PYTHON_EXECUTABLE
 
-    def _build_payload(self, text: str, output_path: str, **kwargs) -> dict:
+    def _build_payload(self, text: str, output_path: str, **kwargs) -> XTTSv2Payload:
         language = kwargs.get('language')
         speaker_wav = kwargs.get('speaker_wav')
         temperature = float(kwargs.get('temperature', 0.75))
