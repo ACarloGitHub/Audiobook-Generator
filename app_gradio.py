@@ -405,13 +405,22 @@ def update_model_specific_options(selected_model, xtts_lang, kokoro_lang, vibevo
     if "chunking_strategy" in model_config: updates.append(gr.update(value=model_config["chunking_strategy"]))
     else: updates.append(gr.update())
     new_max_chars = current_max_chars
+    char_limit_max = None
     if "char_limit_recommended" in model_config: new_max_chars = model_config["char_limit_recommended"]
     elif base_model == "Kokoro" and "char_limits_by_lang" in model_config:
         current_lang = kokoro_lang if kokoro_lang else config.DEFAULT_LANGUAGE
         lang_limits = model_config["char_limits_by_lang"].get(current_lang, {})
         if "max" in lang_limits: new_max_chars = lang_limits["max"]
         elif "min" in lang_limits: new_max_chars = lang_limits["min"]
-    updates.append(gr.update(value=new_max_chars))
+    if "char_limit_max" in model_config: char_limit_max = model_config["char_limit_max"]
+    elif base_model == "Kokoro" and "char_limits_by_lang" in model_config:
+        current_lang = kokoro_lang if kokoro_lang else config.DEFAULT_LANGUAGE
+        lang_limits = model_config["char_limits_by_lang"].get(current_lang, {})
+        char_limit_max = lang_limits.get("max", None)
+    if char_limit_max is not None:
+        updates.append(gr.update(value=new_max_chars, maximum=char_limit_max))
+    else:
+        updates.append(gr.update(value=new_max_chars))
     if base_model == "XTTSv2": updates.append(gr.update(value="Pipe (|)"))
     else: updates.append(gr.update(value="Standard Period (.)"))
     if base_model == "XTTSv2": updates.append(gr.update(value=True))

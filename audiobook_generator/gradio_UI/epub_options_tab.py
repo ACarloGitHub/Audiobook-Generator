@@ -2,7 +2,7 @@
 import gradio as gr
 
 def create_epub_options_tab(config, SENTENCE_SEPARATOR_OPTIONS, DEFAULT_SEPARATOR_DISPLAY, CHUNKING_STRATEGIES, DEFAULT_CHUNKING_STRATEGY):
-    """Crea e restituisce i componenti della scheda EPUB e opzioni."""
+    """Create and return the EPUB & Options tab components."""
     with gr.TabItem("2. EPUB & Options"):
         epub_upload = gr.File(label="Upload EPUB", file_types=[".epub"])
         audiobook_title_textbox = gr.Textbox(label="Audiobook Title", placeholder="Enter title or leave blank")
@@ -13,8 +13,8 @@ def create_epub_options_tab(config, SENTENCE_SEPARATOR_OPTIONS, DEFAULT_SEPARATO
         with gr.Group(visible=(DEFAULT_CHUNKING_STRATEGY == CHUNKING_STRATEGIES[0])) as word_count_group:
             min_words_number = gr.Number(label="Min Words", value=config.DEFAULT_MIN_WORDS_APPROX, minimum=10, step=10, precision=0)
             max_words_number = gr.Number(label="Max Words", value=config.DEFAULT_MAX_WORDS_APPROX, minimum=50, step=10, precision=0)
-        with gr.Group(visible=(DEFAULT_CHUNKING_STRATEGY == CHUNKING_STRATEGIES[1])) as char_limit_group:
-            max_chars_number = gr.Number(label="Max Chars", value=config.TTS_MODEL_CONFIG.get("XTTSv2", {}).get("char_limit_recommended", 300), minimum=100, step=50, precision=0)
+        with gr.Group(visible=(DEFAULT_CHUNKING_STRATEGIES == CHUNKING_STRATEGIES[1])) as char_limit_group:
+            max_chars_number = gr.Number(label="Max Chars", value=config.DEFAULT_MAX_CHARS_PER_CHUNK, minimum=100, step=50, precision=0)
         
         model_info_note = gr.Markdown(visible=False)
         
