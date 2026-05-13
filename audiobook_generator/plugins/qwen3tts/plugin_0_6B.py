@@ -1,6 +1,7 @@
 import subprocess
 import json
 import os
+from typing import Any
 from audiobook_generator.base_plugin import BaseTTSPlugin
 from audiobook_generator import config
 from audiobook_generator.model_manager import model_manager
@@ -16,7 +17,7 @@ class Qwen3TTS_0_6B_Plugin(BaseTTSPlugin):
             
         return {"status": "ready"}
 
-    def synthesize(self, model_instance: any, text: str, output_path: str, **kwargs) -> bool:
+    def synthesize(self, model_instance: Any, text: str, output_path: str, **kwargs) -> bool:
         script_path = os.path.join(os.path.dirname(__file__), 'synthesize_subprocess.py')
         
         payload = {

@@ -2,6 +2,7 @@ import subprocess
 import json
 import os
 import logging
+from typing import Any
 from audiobook_generator.base_plugin import BaseTTSPlugin
 from audiobook_generator import config
 from audiobook_generator.model_manager import model_manager  # Import per asset management
@@ -27,7 +28,7 @@ class KokoroPlugin(BaseTTSPlugin):
         
         return {"status": "ready"}
 
-    def synthesize(self, model_instance: any, text: str, output_path: str, **kwargs) -> bool:
+    def synthesize(self, model_instance: Any, text: str, output_path: str, **kwargs) -> bool:
         """
         Lancia il sottoprocesso per la sintesi con Kokoro e comunica tramite JSON.
         """

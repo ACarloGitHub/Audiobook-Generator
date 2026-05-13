@@ -1,6 +1,6 @@
 import json
 import importlib
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from .base_plugin import BaseTTSPlugin
 
 
@@ -36,7 +36,7 @@ class PluginManager:
     def list_available_models(self) -> List[str]:
         return list(self.plugins.keys())
 
-    def synthesize(self, model_name: str, text: str, output_path: str, model_instance: any, **kwargs) -> bool:
+    def synthesize(self, model_name: str, text: str, output_path: str, model_instance: Any, **kwargs) -> bool:
         """
         Metodo centralizzato per la sintesi. Trova il plugin corretto e delega la chiamata.
         """
@@ -48,7 +48,7 @@ class PluginManager:
         # Passa tutti i kwargs al metodo synthesize del plugin
         return plugin.synthesize(model_instance, text, output_path, **kwargs)
 
-    def load_model(self, model_name: str, **kwargs) -> any:
+    def load_model(self, model_name: str, **kwargs) -> Any:
         """
         Metodo centralizzato per il caricamento del modello.
         """

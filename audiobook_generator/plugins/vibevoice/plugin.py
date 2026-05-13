@@ -1,6 +1,7 @@
 import subprocess
 import json
 import os
+from typing import Any
 from audiobook_generator.base_plugin import BaseTTSPlugin
 from audiobook_generator import config
 from audiobook_generator.model_manager import model_manager  # <-- NUOVO IMPORT
@@ -17,7 +18,7 @@ class VibeVoicePlugin(BaseTTSPlugin):
         
         return {"status": "ready"}
 
-    def synthesize(self, model_instance: any, text: str, output_path: str, **kwargs) -> bool:
+    def synthesize(self, model_instance: Any, text: str, output_path: str, **kwargs) -> bool:
         """
         Lancia il sottoprocesso per la sintesi con VibeVoice e comunica tramite JSON.
         """
