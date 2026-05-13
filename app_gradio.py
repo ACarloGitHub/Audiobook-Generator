@@ -822,12 +822,12 @@ def run_generation(selected_model, xtts_wav_file, piper_kokoro_voice, xtts_temp,
         sep_value = next((val for name, val in SENTENCE_SEPARATOR_OPTIONS if name == separator_dropdown), ".")
         proc_opts = {"use_char_limit_chunking": chunking_strategy == CHUNKING_STRATEGIES[1], "max_chars_per_chunk": max_chars, "min_words_approx": min_words, "max_words_approx": max_words, "sentence_separator": sep_value, "replace_guillemets": replace_guillemets}
 
-        if selected_model.startswith("VibeVoice"):
-            logger.info(f"Modello {selected_model} selezionato. Forzatura di una strategia di chunking a testo lungo.")
-            proc_opts.update({"use_char_limit_chunking": True, "max_chars_per_chunk": 750, "min_words_approx": 0, "max_words_approx": 0})
-        if selected_model.startswith("Qwen3-TTS"):
-            logger.info("Modello Qwen3-TTS selezionato. Configurazione ottimale per Qwen3-TTS.")
-            proc_opts.update({"use_char_limit_chunking": True, "max_chars_per_chunk": 800, "min_words_approx": 0, "max_words_approx": 0})
+        # Apply model-specific chunking overrides from config
+        model_config = get_model_specific_config(selected_model)
+        if model_config.get("force_char_limit_chunking"):
+            char_limit = model_config.get("char_limit_recommended", max_chars)
+            logger.info("Model %s: forcing character limit chunking (max_chars=%d).", base_model, char_limit)
+            proc_opts.update({"use_char_limit_chunking": True, "max_chars_per_chunk": char_limit, "min_words_approx": 0, "max_words_approx": 0})
 
         final_message, final_mp3s = yield from _process_ebook_chapters(epub_file_obj.name, book_final_output_dir, book_chunk_output_dir, model_instance, selected_lang, selected_model, technical_voice_id, final_tts_params, proc_opts, selected_chapter_keys, _update_status, logger)
         status_log.append(final_message)

@@ -56,6 +56,7 @@ TTS_MODEL_CONFIG: Final[Dict[str, Dict[str, Any]]] = {
         "char_limit_recommended": 750,
         "char_limit_max": 20000,  # ~64k tokens correspond to ~20k characters
         "chunking_strategy": "Character Limit",
+        "force_char_limit_chunking": True,
         "note": "VibeVoice supports up to 64k tokens (~90 minutes of conversation). A limit of 750 characters ensures better prosody. Can be increased if generation time is not a concern.",
         "time_warning": "VibeVoice is very slow. Longer chunks require more generation time."
     },
@@ -63,6 +64,7 @@ TTS_MODEL_CONFIG: Final[Dict[str, Dict[str, Any]]] = {
         "char_limit_recommended": 750,
         "char_limit_max": 20000,
         "chunking_strategy": "Character Limit",
+        "force_char_limit_chunking": True,
         "note": "VibeVoice-1.5B supports up to 64k tokens (~90 minutes of conversation). A limit of 750 characters ensures better prosody.",
         "time_warning": "VibeVoice-1.5B is very slow. Longer chunks require more generation time."
     },
@@ -70,6 +72,7 @@ TTS_MODEL_CONFIG: Final[Dict[str, Dict[str, Any]]] = {
         "char_limit_recommended": 750,
         "char_limit_max": 20000,
         "chunking_strategy": "Character Limit",
+        "force_char_limit_chunking": True,
         "note": "VibeVoice-7B supports up to 64k tokens (~90 minutes of conversation). A limit of 750 characters ensures better prosody.",
         "time_warning": "VibeVoice-7B is very slow. Longer chunks require more generation time."
     },
@@ -77,39 +80,44 @@ TTS_MODEL_CONFIG: Final[Dict[str, Dict[str, Any]]] = {
         "char_limit_recommended": 750,
         "char_limit_max": 20000,
         "chunking_strategy": "Character Limit",
+        "force_char_limit_chunking": True,
         "note": "VibeVoice-Realtime-0.5B supports up to 64k tokens (~90 minutes of conversation). A limit of 750 characters ensures better prosody.",
         "time_warning": "VibeVoice-Realtime-0.5B is faster than larger versions, but long chunks still require time."
     },
     "Qwen3-TTS-0.6B-Base": {
-        "char_limit_recommended": 600,
+        "char_limit_recommended": 800,
         "char_limit_max": 1000,
         "chunking_strategy": "Character Limit",
+        "force_char_limit_chunking": True,
         "mode": "Voice Clone",
-        "note": "Qwen3-TTS-0.6B-Base supports Voice Clone. Optimal limit: 600 characters (85-100 words). Supports sequences up to 1000 characters.",
+        "note": "Qwen3-TTS-0.6B-Base supports Voice Clone. Optimal limit: 800 characters. Supports sequences up to 1000 characters.",
         "supported_modes": ["Voice Clone"]
     },
     "Qwen3-TTS-1.7B-Base": {
-        "char_limit_recommended": 600,
+        "char_limit_recommended": 800,
         "char_limit_max": 1000,
         "chunking_strategy": "Character Limit",
+        "force_char_limit_chunking": True,
         "mode": "Voice Clone",
-        "note": "Qwen3-TTS-1.7B-Base supports Voice Clone. Optimal limit: 600 characters (85-100 words). Supports sequences up to 1000 characters.",
+        "note": "Qwen3-TTS-1.7B-Base supports Voice Clone. Optimal limit: 800 characters. Supports sequences up to 1000 characters.",
         "supported_modes": ["Voice Clone"]
     },
     "Qwen3-TTS-1.7B-CustomVoice": {
-        "char_limit_recommended": 600,
+        "char_limit_recommended": 800,
         "char_limit_max": 1000,
         "chunking_strategy": "Character Limit",
+        "force_char_limit_chunking": True,
         "mode": "Custom Voice",
-        "note": "Qwen3-TTS-1.7B-CustomVoice supports Custom Voice (9 preset voices). Optimal limit: 600 characters (85-100 words).",
+        "note": "Qwen3-TTS-1.7B-CustomVoice supports Custom Voice (9 preset voices). Optimal limit: 800 characters.",
         "supported_modes": ["Custom Voice"]
     },
     "Qwen3-TTS-1.7B-VoiceDesign": {
-        "char_limit_recommended": 600,
+        "char_limit_recommended": 800,
         "char_limit_max": 1000,
         "chunking_strategy": "Character Limit",
+        "force_char_limit_chunking": True,
         "mode": "Voice Design",
-        "note": "Qwen3-TTS-1.7B-VoiceDesign supports Voice Design (voice description in English). Optimal limit: 600 characters (85-100 words).",
+        "note": "Qwen3-TTS-1.7B-VoiceDesign supports Voice Design (voice description in English). Optimal limit: 800 characters.",
         "supported_modes": ["Voice Design"]
     }
 }
