@@ -562,6 +562,8 @@ def _prepare_tts_config(selected_lang, selected_model, xtts_wav_file_obj, piper_
             if not xtts_wav_file_obj: raise ValueError(f"No reference WAV uploaded for {base_model}.")
             technical_voice_id = _extract_file_path(xtts_wav_file_obj)
             if technical_voice_id is None and hasattr(xtts_wav_file_obj, 'name'): technical_voice_id = xtts_wav_file_obj.name
+            if technical_voice_id and not os.path.exists(technical_voice_id):
+                raise ValueError(f"Reference WAV file not found: {technical_voice_id}")
         elif base_model == "VibeVoice-Realtime-0.5B":
             technical_voice_id = vibevoice_realtime_speaker if vibevoice_realtime_speaker else "it-Spk0_woman"
         elif base_model == "Kokoro":
