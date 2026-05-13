@@ -86,4 +86,10 @@ Thumbs.db
 # Config locale (se presente)
 local_config.json
 
-# Document
+# Documentation and wiki (generated, not for repo)
+AGENTS.md
+AudiobookGenerator-Wiki/
+DEV_LOG.md
+TODO_NEXT.md
+ANALISI_ARCHITETTURALE.md
+CLAUDE.md
