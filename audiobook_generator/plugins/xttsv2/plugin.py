@@ -62,13 +62,15 @@ class XTTSv2Plugin(BaseTTSPlugin):
 
         process = None
         try:
+            project_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             process = subprocess.Popen(
                 [config.XTTSV2_PYTHON_EXECUTABLE, script_path],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                encoding='utf-8'
+                encoding='utf-8',
+                cwd=project_dir
             )
 
             stdout_data, stderr_data = process.communicate(json.dumps(payload), timeout=300)  # Timeout di 5 minuti

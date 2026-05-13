@@ -54,13 +54,15 @@ class VibeVoicePlugin(BaseTTSPlugin):
 
         process = None
         try:
+            project_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             process = subprocess.Popen(
                 [config.VIBEVOICE_PYTHON_EXECUTABLE, script_path],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                encoding='utf-8'
+                encoding='utf-8',
+                cwd=project_dir
             )
 
             stdout_data, stderr_data = process.communicate(json.dumps(payload), timeout=config.DEFAULT_SUBPROCESS_TIMEOUT) # Timeout configurabile (default 1800s = 30 minuti)

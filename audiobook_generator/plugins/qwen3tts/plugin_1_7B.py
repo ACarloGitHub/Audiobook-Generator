@@ -29,10 +29,12 @@ class Qwen3TTS_1_7B_Plugin(BaseTTSPlugin):
 
         process = None
         try:
+            project_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             process = subprocess.Popen(
                 [config.QWEN3TTS_PYTHON_EXECUTABLE, script_path],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                bufsize=1
+                bufsize=1,
+                cwd=project_dir
             )
             
             stdin_data = json.dumps(payload).encode('utf-8')

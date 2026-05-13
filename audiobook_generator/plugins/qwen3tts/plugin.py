@@ -55,11 +55,13 @@ class Qwen3TTSPlugin(BaseTTSPlugin):
 
         process = None
         try:
+            project_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             # Avvia il sottoprocesso catturando stdout e stderr come bytes
             process = subprocess.Popen(
                 [config.QWEN3TTS_PYTHON_EXECUTABLE, script_path],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                bufsize=1  # Line buffered
+                bufsize=1,  # Line buffered
+                cwd=project_dir
             )
             
             # Invia il payload JSON a stdin
