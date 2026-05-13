@@ -18,12 +18,15 @@ Questo modulo è progettato per essere importato in app_gradio.py per mantenere 
 """
 
 import gradio as gr
+import logging
 import os
 import sys
 import subprocess
 import shutil
 import time
 from typing import Dict, Any, Tuple
+
+logger = logging.getLogger(__name__)
 
 # Importa configurazioni dal progetto
 try:
@@ -70,8 +73,8 @@ def check_external_dependencies() -> Dict[str, Any]:
             result = subprocess.run([ffmpeg_path, "-version"], capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
                 first_line = result.stdout.split('\n')[0] if result.stdout else ""
-                dependencies_status["ffmpeg"]["version"] = first_line[:50]  # Limita lunghezza
-        except:
+                dependencies_status["ffmpeg"]["version"] = first_line[:50]
+        except Exception:
             pass
     else:
         # Controlla se FFmpeg è nella cartella locale del progetto
