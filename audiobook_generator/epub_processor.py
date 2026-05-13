@@ -171,7 +171,7 @@ def split_long_sentence(sentence: str, max_length: int) -> list[str]:
     """
     # First, try to split by commas, semicolons, conjunctions
     # Define split patterns in order of preference
-    patterns = [r'[,;]', r'\s+[e|o|ma|però|quindi|dunque|allora|cioè]\s+', r'\s+']
+    patterns = [r'[,;]', r'\s+(?:e|o|ma|però|quindi|dunque|allora|cioè)\s+', r'\s+']
     for pattern in patterns:
         parts = re.split(f'({pattern})', sentence)
         # Recombine with delimiter
