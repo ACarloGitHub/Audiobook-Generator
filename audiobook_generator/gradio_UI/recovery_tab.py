@@ -22,27 +22,26 @@ except ImportError as e:
     HAS_BACKEND = False
     logging.warning(f"Backend modules not available: {e}")
 
-# Flag per controllo stop (condiviso con app_gradio.py)
-STOP_FLAG_RECOVERY = False
+import threading
+
+# Flag per controllo stop (condiviso con app_gradio.py, thread-safe)
+stop_event_recovery = threading.Event()
 
 def set_stop_flag_recovery():
-    """Imposta il flag di stop a True per recovery"""
-    global STOP_FLAG_RECOVERY
-    STOP_FLAG_RECOVERY = True
-    logging.info("Stop flag recovery impostato a True")
+    """Imposta il flag di stop per recovery"""
+    stop_event_recovery.set()
+    logging.info("Stop flag recovery impostato")
     return "Processo recovery in arresto..."
 
 def reset_stop_flag_recovery():
-    """Resetta il flag di stop a False per recovery"""
-    global STOP_FLAG_RECOVERY
-    STOP_FLAG_RECOVERY = False
-    logging.info("Stop flag recovery resettato a False")
+    """Resetta il flag di stop per recovery"""
+    stop_event_recovery.clear()
+    logging.info("Stop flag recovery resettato")
     return "Stop flag recovery resettato"
 
 def check_stop_flag_recovery():
-    """Controlla se il flag di stop è True per recovery"""
-    global STOP_FLAG_RECOVERY
-    return STOP_FLAG_RECOVERY
+    """Controlla se il flag di stop è attivo per recovery"""
+    return stop_event_recovery.is_set()
 
 # Percorsi
 GENERATED_AUDIOBOOKS_DIR = "Generated_Audiobooks"
@@ -151,6 +150,8 @@ def retry_synthesis_real(book_name: str, chapter_name: str, selected_chunks: Lis
     if not HAS_BACKEND:
         return "Backend modules not available. Cannot retry synthesis.", False
     
+    reset_stop_flag_recovery()
+    
     if not book_name or not chapter_name or not selected_chunks:
         return "Seleziona audiolibro, capitolo e chunk.", False
     
@@ -228,6 +229,10 @@ def retry_synthesis_real(book_name: str, chapter_name: str, selected_chunks: Lis
         return result_msg, False
     
     for idx in valid_indices:
+        if check_stop_flag_recovery():
+            logging.info("Stop flag recovery rilevato, interruzione della retry.")
+            error_messages.append("Interrotto dall'utente.")
+            break
         chunk_text = failed_texts.get(str(idx))
         if not chunk_text:
             error_messages.append(f"Chunk {idx}: Testo originale non trovato.")

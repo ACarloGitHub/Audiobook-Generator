@@ -82,27 +82,26 @@ else:
     print("="*60 + "\n")
 
 # --- Global settings or constants for Gradio ---
-# Flag per controllo stop
-STOP_FLAG = False
+import threading
+
+# Flag per controllo stop (thread-safe)
+stop_event = threading.Event()
 
 def set_stop_flag():
-    """Imposta il flag di stop a True"""
-    global STOP_FLAG
-    STOP_FLAG = True
-    logging.info("Stop flag impostato a True")
+    """Imposta il flag di stop"""
+    stop_event.set()
+    logging.info("Stop flag impostato")
     return "Processo in arresto..."
 
 def reset_stop_flag():
-    """Resetta il flag di stop a False"""
-    global STOP_FLAG
-    STOP_FLAG = False
-    logging.info("Stop flag resettato a False")
+    """Resetta il flag di stop"""
+    stop_event.clear()
+    logging.info("Stop flag resettato")
     return "Stop flag resettato"
 
 def check_stop_flag():
-    """Controlla se il flag di stop è True"""
-    global STOP_FLAG
-    return STOP_FLAG
+    """Controlla se il flag di stop è attivo"""
+    return stop_event.is_set()
 
 # Rendi la lista dei modelli dinamica
 if config.USE_PLUGIN_ARCHITECTURE:
@@ -632,6 +631,10 @@ def _process_ebook_chapters(epub_filepath, book_final_output_dir, book_chunk_out
     failed_chunks_data = {"book_title": os.path.basename(book_final_output_dir), "conversion_date": datetime.now().strftime("%Y-%m-%d"), "total_chapters": total_chapters, "total_chunks": 0, "failed_chunks_count": 0, "chapters_with_errors": {}, "failed_chunks_text": {}, "error_types": {}, "model_used": selected_model.split(" (da scaricare)")[0] if " (da scaricare)" in selected_model else selected_model, "language": selected_lang, "tts_params": final_tts_params, "technical_voice_id": technical_voice_id, "proc_opts": final_proc_opts, "note": "File generato automaticamente dal sistema recovery errori."}
     
     for i, chapter_key in enumerate(actual_keys_to_process):
+        if check_stop_flag():
+            logger.info("Stop flag rilevato, interruzione della generazione.")
+            yield from _send_update("Generazione interrotta dall'utente.")
+            break
         yield from _send_update(f"Processing Chapter {i+1}/{total_chapters}: '{chapter_key}'...")
         chapter_text = chapters_data.get(chapter_key, "").strip()
         if not chapter_text:
@@ -670,6 +673,11 @@ def _process_ebook_chapters(epub_filepath, book_final_output_dir, book_chunk_out
                 chapter_failed_indices.append(j+1); chapter_failed_texts[str(j+1)] = chunk_text; chapter_error_types.append("synthesis_failed")
             else:
                 generated_chunk_files.append(chunk_output_path)
+            
+            if check_stop_flag():
+                logger.info("Stop flag rilevato durante sintesi chunk, interruzione.")
+                yield from _send_update("Generazione interrotta dall'utente.")
+                break
 
         if chapter_failed_indices:
             failed_chunks_data["chapters_with_errors"][chapter_title_sanitized] = chapter_failed_indices
@@ -756,6 +764,7 @@ def run_demo_gradio(demo_text, selected_model, xtts_wav_file, piper_kokoro_voice
         yield f"ERROR: {e}", gr.update(value=None, visible=False)
 
 def run_generation(selected_model, xtts_wav_file, piper_kokoro_voice, xtts_temp, xtts_speed, xtts_rep_pen, piper_speed, piper_noise_scale, piper_noise_scale_w, kokoro_speed, epub_file_obj, audiobook_title_in, replace_guillemets, chunking_strategy, separator_dropdown, min_words, max_words, max_chars, delete_chunks, selected_chapter_keys, qwen_mode_radio, qwen_custom_voice_dropdown, qwen_custom_language_dropdown, qwen_custom_instruct_textbox, qwen_clone_ref_audio, qwen_clone_ref_text, qwen_clone_fast_mode_checkbox, qwen_clone_language_dropdown, qwen_design_instruct_textbox, qwen_design_language_dropdown, qwen_speed_slider, qwen_pitch_slider, qwen_volume_slider, qwen_temperature_slider, qwen_top_p_slider, qwen_top_k_slider, qwen_repetition_penalty_slider, qwen_seed_number, shared_state, xtts_lang, kokoro_lang, vibevoice_lang, vibevoice_temp_slider, vibevoice_top_p_slider, vibevoice_cfg_scale_slider, vibevoice_diffusion_steps_slider, vibevoice_speed_factor_slider, vibevoice_seed_number, vibevoice_use_sampling_checkbox, vibevoice_top_k_slider, vibevoice_realtime_speaker_dropdown, vibevoice_realtime_cfg_scale_slider, vibevoice_realtime_ddpm_steps_slider, vibevoice_realtime_seed_number, vibevoice_realtime_temperature_slider, vibevoice_realtime_top_p_slider, vibevoice_realtime_top_k_slider, xtts_top_k_slider, xtts_top_p_slider, xtts_length_penalty_slider, xtts_gpt_cond_len_slider):
+    reset_stop_flag()
     status_log, logger, log_file_path = [], logging.getLogger('dummy'), None
     def _update_status(message, level=logging.INFO):
         status_log.append(message)
