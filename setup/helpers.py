@@ -1,13 +1,13 @@
 """
-Wrapper di retrocompatibilità.
-Re-exporta tutte le funzioni da setup.setup_helpers.
-I file che facevano 'from helpers import ...' continuano a funzionare.
+Backward compatibility wrapper.
+Re-exports all functions from setup.setup_helpers.
+Files that used 'from helpers import ...' will continue to work.
 """
 import sys
 import os
 
-# Aggiungi la root del progetto a sys.path (la directory che contiene setup/)
-# così 'setup.setup_helpers' viene trovato come package
+# Add the project root to sys.path (the directory containing setup/)
+# so 'setup.setup_helpers' is found as a package
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)

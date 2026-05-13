@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Script per scaricare modelli TTS senza interazione utente.
-Utilizzato da app_gradio.py per download dalla GUI.
+Script to download TTS models without user interaction.
+Used by app_gradio.py for downloads from the GUI.
 """
 
 import sys
@@ -10,60 +10,60 @@ import argparse
 from setup.setup_helpers import download_qwen3tts_model, download_vibevoice_model, clone_repo, run_command, command_exists, download_with_huggingface_hub
 
 def download_qwen_model(model_key):
-    """Scarica un modello Qwen3-TTS in base alla chiave."""
-    # Parse model_key: formato "0.6B_base", "1.7B_custom_voice", ecc.
+    """Downloads a Qwen3-TTS model based on the key."""
+    # Parse model_key: format "0.6B_base", "1.7B_custom_voice", etc.
     if "_" in model_key:
         parts = model_key.split("_", 1)
-        version = parts[0]  # "0.6B" o "1.7B"
+        version = parts[0]  # "0.6B" or "1.7B"
         model_type = parts[1]  # "base", "custom_voice", "voice_design"
     else:
-        print(f"ERRORE: Formato chiave modello non valido: {model_key}")
+        print(f"ERROR: Invalid model key format: {model_key}")
         return False
     
-    print(f"Download modello Qwen3-TTS {version} ({model_type})...")
-    # Timeout esteso a 2 ore per download lenti
+    print(f"Downloading Qwen3-TTS model {version} ({model_type})...")
+    # Extended timeout of 2 hours for slow downloads
     return download_qwen3tts_model(version, model_type=model_type, idle_timeout=7200)
 
 def download_vibevoice():
-    """Scarica il modello VibeVoice."""
-    print("Download modello VibeVoice...")
-    # VibeVoice ha due versioni: bf16 e q8. Usiamo bf16 come default.
+    """Downloads the VibeVoice model."""
+    print("Downloading VibeVoice model...")
+    # VibeVoice has two versions: bf16 and q8. We use bf16 as default.
     return download_vibevoice_model("bf16")
 
 def download_xttsv2():
-    """Scarica il modello XTTSv2."""
-    print("Download modello XTTSv2...")
+    """Downloads the XTTSv2 model."""
+    print("Downloading XTTSv2 model...")
     model_dir = "audiobook_generator/tts_models/xttsv2"
     repo_id = "coqui/XTTS-v2"
     
     if os.path.exists(model_dir):
-        print(f"Il modello XTTSv2 è già presente in '{model_dir}'. Download saltato.")
+        print(f"XTTSv2 model already present in '{model_dir}'. Download skipped.")
         return True
     
-    # Usa download_with_huggingface_hub che gestisce automaticamente Xet
-    # Timeout esteso a 2 ore per download lenti
+    # Uses download_with_huggingface_hub which automatically handles Xet
+    # Extended timeout of 2 hours for slow downloads
     return download_with_huggingface_hub(repo_id, model_dir, retries=3)
 
 def download_kokoro():
-    """Scarica il modello Kokoro."""
-    print("Download modello Kokoro...")
+    """Downloads the Kokoro model."""
+    print("Downloading Kokoro model...")
     model_dir = "audiobook_generator/tts_models/kokoro/models"
     repo_id = "hexgrad/Kokoro-82M"
     
     if os.path.exists(model_dir):
-        print(f"Il modello Kokoro è già presente in '{model_dir}'. Download saltato.")
+        print(f"Kokoro model already present in '{model_dir}'. Download skipped.")
         return True
     
-    # Usa download_with_huggingface_hub per coerenza
+    # Uses download_with_huggingface_hub for consistency
     return download_with_huggingface_hub(repo_id, model_dir, retries=3)
 
 def main():
-    parser = argparse.ArgumentParser(description="Download modelli TTS senza interazione")
-    parser.add_argument("--model", required=True, help="Tipo di modello da scaricare")
+    parser = argparse.ArgumentParser(description="Download TTS models without interaction")
+    parser.add_argument("--model", required=True, help="Type of model to download")
     
     args = parser.parse_args()
     
-    # Mappa modelli -> funzioni di download
+    # Models -> download functions mapping
     model_handlers = {
         "0.6B_base": lambda: download_qwen_model("0.6B_base"),
         "1.7B_base": lambda: download_qwen_model("1.7B_base"),
@@ -75,23 +75,23 @@ def main():
     }
     
     if args.model not in model_handlers:
-        print(f"ERRORE: Modello '{args.model}' non supportato.")
-        print(f"Modelli supportati: {', '.join(model_handlers.keys())}")
+        print(f"ERROR: Model '{args.model}' is not supported.")
+        print(f"Supported models: {', '.join(model_handlers.keys())}")
         sys.exit(1)
     
     try:
         success = model_handlers[args.model]()
         if success:
-            print(f"Download modello '{args.model}' completato con successo.")
+            print(f"Download of model '{args.model}' completed successfully.")
             sys.exit(0)
         else:
-            print(f"ERRORE: Download modello '{args.model}' fallito.")
+            print(f"ERROR: Download of model '{args.model}' failed.")
             sys.exit(1)
     except KeyboardInterrupt:
-        print("\nDownload interrotto dall'utente.")
+        print("\nDownload interrupted by user.")
         sys.exit(1)
     except Exception as e:
-        print(f"ERRORE imprevisto durante il download: {e}")
+        print(f"ERROR: Unexpected error during download: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

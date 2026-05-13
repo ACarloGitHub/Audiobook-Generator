@@ -8,15 +8,15 @@ import queue
 import time
 
 def run_command(command, cwd=None, idle_timeout=1800):
-    """Esegue un comando di sistema e stampa l'output in tempo reale."""
-    print(f"--- Eseguendo: {' '.join(command)} ---")
+    """Runs a system command and prints output in real time."""
+    print(f"--- Running: {' '.join(command)} ---")
     try:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace', cwd=cwd)
     except FileNotFoundError:
-        print(f"ERRORE: Comando non trovato: {command[0]}. Assicurati che sia installato e nel PATH.")
+        print(f"ERROR: Command not found: {command[0]}. Make sure it is installed and in the PATH.")
         return False
     except Exception as e:
-        print(f"ERRORE imprevisto durante l'avvio del comando: {e}")
+        print(f"ERROR: Unexpected error while starting command: {e}")
         return False
 
     output_queue = queue.Queue()
@@ -39,7 +39,7 @@ def run_command(command, cwd=None, idle_timeout=1800):
             last_output_time = time.time()
         except queue.Empty:
             if time.time() - last_output_time > idle_timeout:
-                print(f"ATTENZIONE: Timeout di inattività ({idle_timeout}s). Processo terminato.")
+                print(f"WARNING: Idle timeout ({idle_timeout}s). Process terminated.")
                 process.terminate()
                 try: process.wait(timeout=5)
                 except subprocess.TimeoutExpired: process.kill()
@@ -51,11 +51,11 @@ def run_command(command, cwd=None, idle_timeout=1800):
     return process.returncode == 0
 
 def command_exists(command):
-    """Verifica se un comando esiste nel PATH di sistema."""
+    """Checks if a command exists in the system PATH."""
     return shutil.which(command) is not None
 
 def get_python_executable(version="3.11"):
-    """Trova l'eseguibile Python per una data versione."""
+    """Finds the Python executable for a given version."""
     if sys.platform == "win32":
         if command_exists("py"):
             try:
@@ -72,28 +72,28 @@ def get_python_executable(version="3.11"):
     return None
 
 def clone_repo(repo_url, dest_path, progress=True):
-    """Clona un repository Git."""
+    """Clones a Git repository."""
     if os.path.exists(dest_path):
-        print(f"La cartella '{dest_path}' esiste già. Download saltato.")
+        print(f"Folder '{dest_path}' already exists. Download skipped.")
         return True
     cmd = ["git", "clone", repo_url, dest_path]
     if progress: cmd.insert(2, "--progress")
     return run_command(cmd)
 
 def remove_directory(path):
-    """Elimina ricorsivamente una directory se esiste."""
+    """Recursively deletes a directory if it exists."""
     if os.path.exists(path):
-        print(f"Rimozione directory '{path}'...")
+        print(f"Removing directory '{path}'...")
         try:
             shutil.rmtree(path, ignore_errors=True)
-            print(f"Directory '{path}' rimossa.")
+            print(f"Directory '{path}' removed.")
         except Exception as e:
-            print(f"ERRORE durante la rimozione di '{path}': {e}")
+            print(f"ERROR while removing '{path}': {e}")
             return False
     return True
 
 def check_venv_integrity(venv_path):
-    """Verifica l'integrità di un ambiente virtuale."""
+    """Verifies the integrity of a virtual environment."""
     if not os.path.exists(venv_path):
         return False
     

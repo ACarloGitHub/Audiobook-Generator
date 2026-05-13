@@ -4,11 +4,11 @@ import sys
 from .system_utils import command_exists, run_command
 
 def detect_nvidia_gpu():
-    """Verifica se è presente una GPU NVIDIA."""
+    """Checks if an NVIDIA GPU is present."""
     return command_exists("nvidia-smi")
 
 def detect_apple_silicon():
-    """Verifica se siamo su macOS con Apple Silicon."""
+    """Checks if we are on macOS with Apple Silicon."""
     if sys.platform != "darwin":
         return False
     try:
@@ -18,9 +18,9 @@ def detect_apple_silicon():
         return False
 
 def install_pytorch(pytorch_choice, pip_exe):
-    """Installa PyTorch in base alla scelta."""
+    """Installs PyTorch based on the choice."""
     if pytorch_choice == "skip":
-        print("Installazione PyTorch saltata.")
+        print("PyTorch installation skipped.")
         return True
     
     base_cmd = [pip_exe, "install", "torch", "torchvision", "torchaudio"]
@@ -31,11 +31,11 @@ def install_pytorch(pytorch_choice, pip_exe):
     else: # cpu or mps
         cmd = base_cmd
 
-    print(f"Installazione PyTorch per {pytorch_choice}...")
+    print(f"Installing PyTorch for {pytorch_choice}...")
     return run_command(cmd)
 
 def detect_recommended_cuda():
-    """Determina la versione CUDA consigliata basata sul driver NVIDIA."""
+    """Determines the recommended CUDA version based on the NVIDIA driver."""
     if not command_exists("nvidia-smi"):
         return None
     try:
@@ -49,7 +49,7 @@ def detect_recommended_cuda():
         return None
 
 def check_pytorch_cuda(python_exe):
-    """Verifica se PyTorch con supporto CUDA è installato in un dato ambiente Python."""
+    """Checks if PyTorch with CUDA support is installed in a given Python environment."""
     try:
         result = subprocess.run(
             [python_exe, "-c", "import torch; print(torch.cuda.is_available())"],
@@ -60,7 +60,7 @@ def check_pytorch_cuda(python_exe):
         return False
 
 def detect_gpu():
-    """Verifica se è presente una GPU NVIDIA."""
+    """Checks if an NVIDIA GPU is present."""
     try:
         subprocess.check_output("nvidia-smi", shell=True)
         return True
@@ -68,15 +68,15 @@ def detect_gpu():
         return False
 
 def check_pytorch_cuda_all_venvs():
-    """Verifica se PyTorch CUDA è installato nei venv dei modelli TTS.
+    """Checks if PyTorch CUDA is installed in TTS model venvs.
     
-    Ritorna:
-        - True se tutti i venv esistenti hanno CUDA disponibile
-        - False se almeno un venv esistente non ha CUDA
-    I venv non esistenti vengono ignorati (non ancora scaricati).
+    Returns:
+        - True if all existing venvs have CUDA available
+        - False if at least one existing venv does not have CUDA
+    Non-existent venvs are ignored (model not yet downloaded).
     """
     import os
-    # Solo venv dei modelli TTS, non il venv principale di AG
+    # Only TTS model venvs, not the main AG venv
     venv_paths = [
         os.path.join("audiobook_generator", "tts_models", "vibevoice", "venv"),
         os.path.join("audiobook_generator", "tts_models", "qwen3tts", "venv"),
@@ -88,7 +88,7 @@ def check_pytorch_cuda_all_venvs():
     
     for venv_path in venv_paths:
         if not os.path.exists(venv_path):
-            # Venv non esiste - modello non installato, ignora
+            # Venv does not exist - model not installed, skip
             continue
         
         existing_venvs += 1
@@ -99,8 +99,8 @@ def check_pytorch_cuda_all_venvs():
             python_exe = os.path.join(venv_path, "bin", "python")
         
         if not os.path.exists(python_exe):
-            # Venv corrotto
-            print(f"⚠ Venv corrotto (manca python): {venv_path}")
+            # Corrupted venv
+            print(f"⚠ Corrupted venv (missing python): {venv_path}")
             continue
         
         try:
@@ -114,17 +114,17 @@ def check_pytorch_cuda_all_venvs():
                     print(f"✓ CUDA in {venv_path}")
                     venvs_with_cuda += 1
                 else:
-                    print(f"✗ CUDA NON disponibile in {venv_path}")
+                    print(f"✗ CUDA NOT available in {venv_path}")
             else:
-                print(f"✗ Errore in {venv_path}: {result.stderr.strip()}")
+                print(f"✗ Error in {venv_path}: {result.stderr.strip()}")
         except subprocess.TimeoutExpired:
-            print(f"⚠ Timeout verifica CUDA in {venv_path}")
+            print(f"⚠ Timeout verifying CUDA in {venv_path}")
         except Exception as e:
-            print(f"✗ Errore in {venv_path}: {e}")
+            print(f"✗ Error in {venv_path}: {e}")
     
-    # Se non ci sono venv esistenti, ritorna True (nessun modello installato = OK)
+    # If no existing venvs, return True (no models installed = OK)
     if existing_venvs == 0:
         return True
     
-    # Se tutti i venv esistenti hanno CUDA, ritorna True
+    # If all existing venvs have CUDA, return True
     return venvs_with_cuda == existing_venvs
