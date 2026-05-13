@@ -54,6 +54,7 @@ class Qwen3TTSPlugin(BaseTTSPlugin):
         print(f"DEBUG Qwen3TTSPlugin: payload mode={mode}, model_type={model_type}, model_size={model_size}")
         print(f"DEBUG Qwen3TTSPlugin: full payload = {json.dumps(payload, indent=2)}")
 
+        process = None
         try:
             # Avvia il sottoprocesso catturando stdout e stderr come bytes
             process = subprocess.Popen(
@@ -110,5 +111,7 @@ class Qwen3TTSPlugin(BaseTTSPlugin):
                 process.kill()
             return False
         except Exception as e:
+            if process:
+                process.kill()
             print(f"ERRORE imprevisto durante la gestione del subprocess Qwen3-TTS: {e}")
             return False

@@ -52,6 +52,7 @@ class KokoroPlugin(BaseTTSPlugin):
             "language_code": language_code
         }
 
+        process = None
         try:
             # Esegui dalla directory del progetto per evitare problemi di percorsi
             project_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -95,8 +96,11 @@ class KokoroPlugin(BaseTTSPlugin):
 
         except subprocess.TimeoutExpired:
             logger.error("ERRORE: Timeout raggiunto durante la sintesi con Kokoro.")
-            process.kill()
+            if process:
+                process.kill()
             return False
         except Exception as e:
+            if process:
+                process.kill()
             logger.error(f"ERRORE imprevisto durante la gestione del sottoprocesso Kokoro: {e}", exc_info=True)
             return False

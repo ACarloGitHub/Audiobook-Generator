@@ -27,6 +27,7 @@ class Qwen3TTS_0_6B_Plugin(BaseTTSPlugin):
             "model_size": "0.6B"
         }
 
+        process = None
         try:
             process = subprocess.Popen(
                 [config.QWEN3TTS_PYTHON_EXECUTABLE, script_path],
@@ -77,5 +78,7 @@ class Qwen3TTS_0_6B_Plugin(BaseTTSPlugin):
                 process.kill()
             return False
         except Exception as e:
+            if process:
+                process.kill()
             print(f"ERRORE imprevisto durante la gestione del subprocess Qwen3-TTS 0.6B: {e}")
             return False

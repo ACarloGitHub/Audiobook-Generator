@@ -60,6 +60,7 @@ class XTTSv2Plugin(BaseTTSPlugin):
             "max_retries": max_retries
         }
 
+        process = None
         try:
             process = subprocess.Popen(
                 [config.XTTSV2_PYTHON_EXECUTABLE, script_path],
@@ -99,8 +100,11 @@ class XTTSv2Plugin(BaseTTSPlugin):
 
         except subprocess.TimeoutExpired:
             logger.error("ERRORE: Timeout raggiunto durante la sintesi con XTTSv2.")
-            process.kill()
+            if process:
+                process.kill()
             return False
         except Exception as e:
+            if process:
+                process.kill()
             logger.error(f"ERRORE imprevisto durante la gestione del sottoprocesso XTTSv2: {e}", exc_info=True)
             return False

@@ -52,6 +52,7 @@ class VibeVoicePlugin(BaseTTSPlugin):
             "seed": seed
         }
 
+        process = None
         try:
             process = subprocess.Popen(
                 [config.VIBEVOICE_PYTHON_EXECUTABLE, script_path],
@@ -80,8 +81,11 @@ class VibeVoicePlugin(BaseTTSPlugin):
 
         except subprocess.TimeoutExpired:
             print("ERRORE: Timeout raggiunto durante la sintesi con VibeVoice.")
-            process.kill()
+            if process:
+                process.kill()
             return False
         except Exception as e:
+            if process:
+                process.kill()
             print(f"ERRORE imprevisto durante la gestione del sottoprocesso VibeVoice: {e}")
             return False
