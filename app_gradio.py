@@ -23,6 +23,8 @@ import logging
 from typing import Optional, Any, Dict, List
 from datetime import datetime
 
+logger = logging.getLogger(__name__)
+
 # Aggiungi sox/bin al PATH per evitare errori di soundfile
 sox_bin = os.path.join(os.getcwd(), "sox", "bin")
 if os.path.exists(sox_bin):
@@ -423,8 +425,8 @@ def update_model_specific_options(selected_model, xtts_lang, kokoro_lang, vibevo
             status = get_model_status(base_model)
             if "❌" in status:
                 status_msg = f"{status}\n\n"
-        except Exception:
-            pass  # Se la verifica fallisce, continua senza messaggio di stato
+        except Exception as e:
+            logger.debug("Model status check failed for '%s': %s", base_model, e)
     
     note_text = ""
     if "note" in model_config: note_text = model_config["note"]
@@ -978,6 +980,8 @@ with gr.Blocks(title="Audiobook Generator EVO") as app:
     test_inputs = [model_radio, xtts_voice_file, piper_kokoro_voice_dropdown, xtts_temp_slider, xtts_speed_slider, xtts_rep_pen_slider, piper_speed_slider, piper_noise_scale_slider, piper_noise_scale_w_slider, kokoro_speed_slider, replace_guillemets_checkbox, chunking_strategy_radio, separator_dropdown, min_words_number, max_words_number, max_chars_number, shared_state, xtts_lang_dropdown, kokoro_lang_dropdown, vibevoice_lang_dropdown, qwen_custom_language_dropdown, qwen_clone_language_dropdown, qwen_design_language_dropdown]
     test_file_button.click(fn=run_test_generation, inputs=test_inputs, outputs=[test_status_textbox, test_output_audio_player], queue=True)
 
+# Configure logging at module level so all loggers work regardless of entry point
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     app.launch()
