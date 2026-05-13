@@ -22,8 +22,8 @@ import json
 import importlib
 import logging
 from typing import Dict, List, Optional, Any
+from . import config
 from .base_plugin import BaseTTSPlugin
-from .config.models import AVAILABLE_KOKORO_MODELS
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ class PluginManager:
     @staticmethod
     def get_kokoro_voices(language_code: str) -> List[str]:
         """Return available Kokoro voice descriptions for a given language code."""
-        lang_data = AVAILABLE_KOKORO_MODELS.get(language_code, {})
+        lang_data = config.AVAILABLE_KOKORO_MODELS.get(language_code, {})
         return [voice.get("description", "Unknown Voice") for voice in lang_data.get("voices", [])]
 
 
