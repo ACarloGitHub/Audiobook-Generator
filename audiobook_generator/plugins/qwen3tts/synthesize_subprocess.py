@@ -286,6 +286,7 @@ def main():
                 logging.info(f"Audio pronto per salvataggio: shape={wavs_np.shape}, dtype={wavs_np.dtype}, sr={sr_int}")
                 
                 # METODO 1: FFMPEG (prima scelta - già presente nel progetto)
+                raw_path = None
                 try:
                     # Crea file raw PCM temporaneo
                     with tempfile.NamedTemporaryFile(suffix='.raw', delete=False) as tmp_raw:
@@ -317,8 +318,6 @@ def main():
                     result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
                     
                     if result.returncode == 0:
-                        # Elimina file raw temporaneo
-                        os.unlink(raw_path)
                         logging.info(f"File WAV salvato con FFmpeg: {output_path}, size: {os.path.getsize(output_path)} bytes")
                     else:
                         logging.error(f"FFmpeg fallito: {result.stderr}")
@@ -358,6 +357,13 @@ def main():
                             logging.info(f"File WAV salvato con soundfile: {output_path}")
                         except Exception as e_sf:
                             raise RuntimeError(f"Salvataggio fallito dopo FFmpeg e scipy: soundfile({e_sf})")
+                finally:
+                    # Always clean up the temporary raw file
+                    if raw_path and os.path.exists(raw_path):
+                        try:
+                            os.unlink(raw_path)
+                        except OSError:
+                            pass
         
         # Restore stdout before sending JSON response
         sys.stdout = original_stdout
