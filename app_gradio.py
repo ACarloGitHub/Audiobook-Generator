@@ -595,12 +595,7 @@ def _load_tts_model_instance(selected_model, language, technical_voice_id):
     start_time = time.time()
     try:
         base_model = selected_model.split(" (da scaricare)")[0]
-        if base_model.startswith("Qwen3-TTS") or base_model.startswith("VibeVoice"):
-            model_instance = plugin_manager.plugin_manager.load_model(base_model)
-        else:
-            loader = {"XTTSv2": tts_handler.load_xtts_model, "Kokoro": lambda: tts_handler.load_kokoro_model(language)}.get(base_model)
-            if not loader: raise ValueError(f"Model loading not implemented for: {base_model}")
-            model_instance = loader()
+        model_instance = plugin_manager.plugin_manager.load_model(base_model, language_code=language if base_model == "Kokoro" else None)
         if not model_instance: raise RuntimeError(f"Model loader returned None for {base_model}.")
         logging.info(f"TTS model loaded in {time.time() - start_time:.2f}s.")
         return model_instance, None

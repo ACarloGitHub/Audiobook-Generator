@@ -203,19 +203,7 @@ def retry_synthesis_real(book_name: str, chapter_name: str, selected_chunks: Lis
     # Carica modello una volta per tutti i chunk (performance)
     model_instance = None
     try:
-        # Usa i parametri originali per caricare il modello
-        if model_used.startswith("Qwen3-TTS"):
-            # Per Qwen3-TTS, usa il plugin manager con i parametri originali
-            model_instance = tts_handler.plugin_manager.load_model(model_used)
-        elif model_used.startswith("VibeVoice"):
-            # Per VibeVoice, usa il plugin manager
-            model_instance = tts_handler.plugin_manager.load_model(model_used)
-        elif model_used == "XTTSv2":
-            model_instance = tts_handler.load_xtts_model()
-        elif model_used == "Kokoro":
-            model_instance = tts_handler.load_kokoro_model(language)
-        else:
-            model_instance = tts_handler.plugin_manager.load_model(model_used, language=language)
+        model_instance = tts_handler.plugin_manager.load_model(model_used, language_code=language if model_used == "Kokoro" else None)
         
         if not model_instance:
             error_messages.append(f"Impossibile caricare modello '{model_used}'.")
