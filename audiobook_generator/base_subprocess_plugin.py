@@ -81,6 +81,9 @@ class BaseSubprocessPlugin(BaseTTSPlugin):
         script_path = self._get_script_path()
         payload = self._build_payload(text, output_path, **kwargs)
 
+        # Pass timeout to subprocess so it can self-limit if desired
+        payload["timeout_seconds"] = config.DEFAULT_SUBPROCESS_TIMEOUT
+
         process = None
         try:
             project_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
