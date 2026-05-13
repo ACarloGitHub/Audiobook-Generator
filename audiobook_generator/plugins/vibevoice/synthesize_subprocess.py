@@ -7,14 +7,27 @@ import os
 import logging
 
 # Setup di un logger dedicato per il subprocess
-# Percorso cross-platform per i log nella cartella audiobook_generator/Logs/
 log_dir = os.path.join('audiobook_generator', 'Logs')
 os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, 'vibevoice_subprocess.log')
 logging.basicConfig(level=logging.INFO, filename=log_file, filemode='a',
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
+class StdoutToStderr:
+    """Redirect stdout to stderr to keep the JSON channel on stdout clean."""
+    def write(self, text):
+        sys.stderr.write(text)
+        sys.stderr.flush()
+    def flush(self):
+        sys.stderr.flush()
+
 def main():
+    # Save original stdout for JSON responses
+    original_stdout = sys.stdout
+    
+    # Redirect all stdout to stderr to prevent library output from corrupting JSON responses
+    sys.stdout = StdoutToStderr()
+    
     try:
         # Importa torch solo quando necessario
         import torch
@@ -336,16 +349,20 @@ def main():
         
         # Verifica output
         if os.path.exists(output_path) and os.path.getsize(output_path) > 1024:
+            sys.stdout = original_stdout
             send_response({"status": "ok", "file": output_path, "message": "Sintesi completata con successo."})
         else:
             raise RuntimeError("File di output non creato o vuoto.")
 
     except Exception as e:
         logging.error(f"Errore nel subprocess VibeVoice: {e}", exc_info=True)
+        sys.stdout = original_stdout
         send_response({"status": "error", "message": str(e)})
+    finally:
+        sys.stdout = original_stdout
 
 def send_response(data):
-    """Invia una risposta JSON a stdout."""
+    """Send a JSON response to stdout."""
     sys.stdout.write(json.dumps(data) + '\n')
     sys.stdout.flush()
 

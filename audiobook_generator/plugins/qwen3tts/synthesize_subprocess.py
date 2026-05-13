@@ -2,12 +2,9 @@ import sys
 import json
 import os
 import logging
-import contextlib
 from pathlib import Path
-# Importa qwen_tts DOPO aver reindirizzato stdout/stderr per evitare warning su stdout
 
 # Setup di un logger dedicato su file SENZA usare stdout/stderr
-# Percorso cross-platform per i log nella cartella audiobook_generator/Logs/
 log_dir = os.path.join('audiobook_generator', 'Logs')
 os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, 'qwen3_subprocess.log')
@@ -16,23 +13,33 @@ logging.basicConfig(
     filename=log_file, 
     filemode='a', 
     format='%(asctime)s - %(message)s',
-    force=True  # Sovrascrive eventuali configurazioni precedenti
+    force=True
 )
 
+class StdoutToStderr:
+    """Redirect stdout to stderr to keep the JSON channel on stdout clean."""
+    def write(self, text):
+        sys.stderr.write(text)
+        sys.stderr.flush()
+    def flush(self):
+        sys.stderr.flush()
+
 def main():
+    # Save original stdout for JSON responses
+    original_stdout = sys.stdout
+    
+    # Redirect all stdout to stderr to prevent library output from corrupting JSON responses
+    sys.stdout = StdoutToStderr()
+    
     try:
-        # Importa torch solo quando necessario
+        # Import torch and Qwen3TTSModel (stdout already redirected to stderr)
         import torch
         
-        # Forza modalità offline per Hugging Face
+        # Force offline mode for Hugging Face
         os.environ["HF_HUB_OFFLINE"] = "1"
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
         
-        # Reindirizza stdout e stderr a /dev/null PRIMA di importare qwen_tts per evitare warning
-        with open(os.devnull, 'w') as devnull:
-            with contextlib.redirect_stdout(devnull), contextlib.redirect_stderr(devnull):
-                # Importa qwen_tts e Qwen3TTSModel dentro il contesto silenziato
-                from qwen_tts import Qwen3TTSModel
+        from qwen_tts import Qwen3TTSModel
         
         # Aggiungi sox/bin al PATH per evitare errori di soundfile
         sox_bin = os.path.join(os.getcwd(), "sox", "bin")
@@ -352,13 +359,19 @@ def main():
                         except Exception as e_sf:
                             raise RuntimeError(f"Salvataggio fallito dopo FFmpeg e scipy: soundfile({e_sf})")
         
+        # Restore stdout before sending JSON response
+        sys.stdout = original_stdout
         send_response({"status": "ok", "file": output_path})
 
     except Exception as e:
         logging.error(f"Errore nel subprocess Qwen3-TTS: {e}", exc_info=True)
+        sys.stdout = original_stdout
         send_response({"status": "error", "message": str(e)})
+    finally:
+        sys.stdout = original_stdout
 
 def send_response(data):
+    """Send a JSON response to stdout."""
     sys.stdout.write(json.dumps(data) + '\n')
     sys.stdout.flush()
 
