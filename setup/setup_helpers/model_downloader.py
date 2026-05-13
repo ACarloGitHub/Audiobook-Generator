@@ -112,19 +112,13 @@ def download_vibevoice_tokenizer(idle_timeout=300):
     if not cache_7b_present:
         qwen_1_5b_cache = os.path.join(hf_cache, "models--Qwen--Qwen2.5-1.5B")
         if os.path.exists(qwen_1_5b_cache):
+            import shutil
             print("Creazione cache per Qwen2.5-7B (stesso tokenizer di Qwen2.5-1.5B)...")
-            # Copia l'intera struttura cache (blobs, refs, snapshots con symlinks)
-            import subprocess
             try:
-                # Usa cp -r per copiare l'intera struttura
-                result = subprocess.run(
-                    ['cp', '-r', qwen_1_5b_cache + '/.', qwen_7b_cache],
-                    capture_output=True, text=True
-                )
-                if result.returncode == 0:
-                    print("  Cache Qwen2.5-7B creata con successo (struttura completa).")
-                else:
-                    print(f"  Errore copia cache: {result.stderr}")
+                if os.path.exists(qwen_7b_cache):
+                    shutil.rmtree(qwen_7b_cache)
+                shutil.copytree(qwen_1_5b_cache, qwen_7b_cache)
+                print("  Cache Qwen2.5-7B creata con successo (struttura completa).")
             except Exception as e:
                 print(f"  Errore durante copia cache: {e}")
         else:
