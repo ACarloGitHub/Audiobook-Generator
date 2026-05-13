@@ -1,36 +1,30 @@
-import subprocess
-import json
 import os
+import logging
 from typing import Any
-from audiobook_generator.base_plugin import BaseTTSPlugin
+from audiobook_generator.base_subprocess_plugin import BaseSubprocessPlugin
 from audiobook_generator import config
-from audiobook_generator.model_manager import model_manager  # <-- NUOVO IMPORT
 
-class VibeVoicePlugin(BaseTTSPlugin):
-    
-    def load_model(self, *args, **kwargs):
-        if not os.path.exists(config.VIBEVOICE_PYTHON_EXECUTABLE):
-            raise FileNotFoundError("Eseguibile Python di VibeVoice non trovato. Esegui l'installer.")
-        
-        print(f"Verifica degli asset per {self.name}...")
-        if not model_manager.ensure_assets(self.name):
-            raise RuntimeError(f"Download degli asset di {self.name} fallito. Controlla i log e la connessione internet.")
-        
-        return {"status": "ready"}
+logger = logging.getLogger(__name__)
+
+
+class VibeVoicePlugin(BaseSubprocessPlugin):
+
+    def _get_python_executable(self) -> str:
+        return config.VIBEVOICE_PYTHON_EXECUTABLE
 
     def synthesize(self, model_instance: Any, text: str, output_path: str, **kwargs) -> bool:
         """
-        Lancia il sottoprocesso per la sintesi con VibeVoice e comunica tramite JSON.
+        Override to add speaker_wav validation before delegating to base class.
         """
-        print(f"DEBUG VibeVoice: kwargs ricevuti: {kwargs}")
         speaker_wav = kwargs.get('speaker_wav')
         if not speaker_wav:
-            print("ERRORE VibeVoice: 'speaker_wav' non fornito.")
+            logger.error("VibeVoice: 'speaker_wav' not provided.")
             return False
 
-        script_path = os.path.join(os.path.dirname(__file__), 'synthesize_subprocess.py')
-        
-        # Estrai parametri con valori di default
+        return super().synthesize(model_instance, text, output_path, **kwargs)
+
+    def _build_payload(self, text: str, output_path: str, **kwargs) -> dict:
+        speaker_wav = kwargs.get('speaker_wav')
         temperature = kwargs.get('temperature', 0.9)
         top_p = kwargs.get('top_p', 0.9)
         cfg_scale = kwargs.get('cfg_scale', 1.3)
@@ -38,8 +32,8 @@ class VibeVoicePlugin(BaseTTSPlugin):
         voice_speed_factor = kwargs.get('voice_speed_factor', 1.0)
         use_sampling = kwargs.get('use_sampling', True)
         seed = kwargs.get('seed')
-        
-        payload = {
+
+        return {
             "text": text,
             "output_path": output_path,
             "speaker_wav": speaker_wav,
@@ -52,43 +46,3 @@ class VibeVoicePlugin(BaseTTSPlugin):
             "use_sampling": use_sampling,
             "seed": seed
         }
-
-        process = None
-        try:
-            project_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            process = subprocess.Popen(
-                [config.VIBEVOICE_PYTHON_EXECUTABLE, script_path],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding='utf-8',
-                cwd=project_dir
-            )
-
-            stdout_data, stderr_data = process.communicate(json.dumps(payload), timeout=config.DEFAULT_SUBPROCESS_TIMEOUT) # Timeout configurabile (default 1800s = 30 minuti)
-
-            if process.returncode != 0:
-                print(f"ERRORE: Il sottoprocesso VibeVoice ha terminato con codice {process.returncode}.")
-                print(f"Stderr: {stderr_data}")
-                return False
-            
-            response = json.loads(stdout_data)
-            
-            if response.get("status") == "ok":
-                print(f"SUCCESSO: VibeVoice ha generato il file: {response.get('file')}")
-                return True
-            else:
-                print(f"ERRORE nella sintesi VibeVoice: {response.get('message')}")
-                return False
-
-        except subprocess.TimeoutExpired:
-            print("ERRORE: Timeout raggiunto durante la sintesi con VibeVoice.")
-            if process:
-                process.kill()
-            return False
-        except Exception as e:
-            if process:
-                process.kill()
-            print(f"ERRORE imprevisto durante la gestione del sottoprocesso VibeVoice: {e}")
-            return False
