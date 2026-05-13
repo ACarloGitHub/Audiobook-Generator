@@ -39,7 +39,7 @@ class Qwen3TTS_0_6B_Plugin(BaseTTSPlugin):
             )
             
             stdin_data = json.dumps(payload).encode('utf-8')
-            stdout_bytes, stderr_bytes = process.communicate(stdin_data, timeout=300)
+            stdout_bytes, stderr_bytes = process.communicate(stdin_data, timeout=config.DEFAULT_SUBPROCESS_TIMEOUT)
             
             stderr_text = ""
             if stderr_bytes:

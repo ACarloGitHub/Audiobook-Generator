@@ -74,7 +74,7 @@ class XTTSv2Plugin(BaseTTSPlugin):
                 cwd=project_dir
             )
 
-            stdout_data, stderr_data = process.communicate(json.dumps(payload), timeout=300)  # Timeout di 5 minuti
+            stdout_data, stderr_data = process.communicate(json.dumps(payload), timeout=config.DEFAULT_SUBPROCESS_TIMEOUT)
 
             if process.returncode != 0:
                 logger.error(f"ERRORE: Il sottoprocesso XTTSv2 ha terminato con codice {process.returncode}.")
