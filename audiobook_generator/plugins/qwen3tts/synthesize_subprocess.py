@@ -2,6 +2,7 @@ import sys
 import json
 import os
 import logging
+import contextlib
 from pathlib import Path
 
 # Setup di un logger dedicato su file SENZA usare stdout/stderr
@@ -95,9 +96,10 @@ def main():
         if not os.path.exists(model_dir):
             raise FileNotFoundError(f"Directory del modello non trovata: {model_dir}")
         
-        # Silenzia stdout e stderr durante il caricamento del modello per evitare output non JSON
+        # Suppress stdout during model loading to avoid corrupting JSON channel
+        # stderr is NOT suppressed: legitimate errors and warnings remain visible
         with open(os.devnull, 'w') as devnull:
-            with contextlib.redirect_stdout(devnull), contextlib.redirect_stderr(devnull):
+            with contextlib.redirect_stdout(devnull):
                 model = Qwen3TTSModel.from_pretrained(
                     model_dir,
                     device_map="cuda:0" if torch.cuda.is_available() else "cpu",
