@@ -44,8 +44,10 @@ class BaseSubprocessPlugin(BaseTTSPlugin):
         raise NotImplementedError
 
     def _get_script_path(self) -> str:
-        """Return the path to the synthesize_subprocess.py script. Default is same directory as plugin."""
-        return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'synthesize_subprocess.py')
+        """Return the path to the synthesize_subprocess.py script, located in the same directory as the plugin subclass."""
+        import importlib
+        plugin_module = importlib.import_module(self.__class__.__module__)
+        return os.path.join(os.path.dirname(os.path.abspath(plugin_module.__file__)), 'synthesize_subprocess.py')
 
     def load_model(self, *args, **kwargs):
         """Default load_model: verify venv executable exists and check assets."""

@@ -13,7 +13,7 @@ def create_epub_options_tab(config, SENTENCE_SEPARATOR_OPTIONS, DEFAULT_SEPARATO
         with gr.Group(visible=(DEFAULT_CHUNKING_STRATEGY == CHUNKING_STRATEGIES[0])) as word_count_group:
             min_words_number = gr.Number(label="Min Words", value=config.DEFAULT_MIN_WORDS_APPROX, minimum=10, step=10, precision=0)
             max_words_number = gr.Number(label="Max Words", value=config.DEFAULT_MAX_WORDS_APPROX, minimum=50, step=10, precision=0)
-        with gr.Group(visible=(DEFAULT_CHUNKING_STRATEGIES == CHUNKING_STRATEGIES[1])) as char_limit_group:
+        with gr.Group(visible=(DEFAULT_CHUNKING_STRATEGY == CHUNKING_STRATEGIES[1])) as char_limit_group:
             max_chars_number = gr.Number(label="Max Chars", value=config.DEFAULT_MAX_CHARS_PER_CHUNK, minimum=100, step=50, precision=0)
         
         model_info_note = gr.Markdown(visible=False)

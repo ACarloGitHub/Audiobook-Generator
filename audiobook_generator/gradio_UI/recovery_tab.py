@@ -5,11 +5,8 @@ Error Recovery tab for managing audio synthesis errors.
 import gradio as gr
 import os
 import json
-import time
 import logging
-import shutil
 from typing import List, Dict, Optional, Tuple
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -419,7 +416,7 @@ def split_chunk_real(chunk_text: str) -> Tuple[str, bool]:
     
     try:
         # Use epub_processor to split
-        sentences = epub_processor.split_text_into_sentences(chunk_text)
+        sentences = epub_processor.split_into_sentences(chunk_text)
         
         if len(sentences) <= 1:
             return "The text has only one sentence, it cannot be split.", False
