@@ -1,7 +1,10 @@
 import json
 import importlib
+import logging
 from typing import Dict, List, Optional, Any
 from .base_plugin import BaseTTSPlugin
+
+logger = logging.getLogger(__name__)
 
 
 class PluginManager:
@@ -13,22 +16,25 @@ class PluginManager:
         try:
             with open(registry_path, 'r', encoding='utf-8') as f:
                 registry = json.load(f)
-            
-            for plugin_info in registry:
-                # Skip stale "installed" field if present (status is determined dynamically)
-                try:
-                    module_path, class_name = plugin_info["entry_point"].rsplit(':', 1)
-                    module = importlib.import_module(module_path)
-                    plugin_class = getattr(module, class_name)
-                    self.plugins[plugin_info["name"]] = plugin_class(
-                        name=plugin_info["name"],
-                        plugin_type=plugin_info["type"]
-                    )
-                    print(f"Plugin '{plugin_info['name']}' registrato con successo.")
-                except Exception as e:
-                    print(f"ERRORE: Impossibile caricare il plugin '{plugin_info['name']}': {e}")
         except FileNotFoundError:
-            print(f"ATTENZIONE: File di registro plugin non trovato in '{registry_path}'.")
+            logger.warning("Plugin registry file not found at '%s'.", registry_path)
+            return
+        except json.JSONDecodeError as e:
+            logger.error("Plugin registry file '%s' contains invalid JSON: %s", registry_path, e)
+            return
+            
+        for plugin_info in registry:
+            try:
+                module_path, class_name = plugin_info["entry_point"].rsplit(':', 1)
+                module = importlib.import_module(module_path)
+                plugin_class = getattr(module, class_name)
+                self.plugins[plugin_info["name"]] = plugin_class(
+                    name=plugin_info["name"],
+                    plugin_type=plugin_info["type"]
+                )
+                logger.info("Plugin '%s' registered successfully.", plugin_info['name'])
+            except Exception as e:
+                logger.error("Failed to load plugin '%s' (entry_point=%s): %s", plugin_info.get('name', '?'), plugin_info.get('entry_point', '?'), e)
     
     def get_plugin(self, name: str) -> Optional[BaseTTSPlugin]:
         return self.plugins.get(name)
@@ -37,27 +43,22 @@ class PluginManager:
         return list(self.plugins.keys())
 
     def synthesize(self, model_name: str, text: str, output_path: str, model_instance: Any, **kwargs) -> bool:
-        """
-        Metodo centralizzato per la sintesi. Trova il plugin corretto e delega la chiamata.
-        """
+        """Centralized synthesis method. Finds the correct plugin and delegates the call."""
         plugin = self.get_plugin(model_name)
         if not plugin:
-            print(f"ERRORE: Plugin '{model_name}' non trovato per la sintesi.")
+            logger.error("Plugin '%s' not found for synthesis.", model_name)
             return False
         
-        # Passa tutti i kwargs al metodo synthesize del plugin
         return plugin.synthesize(model_instance, text, output_path, **kwargs)
 
     def load_model(self, model_name: str, **kwargs) -> Any:
-        """
-        Metodo centralizzato per il caricamento del modello.
-        """
+        """Centralized model loading method."""
         plugin = self.get_plugin(model_name)
         if not plugin:
-            print(f"ERRORE: Plugin '{model_name}' non trovato per il caricamento.")
+            logger.error("Plugin '%s' not found for model loading.", model_name)
             return None
         return plugin.load_model(**kwargs)
 
 
-# Istanza globale (opzionale, ma semplifica l'accesso)
+# Global instance (optional, but simplifies access)
 plugin_manager = PluginManager()
