@@ -1,5 +1,8 @@
 # audiobook_generator/plugins/mock/plugin.py
+import logging
 from audiobook_generator.base_plugin import BaseTTSPlugin
+
+logger = logging.getLogger(__name__)
 
 
 class MockPlugin(BaseTTSPlugin):
@@ -7,5 +10,5 @@ class MockPlugin(BaseTTSPlugin):
         return "mock_model"
 
     def synthesize(self, model, text, path, **kwargs):
-        print(f"Sintesi mock per '{text}' in '{path}'")
+        logger.info("Mock synthesis for '%s' in '%s'", text[:50], path)
         return True
