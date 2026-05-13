@@ -3,7 +3,7 @@ from typing import Any, Dict
 
 
 class BaseTTSPlugin(ABC):
-    """Interfaccia base per tutti i plugin TTS."""
+    """Base interface for all TTS plugins."""
     
     def __init__(self, name: str, plugin_type: str):
         self.name = name
@@ -12,10 +12,10 @@ class BaseTTSPlugin(ABC):
 
     @abstractmethod
     def load_model(self, *args, **kwargs) -> Any:
-        """Carica il modello TTS e lo restituisce."""
+        """Load the TTS model and return it."""
         pass
 
     @abstractmethod
     def synthesize(self, model_instance: Any, text: str, output_path: str, **kwargs) -> bool:
-        """Sintetizza il testo in un file audio."""
+        """Synthesizes text into an audio file."""
         pass

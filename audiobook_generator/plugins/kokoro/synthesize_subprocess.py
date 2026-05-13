@@ -1,4 +1,4 @@
-# ATTENZIONE: Questo script è autonomo e non deve importare nulla dal progetto principale.
+# WARNING: This script is standalone and must not import anything from the main project.
 import sys
 import json
 import soundfile as sf
@@ -6,10 +6,10 @@ import numpy as np
 import os
 import logging
 
-# --- Configurazione Cache HuggingFace per Portabilità ---
-# Imposta la cache dei modelli HuggingFace nella directory del progetto
-# Usa percorso relativo per garantire portabilità multipiattaforma
-# IMPORTANTE: Tutte le variabili HF devono essere settate PRIMA di importare kokoro
+# --- HuggingFace Cache Configuration for Portability ---
+# Set HuggingFace model cache in the project directory
+# Use relative path to ensure cross-platform portability
+# IMPORTANT: All HF variables must be set BEFORE importing kokoro
 HF_CACHE_DIR = os.path.join('audiobook_generator', 'tts_models', 'kokoro', 'models')
 os.environ['HF_HOME'] = HF_CACHE_DIR
 os.environ['HF_CACHE_HOME'] = HF_CACHE_DIR
@@ -17,21 +17,21 @@ os.environ['HF_MODULES_CACHE'] = HF_CACHE_DIR
 os.environ['TRANSFORMERS_CACHE'] = HF_CACHE_DIR
 os.environ['HF_DATASETS_CACHE'] = HF_CACHE_DIR
 
-# Setup di un logger dedicato per il subprocess
+# Setup of a dedicated logger for the subprocess
 log_dir = os.path.join('audiobook_generator', 'Logs')
 os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, 'kokoro_subprocess.log')
 logging.basicConfig(level=logging.INFO, filename=log_file, filemode='a',
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
-logging.info(f"Cache HuggingFace configurata su: {HF_CACHE_DIR}")
+logging.info(f"HuggingFace cache configured on: {HF_CACHE_DIR}")
 
 def main():
-    # --- Reindirizzamento stdout a stderr per evitare output non-JSON ---
-    # Salva il riferimento originale a stdout
+    # --- Redirect stdout to stderr to avoid non-JSON output ---
+    # Save original stdout reference
     original_stdout = sys.stdout
     
-    # Crea un redirector che scrive su stderr
+    # Create a redirector that writes to stderr
     class StdoutToStderr:
         def write(self, text):
             sys.stderr.write(text)
@@ -39,16 +39,16 @@ def main():
         def flush(self):
             sys.stderr.flush()
     
-    # Reindirizza stdout a stderr
+    # Redirect stdout to stderr
     sys.stdout = StdoutToStderr()
     
     try:
-        # Importa torch solo quando necessario (per logging GPU)
+        # Import torch only when needed (for GPU logging)
         import torch
         
-        # 1. Legge l'input JSON da stdin
+        # 1. Read JSON input from stdin
         input_data = json.load(sys.stdin)
-        logging.info(f"Ricevuto job Kokoro: {input_data}")
+        logging.info(f"Received Kokoro job: {input_data}")
         
         text = input_data['text']
         output_path = input_data['output_path']
@@ -56,9 +56,9 @@ def main():
         speed = float(input_data.get('speed', 1.0))
         language_code = input_data.get('language_code', 'en')
         
-        logging.info(f"Parametri Kokoro: voice_id={voice_id}, speed={speed}, language_code={language_code}")
+        logging.info(f"Kokoro parameters: voice_id={voice_id}, speed={speed}, language_code={language_code}")
         
-        # Log dettagliato GPU
+        # Detailed GPU logging
         logging.info(f"Torch version: {torch.__version__}")
         logging.info(f"CUDA available: {torch.cuda.is_available()}")
         if torch.cuda.is_available():
@@ -66,12 +66,12 @@ def main():
             for i in range(torch.cuda.device_count()):
                 logging.info(f"  Device {i}: {torch.cuda.get_device_name(i)}")
         else:
-            logging.warning("CUDA non disponibile. Il modello verrà caricato su CPU.")
+            logging.warning("CUDA not available. The model will be loaded on CPU.")
         
-        # Importa kokoro.pipeline (dipendenza del venv isolato)
+        # Import kokoro.pipeline (isolated venv dependency)
         import kokoro.pipeline as kp
         
-        # Mappatura language_code -> lang_code usato da Kokoro
+        # Map language_code -> lang_code used by Kokoro
         lang_map = {
             'en': 'a',
             'it': 'i',
@@ -81,77 +81,77 @@ def main():
         }
         kokoro_lang = lang_map.get(language_code)
         if not kokoro_lang:
-            error_msg = f"Lingua non supportata da Kokoro: {language_code}"
+            error_msg = f"Language not supported by Kokoro: {language_code}"
             logging.error(error_msg)
             send_response({"status": "error", "message": error_msg})
             return
         
-        # Caricamento pipeline con device appropriato
+        # Load pipeline with appropriate device
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        logging.info(f"Caricamento pipeline Kokoro per lingua '{language_code}' su device '{device}'...")
+        logging.info(f"Loading Kokoro pipeline for language '{language_code}' on device '{device}'...")
         
         pipeline = kp.KPipeline(lang_code=kokoro_lang, device=device)
-        logging.info(f"Pipeline Kokoro caricata con successo.")
+        logging.info(f"Kokoro pipeline loaded successfully.")
         
-        # Sintesi
-        logging.info(f"Sintesi testo: '{text[:80]}...'")
+        # Synthesis
+        logging.info(f"Synthesizing text: '{text[:80]}...'")
         gen = pipeline(text, voice=voice_id, speed=speed)
         
-        # Iteriamo su tutti i risultati per concatenare l'audio
+        # Iterate over all results to concatenate audio
         audio_chunks = []
         for result in gen:
-            # Prendi l'audio da result.audio (o result.output.audio)
+            # Take audio from result.audio (or result.output.audio)
             audio_tensor = result.audio if hasattr(result, 'audio') else result.output.audio
             audio_chunks.append(audio_tensor.cpu().numpy())
         
         if not audio_chunks:
-            error_msg = "Nessun risultato generato dal pipeline Kokoro."
+            error_msg = "No results generated by Kokoro pipeline."
             logging.error(error_msg)
             send_response({"status": "error", "message": error_msg})
             return
         
-        # Concatenazione lungo l'asse temporale (asse 0)
+        # Concatenation along time axis (axis 0)
         audio_array = np.concatenate(audio_chunks, axis=0)
-        # Sampling rate fisso a 24000 (Kokoro usa 24kHz)
+        # Fixed sampling rate at 24000 (Kokoro uses 24kHz)
         sampling_rate = 24000
         
-        # Crea directory se non esiste
+        # Create directory if it doesn't exist
         output_dir = os.path.dirname(output_path)
-        if output_dir:  # Se c'è una directory, creala
+        if output_dir:  # If there's a directory, create it
             os.makedirs(output_dir, exist_ok=True)
         sf.write(output_path, audio_array, sampling_rate)
         
-        # Verifica output
+        # Verify output
         if os.path.exists(output_path) and os.path.getsize(output_path) > 1024:
-            logging.info(f"File generato con successo: {output_path}")
-            # Ripristina stdout originale prima di inviare la risposta JSON
+            logging.info(f"File generated successfully: {output_path}")
+            # Restore original stdout before sending JSON response
             sys.stdout = original_stdout
-            send_response({"status": "ok", "file": output_path, "message": "Sintesi Kokoro completata con successo."})
+            send_response({"status": "ok", "file": output_path, "message": "Kokoro synthesis completed successfully."})
         else:
-            error_msg = "File di output non creato o vuoto."
+            error_msg = "Output file not created or empty."
             logging.error(error_msg)
-            # Ripristina stdout originale prima di inviare la risposta JSON
+            # Restore original stdout before sending JSON response
             sys.stdout = original_stdout
             send_response({"status": "error", "message": error_msg})
             
     except ImportError as e:
-        error_msg = f"ImportError: {e}. Assicurati che kokoro sia installato nel venv isolato."
+        error_msg = f"ImportError: {e}. Make sure kokoro is installed in the isolated venv."
         logging.error(error_msg)
-        # Ripristina stdout originale prima di inviare la risposta JSON
+        # Restore original stdout before sending JSON response
         sys.stdout = original_stdout
         send_response({"status": "error", "message": error_msg})
     except Exception as e:
-        error_msg = f"Errore nel subprocess Kokoro: {e}"
+        error_msg = f"Error in Kokoro subprocess: {e}"
         logging.error(error_msg, exc_info=True)
-        # Ripristina stdout originale prima di inviare la risposta JSON
+        # Restore original stdout before sending JSON response
         sys.stdout = original_stdout
         send_response({"status": "error", "message": error_msg})
     finally:
-        # Assicurati che stdout sia ripristinato anche in caso di eccezioni non catturate
+        # Ensure stdout is restored even for uncaught exceptions
         sys.stdout = original_stdout
 
 def send_response(data):
-    """Invia una risposta JSON a stdout."""
+    """Send a JSON response to stdout."""
     sys.stdout.write(json.dumps(data) + '\n')
     sys.stdout.flush()
 

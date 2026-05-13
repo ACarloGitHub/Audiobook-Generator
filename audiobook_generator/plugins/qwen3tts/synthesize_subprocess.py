@@ -5,7 +5,7 @@ import logging
 import contextlib
 from pathlib import Path
 
-# Setup di un logger dedicato su file SENZA usare stdout/stderr
+# Setup of a dedicated file logger WITHOUT using stdout/stderr
 log_dir = os.path.join('audiobook_generator', 'Logs')
 os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, 'qwen3_subprocess.log')
@@ -42,33 +42,33 @@ def main():
         
         from qwen_tts import Qwen3TTSModel
         
-        # Aggiungi sox/bin al PATH per evitare errori di soundfile
+        # Add sox/bin to PATH to avoid soundfile errors
         sox_bin = os.path.join(os.getcwd(), "sox", "bin")
         if os.path.exists(sox_bin):
             os.environ["PATH"] = sox_bin + os.pathsep + os.environ["PATH"]
         
-        # Importa soundfile DOPO aver modificato il PATH
+        # Import soundfile AFTER modifying the PATH
         import soundfile as sf
         
         payload = json.load(sys.stdin)
-        logging.info(f"Ricevuto job: {payload}")
+        logging.info(f"Received job: {payload}")
         
         text = payload['text']
         output_path = payload['output_path']
         mode = payload.get('mode')
         if mode is None:
-            logging.warning("Mode non fornito nel payload, default a 'clone'")
+            logging.warning("Mode not provided in payload, defaulting to 'clone'")
             mode = "clone"
         params = payload.get('params', {})
         model_size = payload.get('model_size', '0.6B')  # Default a 0.6B
         model_type = payload.get('model_type', 'base')  # 'base', 'custom_voice', 'voice_design'
 
-        # Costruisce percorsi relativi alla directory di questo script
+        # Costruisci percorsi relativi alla directory di questo script
         script_dir = Path(__file__).parent.absolute()
         
         # Determina directory modello in base a size e type
-        # USA NOMI UFFICIALI: Qwen3-TTS-12Hz-0.6B-Base, Qwen3-TTS-12Hz-1.7B-CustomVoice, ecc.
-        # Mappa model_type a folder type name
+        # USE OFFICIAL NAMES: Qwen3-TTS-12Hz-0.6B-Base, Qwen3-TTS-12Hz-1.7B-CustomVoice, etc.
+        # Map model_type to folder type name
         if model_type == 'base':
             type_folder = "Base"
         elif model_type == 'custom_voice':
@@ -78,23 +78,23 @@ def main():
         else:
             type_folder = model_type
         
-        # Costruisci nome cartella ufficiale: Qwen3-TTS-12Hz-{size}-{TypeFolder}
-        # Esempi: Qwen3-TTS-12Hz-0.6B-Base, Qwen3-TTS-12Hz-1.7B-VoiceDesign
+        # Build official folder name: Qwen3-TTS-12Hz-{size}-{TypeFolder}
+        # Examples: Qwen3-TTS-12Hz-0.6B-Base, Qwen3-TTS-12Hz-1.7B-VoiceDesign
         model_dir_name = f"Qwen3-TTS-12Hz-{model_size}-{type_folder}"
         
         model_dir = (script_dir / f"../../tts_models/qwen3tts/{model_dir_name}").resolve()
         tokenizer_dir = (script_dir / "../../tts_models/qwen3tts/tokenizer").resolve()
         
-        # Converti in stringa POSIX (forward slash) per evitare problemi con backslash Windows
+        # Convert to POSIX path (forward slash) to avoid Windows backslash issues
         model_dir = model_dir.as_posix()
         tokenizer_dir = tokenizer_dir.as_posix()
         
         logging.info(f"Model dir: {model_dir}")
         logging.info(f"Tokenizer dir: {tokenizer_dir}")
 
-        # Verifica che la directory del modello esista
+        # Verify that the model directory exists
         if not os.path.exists(model_dir):
-            raise FileNotFoundError(f"Directory del modello non trovata: {model_dir}")
+            raise FileNotFoundError(f"Model directory not found: {model_dir}")
         
         # Suppress stdout during model loading to avoid corrupting JSON channel
         # stderr is NOT suppressed: legitimate errors and warnings remain visible
@@ -109,8 +109,8 @@ def main():
                     trust_remote_code=True
                 )
 
-        # Parametri comuni a tutte le modalità (basati su documentazione Qwen3-TTS)
-        # NOTA: I valori di default devono corrispondere esattamente all'UI (configuration_tab.py)
+        # Common parameters for all modes (based on Qwen3-TTS documentation)
+        # NOTE: Default values must match exactly the UI (configuration_tab.py)
         common_kwargs = {
             "speed": params.get("speed", 1.0),
             "pitch": params.get("pitch", 0),
@@ -119,25 +119,25 @@ def main():
             "top_p": params.get("top_p", 0.8),
             "top_k": params.get("top_k", 20),
             "repetition_penalty": params.get("repetition_penalty", 1.1),
-            "seed": params.get("seed"),  # può essere None
-            # Parametri aggiuntivi dalla documentazione HF Transformers
+            "seed": params.get("seed"),  # can be None
+            # Additional parameters from HF Transformers documentation
             "max_new_tokens": 2048,
             "do_sample": True,
         }
-        # Rimuovi i parametri None per non passare valori non validi
+        # Remove None parameters to avoid passing invalid values
         common_kwargs = {k: v for k, v in common_kwargs.items() if v is not None}
 
-        # Mappa modalità UI a metodi modello in base al tipo di modello
-        # Secondo la documentazione Qwen3-TTS:
-        # - Base model (model_type='base'): supporta solo generate_voice_clone (mode='clone')
-        # - CustomVoice model (model_type='custom_voice'): supporta solo generate_custom_voice (mode='custom')
-        # - VoiceDesign model (model_type='voice_design'): supporta solo generate_voice_design (mode='design')
+        # Map UI modes to model methods based on model type
+        # According to Qwen3-TTS documentation:
+        # - Base model (model_type='base'): supports only generate_voice_clone (mode='clone')
+        # - CustomVoice model (model_type='custom_voice'): supports only generate_custom_voice (mode='custom')
+        # - VoiceDesign model (model_type='voice_design'): supports only generate_voice_design (mode='design')
         
         if model_type == 'custom_voice':
-            # Il modello CustomVoice supporta solo generate_custom_voice
-            # Parametri obbligatori: text, language, speaker
-            # Parametri opzionali: instruct
-            # Gestisce sia 'speaker' (nuovo) che 'voice' (vecchio) per backward compatibility
+            # The CustomVoice model only supports generate_custom_voice
+            # Required parameters: text, language, speaker
+            # Optional parameters: instruct
+            # Handle both 'speaker' (new) and 'voice' (old) for backward compatibility
             speaker = params.get('speaker', params.get('voice', 'Serena'))
             language = params.get('language', 'Italian')
             instruct = params.get('instruct', '')
@@ -152,16 +152,16 @@ def main():
                 **common_kwargs
             )
         elif model_type == 'voice_design':
-            # Il modello VoiceDesign supporta solo generate_voice_design
-            # Parametri obbligatori: text, language, instruct
+            # The VoiceDesign model only supports generate_voice_design
+            # Required parameters: text, language, instruct
             language = params.get('language', 'Italian')
             instruct = params.get('instruct', '')
             
-            # Gestione language: potrebbe essere un numero (indice) da Gradio
-            # Converti in stringa e mappa a lingua supportata
+            # Handle language: could be a number (index) from Gradio
+            # Convert to string and map to supported language
             if language is not None:
                 language = str(language)
-                # Mappa indici numerici UI a lingue supportate (minuscolo per Qwen3-TTS)
+                # Map numeric UI indices to supported languages (lowercase for Qwen3-TTS)
                 language_map = {
                     '0': 'auto', '1': 'italian', '2': 'english', '3': 'french', 
                     '4': 'german', '5': 'portuguese', '6': 'spanish', '7': 'japanese',
@@ -169,11 +169,11 @@ def main():
                 }
                 if language in language_map:
                     language = language_map[language]
-                # Assicura che sia in minuscolo e corrisponda a una lingua supportata
+                # Ensure it is lowercase and matches a supported language
                 supported = ['auto', 'chinese', 'english', 'french', 'german', 'italian', 
                             'japanese', 'korean', 'portuguese', 'russian', 'spanish']
                 if language.lower() not in supported:
-                    logging.warning(f"VoiceDesign: language '{language}' non supportato, default a 'italian'")
+                    logging.warning(f"VoiceDesign: language '{language}' not supported, defaulting to 'italian'")
                     language = 'italian'
                 else:
                     language = language.lower()
@@ -181,7 +181,7 @@ def main():
                 language = 'italian'
             
             if not instruct:
-                logging.warning("VoiceDesign: instruct è vuoto, la qualità potrebbe essere compromessa")
+                logging.warning("VoiceDesign: instruct is empty, quality may be compromised")
             
             logging.info(f"VoiceDesign: text={text[:50]}..., language={language}, instruct={instruct[:50] if instruct else ''}")
             
@@ -192,31 +192,31 @@ def main():
                 **common_kwargs
             )
         else:  # base
-            # Il modello Base supporta solo generate_voice_clone
-            # L'UI dovrebbe passare mode='clone' per questo modello
+            # The Base model only supports generate_voice_clone
+            # The UI should pass mode='clone' for this model
             if mode not in ['clone', 'custom', 'design']:
-                logging.warning(f"Mode '{mode}' non valido per modello Base, forzato a 'clone'")
+                logging.warning(f"Mode '{mode}' not valid for Base model, forcing to 'clone'")
                 mode = 'clone'
             
             if mode == 'custom':
-                raise ValueError("Modalità 'custom' non supportata per modello Base. Usa modello CustomVoice.")
+                raise ValueError("'custom' mode not supported for Base model. Use CustomVoice model.")
             elif mode == 'design':
-                raise ValueError("Modalità 'design' non supportata per modello Base. Usa modello VoiceDesign.")
+                raise ValueError("'design' mode not supported for Base model. Use VoiceDesign model.")
             
-            # Modalità clone (unica supportata per modello Base)
-            # Parametri obbligatori: text, language, ref_audio
-            # ref_text è obbligatorio solo se x_vector_only_mode=False
+            # Clone mode (only one supported for Base model)
+            # Required parameters: text, language, ref_audio
+            # ref_text is only required when x_vector_only_mode=False
             language = params.get('language', 'Italian')
             ref_audio = params.get('ref_audio')
             x_vector_only_mode = params.get('x_vector_only_mode', False)
             
             if not ref_audio:
-                raise ValueError("Per la modalità Voice Clone, è necessario fornire un file audio di riferimento (ref_audio).")
+                raise ValueError("For Voice Clone mode, a reference audio file (ref_audio) must be provided.")
             
             logging.info(f"Voice Clone: text={text[:50]}..., language={language}, ref_audio={ref_audio}, x_vector_only_mode={x_vector_only_mode}")
             
             if x_vector_only_mode:
-                # Modalità veloce: non richiede ref_text
+                # Fast mode: does not require ref_text
                 wavs, sr = model.generate_voice_clone(
                     text=text,
                     language=language,
@@ -225,10 +225,10 @@ def main():
                     **common_kwargs
                 )
             else:
-                # Modalità completa: richiede ref_text
+                # Full quality mode: requires ref_text
                 ref_text = params.get('ref_text', '')
                 if not ref_text:
-                    raise ValueError("Per la modalità Voice Clone a qualità massima, è necessaria la trascrizione del testo (ref_text).")
+                    raise ValueError("For maximum quality Voice Clone mode, the text transcription (ref_text) is required.")
                 
                 wavs, sr = model.generate_voice_clone(
                     text=text,
@@ -239,126 +239,126 @@ def main():
                     **common_kwargs
                 )
         
-        # Sopprime output stderr di soundfile (errore SoX) durante la scrittura
+        # Suppress soundfile stderr output (SoX error) during write
         with open(os.devnull, 'w') as devnull:
             with contextlib.redirect_stderr(devnull):
                 import numpy as np
                 import subprocess
                 import tempfile
                 
-                # Converte tensore PyTorch in numpy array
+                # Convert PyTorch tensor to numpy array
                 if torch.is_tensor(wavs):
                     wavs_np = wavs.cpu().numpy()
                 else:
                     wavs_np = np.array(wavs)
                 
-                # DEBUG: Log delle dimensioni per diagnosticare problemi
-                logging.info(f"Shape originale audio: {wavs_np.shape}, dtype: {wavs_np.dtype}")
+                # DEBUG: Log dimensions to diagnose issues
+                logging.info(f"Original audio shape: {wavs_np.shape}, dtype: {wavs_np.dtype}")
                 
-                # Rimuovi dimensioni batch singole (es: [1, 24000] -> [24000])
-                # o [1, 1, 24000] -> [24000]
+                # Remove single batch dimensions (e.g.: [1, 24000] -> [24000])
+                # or [1, 1, 24000] -> [24000]
                 while wavs_np.ndim > 1 and wavs_np.shape[0] == 1:
                     wavs_np = wavs_np.squeeze(0)
                 
-                # Se risulta 2D con shape [channels, samples], trasponi in [samples, channels]
-                # ma se è già 1D, lascialo così
+                # If 2D with shape [channels, samples], transpose to [samples, channels]
+                # but if already 1D, leave as is
                 if wavs_np.ndim == 2 and wavs_np.shape[0] < wavs_np.shape[1]:
-                    # Probabilmente è [channels, samples], trasponiamo
+                    # Probably [channels, samples], let's transpose
                     wavs_np = wavs_np.T
                 
-                # Assicurati che sia monodimensionale se mono, o bidimensionale corretto se stereo
+                # Ensure it is 1D if mono, or correctly 2D if stereo
                 if wavs_np.ndim > 2:
                     wavs_np = wavs_np.reshape(-1)
                 
-                # Normalizzazione robusta
+                # Robust normalization
                 max_val = np.max(np.abs(wavs_np))
                 if max_val > 1.0:
-                    logging.warning(f"Normalizzazione audio: valori fuori range (max={max_val:.3f})")
+                    logging.warning(f"Audio normalization: values out of range (max={max_val:.3f})")
                     wavs_np = wavs_np / max_val
                 elif max_val < 0.001:
-                    logging.warning(f"Audio quasi silenzioso (max={max_val:.3f})")
+                    logging.warning(f"Audio nearly silent (max={max_val:.3f})")
                 
-                # Converte a float32 per compatibilità massima
+                # Convert to float32 for maximum compatibility
                 wavs_np = wavs_np.astype(np.float32)
                 
-                # Assicura sample rate sia intero
+                # Ensure sample rate is an integer
                 sr_int = int(sr) if sr is not None else 24000
                 
-                # DEBUG: Log finale
-                logging.info(f"Audio pronto per salvataggio: shape={wavs_np.shape}, dtype={wavs_np.dtype}, sr={sr_int}")
+                # DEBUG: Final log
+                logging.info(f"Audio ready for saving: shape={wavs_np.shape}, dtype={wavs_np.dtype}, sr={sr_int}")
                 
-                # METODO 1: FFMPEG (prima scelta - già presente nel progetto)
+                # METHOD 1: FFMPEG (first choice - already present in the project)
                 raw_path = None
                 try:
-                    # Crea file raw PCM temporaneo
+                    # Create temporary raw PCM file
                     with tempfile.NamedTemporaryFile(suffix='.raw', delete=False) as tmp_raw:
                         raw_path = tmp_raw.name
                         wavs_np.tofile(raw_path)
                     
-                    # Percorso FFmpeg locale
+                    # Local FFmpeg path
                     ffmpeg_path = os.path.join(os.getcwd(), "ffmpeg", "bin", "ffmpeg.exe")
                     if not os.path.exists(ffmpeg_path):
-                        # Fallback a ffmpeg nel PATH
+                        # Fallback to ffmpeg in PATH
                         ffmpeg_path = "ffmpeg"
                     
-                    # Determina canali
+                    # Determine channels
                     channels = 1 if wavs_np.ndim == 1 else wavs_np.shape[1]
                     
-                    # Comando FFmpeg per convertire raw PCM float32 a WAV PCM s16le
+                    # FFmpeg command to convert raw PCM float32 to WAV PCM s16le
                     cmd = [
                         ffmpeg_path,
-                        '-f', 'f32le',          # formato input: float32 little-endian
+                        '-f', 'f32le',          # input format: float32 little-endian
                         '-ar', str(sr_int),     # sample rate
-                        '-ac', str(channels),   # canali
-                        '-i', raw_path,         # file input
-                        '-c:a', 'pcm_s16le',    # codec audio: PCM signed 16-bit little-endian
-                        '-y',                   # sovrascrivi output
+                        '-ac', str(channels),   # channels
+                        '-i', raw_path,         # input file
+                        '-c:a', 'pcm_s16le',    # audio codec: PCM signed 16-bit little-endian
+                        '-y',                   # overwrite output
                         output_path
                     ]
                     
-                    logging.info(f"Esecuzione FFmpeg: {' '.join(cmd)}")
+                    logging.info(f"Running FFmpeg: {' '.join(cmd)}")
                     result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
                     
                     if result.returncode == 0:
-                        logging.info(f"File WAV salvato con FFmpeg: {output_path}, size: {os.path.getsize(output_path)} bytes")
+                        logging.info(f"WAV file saved with FFmpeg: {output_path}, size: {os.path.getsize(output_path)} bytes")
                     else:
-                        logging.error(f"FFmpeg fallito: {result.stderr}")
-                        raise RuntimeError(f"FFmpeg fallito: {result.stderr}")
+                        logging.error(f"FFmpeg failed: {result.stderr}")
+                        raise RuntimeError(f"FFmpeg failed: {result.stderr}")
                         
                 except Exception as e_ffmpeg:
-                    logging.warning(f"FFmpeg fallito: {e_ffmpeg}, provo scipy...")
+                    logging.warning(f"FFmpeg failed: {e_ffmpeg}, trying scipy...")
                     
-                    # METODO 2: SCIPY (seconda scelta)
+                    # METHOD 2: SCIPY (second choice)
                     try:
                         from scipy.io import wavfile
-                        # Scipy vuole int16 per PCM, convertiamo da float32 [-1,1] a int16
+                        # Scipy requires int16 for PCM, convert from float32 [-1,1] to int16
                         wavs_int16 = (wavs_np * 32767).astype(np.int16)
                         wavfile.write(output_path, sr_int, wavs_int16)
-                        logging.info(f"File WAV salvato con scipy: {output_path}")
+                        logging.info(f"WAV file saved with scipy: {output_path}")
                     except ImportError:
-                        logging.warning("Scipy non disponibile, provo soundfile...")
-                        # METODO 3: SOUNDFILE (terza scelta)
+                        logging.warning("Scipy not available, trying soundfile...")
+                        # METHOD 3: SOUNDFILE (third choice)
                         try:
-                            # Se è mono 1D, soundfile è felice
-                            # Se è stereo, deve essere shape (samples, channels)
+                            # If mono 1D, soundfile is happy
+                            # If stereo, it must be shape (samples, channels)
                             sf.write(output_path, wavs_np, sr_int, subtype='PCM_16', format='WAV')
-                            logging.info(f"File WAV salvato con soundfile: {output_path}")
+                            logging.info(f"WAV file saved with soundfile: {output_path}")
                         except Exception as e_sf:
-                            # METODO 4: TORCHAUDIO (ultima risorsa)
+                            # METHOD 4: TORCHAUDIO (last resort)
                             try:
                                 import torchaudio
                                 wavs_tensor = torch.from_numpy(wavs_np).unsqueeze(0) if wavs_np.ndim == 1 else torch.from_numpy(wavs_np)
                                 torchaudio.save(output_path, wavs_tensor, sr_int)
-                                logging.info(f"File salvato con torchaudio: {output_path}")
+                                logging.info(f"File saved with torchaudio: {output_path}")
                             except Exception as e_ta:
-                                raise RuntimeError(f"Tutti i metodi di salvataggio falliti: FFmpeg({e_ffmpeg}), scipy(ImportError), soundfile({e_sf}), torchaudio({e_ta})")
+                                raise RuntimeError(f"All save methods failed: FFmpeg({e_ffmpeg}), scipy(ImportError), soundfile({e_sf}), torchaudio({e_ta})")
                     except Exception as e_scipy:
-                        logging.warning(f"Scipy fallito: {e_scipy}, provo soundfile...")
+                        logging.warning(f"Scipy failed: {e_scipy}, trying soundfile...")
                         try:
                             sf.write(output_path, wavs_np, sr_int, subtype='PCM_16', format='WAV')
-                            logging.info(f"File WAV salvato con soundfile: {output_path}")
+                            logging.info(f"WAV file saved with soundfile: {output_path}")
                         except Exception as e_sf:
-                            raise RuntimeError(f"Salvataggio fallito dopo FFmpeg e scipy: soundfile({e_sf})")
+                            raise RuntimeError(f"Save failed after FFmpeg and scipy: soundfile({e_sf})")
                 finally:
                     # Always clean up the temporary raw file
                     if raw_path and os.path.exists(raw_path):
@@ -372,7 +372,7 @@ def main():
         send_response({"status": "ok", "file": output_path})
 
     except Exception as e:
-        logging.error(f"Errore nel subprocess Qwen3-TTS: {e}", exc_info=True)
+        logging.error(f"Error in Qwen3-TTS subprocess: {e}", exc_info=True)
         sys.stdout = original_stdout
         send_response({"status": "error", "message": str(e)})
     finally:

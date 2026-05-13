@@ -13,8 +13,8 @@
 # limitations under the License.
 
 """
-Modulo per la gestione del download dei modelli TTS nell'interfaccia Gradio.
-Questo modulo è progettato per essere importato in app_gradio.py per mantenere il codice modulare.
+Module for managing TTS model downloads in the Gradio interface.
+This module is designed to be imported in app_gradio.py to keep the code modular.
 """
 
 import gradio as gr
@@ -29,56 +29,56 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Importa configurazioni dal progetto
+# Import configurations from project
 try:
     from audiobook_generator import config
     from audiobook_generator import plugin_manager
 except ImportError:
-    # Fallback per importazioni dirette
+    # Fallback for direct imports
     import sys
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from audiobook_generator import config
     from audiobook_generator import plugin_manager
 
-# Importa funzioni di download da setup/helpers.py
+# Import download functions from setup/helpers.py
 try:
     from setup import setup_helpers
     HAS_SETUP_HELPERS = True
 except ImportError:
     HAS_SETUP_HELPERS = False
-    logging.warning("setup/helpers.py non trovato. Il download dei modelli non sarà disponibile.")
+    logging.warning("setup/helpers.py not found. Model download will not be available.")
 
-# Flag per controllo stop download
+# Flag for download stop control
 STOP_DOWNLOAD_FLAG = False
 
 def set_stop_download_flag():
-    """Imposta il flag di stop a True per download"""
+    """Set the stop flag to True for downloads"""
     global STOP_DOWNLOAD_FLAG
     STOP_DOWNLOAD_FLAG = True
-    logging.info("Stop flag download impostato a True")
-    return "Download in arresto..."
+    logging.info("Download stop flag set to True")
+    return "Download stopping..."
 
 def reset_stop_download_flag():
-    """Resetta il flag di stop a False per download"""
+    """Reset the stop flag to False for downloads"""
     global STOP_DOWNLOAD_FLAG
     STOP_DOWNLOAD_FLAG = False
-    logging.info("Stop flag download resettato a False")
-    return "Stop flag download resettato"
+    logging.info("Download stop flag reset to False")
+    return "Download stop flag reset"
 
 def check_stop_download_flag():
-    """Controlla se il flag di stop è True per download"""
+    """Check if the stop flag is True for downloads"""
     global STOP_DOWNLOAD_FLAG
     return STOP_DOWNLOAD_FLAG
 
 
 def get_available_models() -> List[Dict[str, Any]]:
-    """Restituisce lista di tutti i modelli disponibili con stato."""
+    """Returns list of all available models with status."""
     models = []
     
     if not HAS_SETUP_HELPERS:
         return models
     
-    # Modelli Qwen3-TTS
+    # Qwen3-TTS models
     qwen_models = [
         {
             "name": "Qwen3-TTS-0.6B-Base",
@@ -99,7 +99,7 @@ def get_available_models() -> List[Dict[str, Any]]:
         {
             "name": "Qwen3-TTS-1.7B-CustomVoice",
             "display_name": "Qwen3-TTS 1.7B CustomVoice",
-            "description": "49 voci predefinite, ~5GB",
+            "description": "49 predefined voices, ~5GB",
             "type": "qwen3tts",
             "version": "1.7B",
             "model_type": "custom_voice"
@@ -107,14 +107,14 @@ def get_available_models() -> List[Dict[str, Any]]:
         {
             "name": "Qwen3-TTS-1.7B-VoiceDesign",
             "display_name": "Qwen3-TTS 1.7B VoiceDesign",
-            "description": "Descrizione testuale, ~5GB",
+            "description": "Text description, ~5GB",
             "type": "qwen3tts",
             "version": "1.7B",
             "model_type": "voice_design"
         }
     ]
     
-    # Modelli VibeVoice
+    # VibeVoice models
     vibevoice_models = [
         {
             "name": "VibeVoice-1.5B",
@@ -133,13 +133,13 @@ def get_available_models() -> List[Dict[str, Any]]:
         {
             "name": "VibeVoice-Realtime-0.5B",
             "display_name": "VibeVoice-Realtime-0.5B",
-            "description": "Ufficiale Microsoft: real-time, ~10 min, multilingue, ~3GB",
+            "description": "Official Microsoft: real-time, ~10 min, multilingual, ~3GB",
             "type": "vibevoice",
             "version": "Realtime-0.5B"
         }
     ]
     
-    # Altri modelli
+    # Other models
     other_models = [
         {
             "name": "XTTSv2",
@@ -155,19 +155,19 @@ def get_available_models() -> List[Dict[str, Any]]:
         }
     ]
     
-    # Combina tutti i modelli
+    # Combine all models
     all_models = qwen_models + vibevoice_models + other_models
     
-    # Aggiungi stato di installazione
+    # Add installation status
     for model in all_models:
         model["installed"] = check_model_installed(model["name"])
-        model["status"] = "✅ Installato" if model["installed"] else "❌ Mancante"
+        model["status"] = "✅ Installed" if model["installed"] else "❌ Missing"
     
     return all_models
 
 
 def check_model_installed(model_name: str) -> bool:
-    """Verifica se un modello specifico è installato."""
+    """Verifies if a specific model is installed."""
     if not HAS_SETUP_HELPERS:
         return False
     
@@ -262,65 +262,65 @@ def check_model_installed(model_name: str) -> bool:
 
 
 def get_models_status_message() -> str:
-    """Restituisce un messaggio di stato leggibile per l'utente."""
+    """Returns a user-readable status message."""
     models = get_available_models()
     
     if not models:
-        return "### 📦 Stato Modelli TTS\n\n⚠️ Impossibile caricare informazioni sui modelli."
+        return "### 📦 TTS Models Status\n\n⚠️ Unable to load model information."
     
     messages = []
-    messages.append("### 📦 Stato Modelli TTS")
+    messages.append("### 📦 TTS Models Status")
     messages.append("")
     
-    # Raggruppa per tipo
+    # Group by type
     qwen_models = [m for m in models if m["type"] == "qwen3tts"]
     vibevoice_models = [m for m in models if m["type"] == "vibevoice"]
     other_models = [m for m in models if m["type"] in ["xttsv2", "kokoro"]]
     
     if qwen_models:
-        messages.append("#### 🚀 Modelli Qwen3-TTS")
+        messages.append("#### 🚀 Qwen3-TTS Models")
         for model in qwen_models:
             status_icon = "✅" if model["installed"] else "❌"
             messages.append(f"- {status_icon} **{model['display_name']}**: {model['description']}")
         messages.append("")
     
     if vibevoice_models:
-        messages.append("#### 🎵 Modelli VibeVoice")
+        messages.append("#### 🎵 VibeVoice Models")
         for model in vibevoice_models:
             status_icon = "✅" if model["installed"] else "❌"
             messages.append(f"- {status_icon} **{model['display_name']}**: {model['description']}")
         messages.append("")
     
     if other_models:
-        messages.append("#### 📚 Altri Modelli")
+        messages.append("#### 📚 Other Models")
         for model in other_models:
             status_icon = "✅" if model["installed"] else "❌"
             messages.append(f"- {status_icon} **{model['display_name']}**: {model['description']}")
         messages.append("")
     
-    messages.append("💡 **Nota**: I modelli marcati con ❌ non sono installati. Selezionali e clicca 'Scarica Modelli Selezionati' per installarli.")
+    messages.append("💡 **Note**: Models marked with ❌ are not installed. Select them and click 'Download Selected Models' to install them.")
     
     return "\n".join(messages)
 
 
 def download_model_wrapper(model_info: Dict[str, Any]) -> Tuple[str, bool]:
-    """Wrapper per download di un singolo modello."""
+    """Wrapper for downloading a single model."""
     global STOP_DOWNLOAD_FLAG
     
     if not HAS_SETUP_HELPERS:
-        return "❌ Impossibile scaricare modelli: modulo setup/helpers.py non trovato.", False
+        return "❌ Cannot download models: setup/helpers.py module not found.", False
     
     model_name = model_info["name"]
     model_type = model_info.get("type", "")
     
     try:
-        logging.info(f"Inizio download modello: {model_name}")
+        logging.info(f"Starting model download: {model_name}")
         
         if model_type == "qwen3tts":
             version = model_info.get("version", "0.6B")
             model_type_param = model_info.get("model_type", "base")
             
-            # Mappa model_type per compatibilità con helpers
+            # Map model_type for helpers compatibility
             if model_type_param == "custom_voice":
                 model_type_param = "custom_voice"
             elif model_type_param == "voice_design":
@@ -331,14 +331,14 @@ def download_model_wrapper(model_info: Dict[str, Any]) -> Tuple[str, bool]:
             success = setup_helpers.download_qwen3tts_model(
                 version_choice=version,
                 model_type=model_type_param,
-                idle_timeout=7200  # 2 ore timeout
+                idle_timeout=7200  # 2 hour timeout
             )
             
         elif model_type == "vibevoice":
             version = model_info.get("version", "1.5B")
             success = setup_helpers.download_vibevoice_model_multiple(
                 version_choice=version,
-                idle_timeout=7200  # 2 ore timeout
+                idle_timeout=7200  # 2 hour timeout
             )
             
         elif model_name == "XTTSv2":
@@ -348,32 +348,32 @@ def download_model_wrapper(model_info: Dict[str, Any]) -> Tuple[str, bool]:
             success = setup_helpers.download_kokoro_model(idle_timeout=7200)
             
         else:
-            return f"❌ Tipo modello non supportato: {model_type}", False
+            return f"❌ Unsupported model type: {model_type}", False
         
         if success:
-            # Il plugin registry non ha più il campo "installed"
-            # Lo stato viene determinato dinamicamente tramite filesystem
+            # The plugin registry no longer has the "installed" field
+            # Status is determined dynamically via filesystem
             
-            return f"✅ Modello {model_name} scaricato con successo!", True
+            return f"✅ Model {model_name} downloaded successfully!", True
         else:
-            return f"❌ Download modello {model_name} fallito.", False
+            return f"❌ Model {model_name} download failed.", False
             
     except Exception as e:
-        logging.error(f"Errore durante download modello {model_name}: {e}")
-        return f"❌ Errore durante download modello {model_name}: {str(e)}", False
+        logging.error(f"Error during model download {model_name}: {e}")
+        return f"❌ Error during model download {model_name}: {str(e)}", False
 
 
 def download_selected_models(selected_models: List[str], progress_callback=None) -> Tuple[str, bool]:
-    """Scarica i modelli selezionati."""
+    """Downloads selected models."""
     global STOP_DOWNLOAD_FLAG
     
     if not selected_models:
-        return "❌ Nessun modello selezionato.", False
+        return "❌ No models selected.", False
     
     # Reset stop flag
     reset_stop_download_flag()
     
-    # Ottieni informazioni sui modelli selezionati
+    # Get information about selected models
     all_models = get_available_models()
     models_to_download = []
     
@@ -383,7 +383,7 @@ def download_selected_models(selected_models: List[str], progress_callback=None)
             models_to_download.append(model_info)
     
     if not models_to_download:
-        return "✅ Tutti i modelli selezionati sono già installati.", True
+        return "✅ All selected models are already installed.", True
     
     total_models = len(models_to_download)
     success_count = 0
@@ -392,14 +392,14 @@ def download_selected_models(selected_models: List[str], progress_callback=None)
     
     for i, model_info in enumerate(models_to_download, 1):
         if check_stop_download_flag():
-            messages.append("⏹️ Download interrotto dall'utente.")
+            messages.append("⏹️ Download interrupted by user.")
             break
         
-        # Aggiorna progresso
+        # Update progress
         if progress_callback:
-            progress_callback(f"Scaricando {i}/{total_models}: {model_info['display_name']}")
+            progress_callback(f"Downloading {i}/{total_models}: {model_info['display_name']}")
         
-        # Download modello
+        # Download model
         message, success = download_model_wrapper(model_info)
         messages.append(message)
         
@@ -408,11 +408,11 @@ def download_selected_models(selected_models: List[str], progress_callback=None)
         else:
             failed_count += 1
         
-        # Piccola pausa tra download
+        # Brief pause between downloads
         time.sleep(1)
     
-    # Costruisci messaggio finale
-    final_message = f"Download completato: {success_count} successi, {failed_count} falliti.\n\n"
+    # Build final message
+    final_message = f"Download completed: {success_count} succeeded, {failed_count} failed.\n\n"
     final_message += "\n".join(messages)
     
     overall_success = failed_count == 0
@@ -420,17 +420,17 @@ def download_selected_models(selected_models: List[str], progress_callback=None)
 
 
 def refresh_models_status() -> Tuple[str, List[str], str]:
-    """Aggiorna lo stato dei modelli e restituisce informazioni aggiornate."""
+    """Refreshes model status and returns updated information."""
     models = get_available_models()
     status_message = get_models_status_message()
     
-    # Crea lista di nomi modello per checkbox
+    # Create model name list for checkboxes
     model_names = [model["name"] for model in models]
     
-    # Crea stringa di stato per display
-    status_display = f"Modelli disponibili: {len(models)}\n"
+    # Create status string for display
+    status_display = f"Available models: {len(models)}\n"
     installed_count = sum(1 for model in models if model["installed"])
-    status_display += f"Installati: {installed_count}, Mancanti: {len(models) - installed_count}"
+    status_display += f"Installed: {installed_count}, Missing: {len(models) - installed_count}"
     
     return status_message, model_names, status_display
 
@@ -509,10 +509,10 @@ def create_models_tab() -> gr.TabItem:
         
         # Funzioni per gestione UI
         def on_refresh():
-            """Aggiorna stato modelli."""
+            """Refresh model status."""
             status_msg, model_names, status_disp = refresh_models_status()
             
-            # Ottieni modelli mancanti per checkbox pre-selezionati
+        # Get missing models for pre-selected checkboxes
             models = get_available_models()
             missing_models = [model["name"] for model in models if not model["installed"]]
             
@@ -524,34 +524,34 @@ def create_models_tab() -> gr.TabItem:
             )
         
         def on_select_all():
-            """Seleziona tutti i modelli mancanti."""
+            """Select all missing models."""
             models = get_available_models()
             missing_models = [model["name"] for model in models if not model["installed"]]
             return gr.update(value=missing_models)
         
         def on_deselect_all():
-            """Deseleziona tutti i modelli."""
+            """Deselect all models."""
             return gr.update(value=[])
         
         def on_download(selected_models):
-            """Avvia download modelli selezionati."""
+            """Start download of selected models."""
             if not selected_models:
-                return "❌ Nessun modello selezionato.", "", gr.update(visible=False)
+                return "❌ No models selected.", "", gr.update(visible=False)
             
             # Reset stop flag
             reset_stop_download_flag()
             
-            # Funzione per aggiornamento progresso
+            # Function for progress updates
             def progress_callback(message):
                 nonlocal progress_text
                 progress_text = message
             
             progress_text = ""
             
-            # Esegui download
+            # Execute download
             message, success = download_selected_models(selected_models, progress_callback)
             
-            # Aggiorna stato dopo download
+            # Update status after download
             status_msg, model_names, status_disp = refresh_models_status()
             
             return (
@@ -560,7 +560,7 @@ def create_models_tab() -> gr.TabItem:
                 gr.update(value=progress_text, visible=bool(progress_text))
             )
         
-        # Collegamenti eventi
+        # Event connections
         refresh_btn.click(
             fn=on_refresh,
             outputs=[status_display, models_checkbox, status_summary, download_log]
@@ -592,14 +592,14 @@ def create_models_tab() -> gr.TabItem:
 
 if __name__ == "__main__":
     # Test del modulo
-    print("Test modulo models_tab.py")
+    print("Testing models_tab.py module")
     print("=" * 50)
     
     models = get_available_models()
-    print(f"Modelli trovati: {len(models)}")
+    print(f"Models found: {len(models)}")
     
     for model in models:
         print(f"- {model['name']}: {model['status']}")
     
-    print("\nMessaggio di stato:")
+    print("\nStatus message:")
     print(get_models_status_message())

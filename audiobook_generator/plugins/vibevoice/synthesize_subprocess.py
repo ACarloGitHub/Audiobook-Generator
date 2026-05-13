@@ -1,4 +1,4 @@
-# ATTENZIONE: Questo script è autonomo e non deve importare nulla dal progetto principale.
+# WARNING: This script is standalone and must not import anything from the main project.
 import sys
 import json
 import numpy as np
@@ -6,7 +6,7 @@ from scipy.io.wavfile import write as write_wav
 import os
 import logging
 
-# Setup di un logger dedicato per il subprocess
+# Setup of a dedicated logger for the subprocess
 log_dir = os.path.join('audiobook_generator', 'Logs')
 os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, 'vibevoice_subprocess.log')
@@ -29,19 +29,19 @@ def main():
     sys.stdout = StdoutToStderr()
     
     try:
-        # Importa torch solo quando necessario
+        # Import torch only when needed
         import torch
         
-        # 1. Legge l'input JSON da stdin
+        # 1. Read JSON input from stdin
         input_data = json.load(sys.stdin)
-        logging.info(f"Ricevuto job: {input_data}")
+        logging.info(f"Received job: {input_data}")
         
         text = input_data['text']
         output_path = input_data['output_path']
         speaker_wav = input_data['speaker_wav']
         model_name = input_data.get('model_name', 'VibeVoice')
         
-        # Estrai parametri di generazione con valori di default
+        # Extract generation parameters with default values
         temperature = input_data.get('temperature', 0.9)
         top_p = input_data.get('top_p', 0.9)
         cfg_scale = input_data.get('cfg_scale', 1.3)
@@ -50,45 +50,44 @@ def main():
         use_sampling = input_data.get('use_sampling', True)
         seed = input_data.get('seed')
         
-        logging.info(f"Parametri generazione: temperature={temperature}, top_p={top_p}, cfg_scale={cfg_scale}, "
+        logging.info(f"Generation parameters: temperature={temperature}, top_p={top_p}, cfg_scale={cfg_scale}, "
                      f"diffusion_steps={diffusion_steps}, voice_speed_factor={voice_speed_factor}, "
                      f"use_sampling={use_sampling}, seed={seed}")
 
-        # --- Logica di caricamento da asset locali come da report tecnico ---
-        # Definizione percorsi locali
+        # --- Local asset loading logic as per technical report ---
+        # Local path definitions
         base_project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
         
-        # Determina directory modello in base al nome
+        # Determine model directory based on name
         if model_name == 'VibeVoice-7B':
             model_subdir = '7B'
         elif model_name == 'VibeVoice-Realtime-0.5B':
             model_subdir = '0.5B'
         else:
-            model_subdir = '1.5B'  # fallback per compatibilità
+            model_subdir = '1.5B'  # fallback for compatibility
         
-        # Struttura: vibevoice/{1.5B,7B,0.5B}/
-        # Struttura: vibevoice/{1.5B,7B,0.5B}/ per i modelli
-        # repo_community/vibevoice per codice (streaming + inference)
+        # Structure: vibevoice/{1.5B,7B,0.5B}/ for models
+        # repo_community/vibevoice for code (streaming + inference)
         vibevoice_model_dir = os.path.join(base_project_dir, 'audiobook_generator', 'tts_models', 'vibevoice', model_subdir)
         
-        # Tokenizer Qwen2.5-1.5B: cartella separata tts_models/vibevoice/tokenizer/
-        # (NON è dentro il modello — il modello su HF non include i file del tokenizer)
+        # Qwen2.5-1.5B tokenizer: separate folder tts_models/vibevoice/tokenizer/
+        # (NOT inside the model — the model on HF does not include tokenizer files)
         vibevoice_tokenizer_dir = os.path.join(base_project_dir, 'audiobook_generator', 'tts_models', 'vibevoice', 'tokenizer')
         
-        # Codice sorgente: repo_community/vibevoice per Realtime-0.5B (streaming), repo/vibevoice per 1.5B/7B
-        # VibeVoiceStreamingForConditionalGenerationInference è in repo_community (community repo con classi streaming)
-        # VibeVoiceForConditionalGenerationInference (non-streaming) e streaming sono entrambi in repo_community
+        # Source code: repo_community/vibevoice for Realtime-0.5B (streaming), repo/vibevoice for 1.5B/7B
+        # VibeVoiceStreamingForConditionalGenerationInference is in repo_community (community repo with streaming classes)
+        # VibeVoiceForConditionalGenerationInference (non-streaming) and streaming are both in repo_community
         if model_name == 'VibeVoice-Realtime-0.5B':
             vibevoice_code_base = os.path.join(base_project_dir, 'audiobook_generator', 'tts_models', 'vibevoice', 'repo_community')
         else:
-            # 1.5B/7B: usa repo_community (contiene sia modeling_vibevoice.py che modeling_vibevoice_inference.py)
+            # 1.5B/7B: use repo_community (contains both modeling_vibevoice.py and modeling_vibevoice_inference.py)
             vibevoice_code_base = os.path.join(base_project_dir, 'audiobook_generator', 'tts_models', 'vibevoice', 'repo_community')
         
         vibevoice_code_dir = os.path.join(vibevoice_code_base, 'vibevoice')
         
-        logging.info(f"Caricamento modello: {model_name} -> {model_subdir}")
+        logging.info(f"Loading model: {model_name} -> {model_subdir}")
         
-        # Log dettagliato GPU
+        # Detailed GPU logging
         logging.info(f"Torch version: {torch.__version__}")
         logging.info(f"CUDA available: {torch.cuda.is_available()}")
         if torch.cuda.is_available():
@@ -98,12 +97,12 @@ def main():
                 logging.info(f"    Memory allocated: {torch.cuda.memory_allocated(i) / 1024**2:.2f} MB")
                 logging.info(f"    Memory reserved: {torch.cuda.memory_reserved(i) / 1024**2:.2f} MB")
         else:
-            logging.warning("CUDA non disponibile. Il modello verrà caricato su CPU.")
+            logging.warning("CUDA not available. The model will be loaded on CPU.")
 
-        # Manipolazione sys.path per importare il codice sorgente di VibeVoice
+        # Manipulate sys.path to import VibeVoice source code
         original_sys_path = sys.path.copy()
         try:
-            # Aggiungi entrambi i path per i diversi pattern di import
+            # Add both paths for different import patterns
             if vibevoice_code_base not in sys.path:
                 sys.path.insert(0, vibevoice_code_base)
             if vibevoice_code_dir not in sys.path:
@@ -115,35 +114,35 @@ def main():
             
             if model_name == 'VibeVoice-Realtime-0.5B':
                 # =====================================================================
-                # PATH STREAMING (Realtime-0.5B)
+                # STREAMING PATH (Realtime-0.5B)
                 # =====================================================================
                 import copy
                 from modular.modeling_vibevoice_streaming_inference import VibeVoiceStreamingForConditionalGenerationInference
                 from processor.vibevoice_streaming_processor import VibeVoiceStreamingProcessor
                 
-                logging.info("Import streaming completato. Caricamento processor streaming...")
+                logging.info("Streaming import completed. Loading streaming processor...")
                 
-                # Carica processor streaming
+                # Load streaming processor
                 processor = VibeVoiceStreamingProcessor.from_pretrained(vibevoice_model_dir)
-                logging.info(f"Processor streaming caricato: {processor.__class__.__name__}")
+                logging.info(f"Streaming processor loaded: {processor.__class__.__name__}")
                 
-                logging.info("Caricamento modello streaming...")
+                logging.info("Loading streaming model...")
                 model = VibeVoiceStreamingForConditionalGenerationInference.from_pretrained(
                     vibevoice_model_dir,
                     device_map=device_map,
                     torch_dtype=torch_dtype,
                 )
                 model.set_ddpm_inference_steps(num_steps=diffusion_steps if diffusion_steps is not None else 5)
-                logging.info(f"Modello streaming caricato su: {model.device}")
+                logging.info(f"Streaming model loaded on: {model.device}")
                 
             else:
                 # =====================================================================
-                # PATH NON-STREAMING (1.5B / 7B)
+                # NON-STREAMING PATH (1.5B / 7B)
                 # =====================================================================
                 from modular.modeling_vibevoice_inference import VibeVoiceForConditionalGenerationInference
                 from processor.vibevoice_processor import VibeVoiceProcessor
                 
-                logging.info("Import completato. Caricamento processore...")
+                logging.info("Import completed. Loading processor...")
                 
                 logging.info("Loading VibeVoiceProcessor from model directory...")
                 processor = VibeVoiceProcessor.from_pretrained(
@@ -152,18 +151,18 @@ def main():
                     local_files_only=True,
                     trust_remote_code=False
                 )
-                logging.info(f"Processor caricato: {processor.__class__.__name__}")
+                logging.info(f"Processor loaded: {processor.__class__.__name__}")
                 
                 tokenizer = processor.tokenizer
                 if tokenizer is None:
                     raise RuntimeError("FATAL: Tokenizer is None after loading processor.")
-                logging.info(f"Tokenizer wrapper caricato: {tokenizer.__class__.__name__}")
+                logging.info(f"Tokenizer wrapper loaded: {tokenizer.__class__.__name__}")
                 
                 if tokenizer.bos_token_id is None:
-                    logging.warning(f"bos_token_id è None, impostato a eos_token_id: {tokenizer.eos_token_id}")
+                    logging.warning(f"bos_token_id is None, set to eos_token_id: {tokenizer.eos_token_id}")
                     tokenizer.bos_token_id = tokenizer.eos_token_id
                 
-                logging.info("Processore caricato. Caricamento modello...")
+                logging.info("Processor loaded. Loading model...")
                 
                 from modular.configuration_vibevoice import VibeVoiceConfig
                 config = VibeVoiceConfig.from_pretrained(vibevoice_model_dir)
@@ -176,59 +175,59 @@ def main():
                 )
             
             
-            logging.info(f"Modello caricato su dispositivo: {model.device}")
+            logging.info(f"Model loaded on device: {model.device}")
             
             # =====================================================================
-            # PREPARAZIONE INPUT E GENERAZIONE
+            # INPUT PREPARATION AND GENERATION
             # =====================================================================
             if model_name == 'VibeVoice-Realtime-0.5B':
                 # -----------------------------------------------------------------
-                # STREAMING: Realtime-0.5B usa voice embedding (.pt) con API streaming
+                # STREAMING: Realtime-0.5B uses voice embedding (.pt) with streaming API
                 # -----------------------------------------------------------------
-                # 25 voci preset: en (6), de (2), fr (2), it (2), jp (2), kr (2), nl (2), pl (2), pt (2), sp (2), in (1)
+                # 25 preset voices: en (6), de (2), fr (2), it (2), jp (2), kr (2), nl (2), pl (2), pt (2), sp (2), in (1)
                 speaker_preset_voices = [
-                    "Carter", "Davis", "Emma", "Frank", "Grace", "Mike",  # Inglese
-                    "de-Spk0_man", "de-Spk1_woman",  # Tedesco
-                    "fr-Spk0_man", "fr-Spk1_woman",  # Francese
-                    "it-Spk0_woman", "it-Spk1_man",  # Italiano
-                    "jp-Spk0_man", "jp-Spk1_woman",  # Giapponese
-                    "kr-Spk0_woman", "kr-Spk1_man",  # Coreano
-                    "nl-Spk0_man", "nl-Spk1_woman",  # Olandese
-                    "pl-Spk0_man", "pl-Spk1_woman",  # Polacco
-                    "pt-Spk0_woman", "pt-Spk1_man",  # Portoghese
-                    "sp-Spk0_woman", "sp-Spk1_man",  # Spagnolo
+                    "Carter", "Davis", "Emma", "Frank", "Grace", "Mike",  # English
+                    "de-Spk0_man", "de-Spk1_woman",  # German
+                    "fr-Spk0_man", "fr-Spk1_woman",  # French
+                    "it-Spk0_woman", "it-Spk1_man",  # Italian
+                    "jp-Spk0_man", "jp-Spk1_woman",  # Japanese
+                    "kr-Spk0_woman", "kr-Spk1_man",  # Korean
+                    "nl-Spk0_man", "nl-Spk1_woman",  # Dutch
+                    "pl-Spk0_man", "pl-Spk1_woman",  # Polish
+                    "pt-Spk0_woman", "pt-Spk1_man",  # Portuguese
+                    "sp-Spk0_woman", "sp-Spk1_man",  # Spanish
                     "in-Samuel_man"  # Hindi
                 ]
                 
                 if speaker_wav in speaker_preset_voices:
-                    # Le voci preset (.pt) sono in reference_voices/vibevoice RealTime/
+                    # Preset voices (.pt) are in reference_voices/vibevoice RealTime/
                     voices_base = os.path.join(base_project_dir, 'audiobook_generator', 'tts_models', 'vibevoice', 'reference_voices', 'vibevoice RealTime')
                     voice_path = os.path.join(voices_base, f"{speaker_wav}.pt")
                 else:
-                    # Voce file: supporta .pt (voice embedding) o .wav (carica e processa)
+                    # Voice file: supports .pt (voice embedding) or .wav (load and process)
                     voice_path = speaker_wav
                 
-                logging.info(f"Caricamento voice embedding: {voice_path}")
+                logging.info(f"Loading voice embedding: {voice_path}")
                 if not os.path.exists(voice_path):
-                    raise FileNotFoundError(f"Voice file non trovato: {voice_path}")
+                    raise FileNotFoundError(f"Voice file not found: {voice_path}")
                 
-                # Carica voice embedding con weights_only=False per file .pt
+                # Load voice embedding with weights_only=False for .pt files
                 if voice_path.endswith('.pt'):
                     all_prefilled_outputs = torch.load(voice_path, map_location=model.device, weights_only=False)
                 else:
-                    # Per file wav, usa il processor per generare voice embedding
+                    # For wav files, use the processor to generate voice embedding
                     import soundfile as sf
                     wav_audio, sr = sf.read(voice_path)
                     if sr != 24000:
                         import torchaudio
                         wav_audio = torchaudio.functional.resample(torch.from_numpy(wav_audio), sr, 24000).numpy()
-                    # Converte in tensore e passa al processor
+                    # Convert to tensor and pass to processor
                     all_prefilled_outputs = processor.prepare_input_for_speech(
                         torch.from_numpy(wav_audio).float(), 
                         target_sample_rate=24000
                     )
                 
-                # Prepara input con API streaming
+                # Prepare input with streaming API
                 inputs = processor.process_input_with_cached_prompt(
                     text=text,
                     cached_prompt=all_prefilled_outputs,
@@ -237,12 +236,12 @@ def main():
                     return_attention_mask=True,
                 )
                 
-                # Sposta tensori sul device
+                # Move tensors to device
                 for k, v in inputs.items():
                     if torch.is_tensor(v):
                         inputs[k] = v.to(model.device)
                 
-                # Generazione streaming
+                # Streaming generation
                 generate_kwargs = {
                     **inputs,
                     "cfg_scale": cfg_scale if cfg_scale is not None else 1.5,
@@ -254,20 +253,20 @@ def main():
                 if seed is not None:
                     generate_kwargs["seed"] = seed
                 
-                logging.info(f"Generazione streaming con parametri: cfg_scale={generate_kwargs['cfg_scale']}")
+                logging.info(f"Streaming generation with parameters: cfg_scale={generate_kwargs['cfg_scale']}")
                 with torch.no_grad():
                     output = model.generate(**generate_kwargs)
                 
-                # Estrazione audio streaming
+                # Extract streaming audio
                 if not output.speech_outputs or output.speech_outputs[0] is None:
-                    raise RuntimeError("Nessun output audio generato (streaming).")
+                    raise RuntimeError("No audio output generated (streaming).")
                 
                 audio_tensor = output.speech_outputs[0].cpu().detach()
                 if audio_tensor.dtype == torch.bfloat16:
                     audio_tensor = audio_tensor.float()
                 audio_numpy = audio_tensor.numpy().squeeze()
                 
-                # Normalizza e converti a int16
+                # Normalize and convert to int16
                 if audio_numpy.dtype == np.float32 or audio_numpy.dtype == np.float64:
                     audio_numpy = (audio_numpy * 32767).astype(np.int16)
                 
@@ -280,14 +279,14 @@ def main():
                 # NON-STREAMING: 1.5B / 7B
                 # -----------------------------------------------------------------
                 tokenizer = processor.tokenizer
-                logging.info(f"Tokenizer configurato dal processore: {tokenizer.__class__.__name__}")
+                logging.info(f"Tokenizer configured from processor: {tokenizer.__class__.__name__}")
                 
                 if tokenizer.bos_token_id is None:
                     tokenizer.bos_token_id = tokenizer.eos_token_id
                 
                 model.tokenizer = tokenizer
                 
-                # Preparazione input non-streaming
+                # Non-streaming input preparation
                 inputs = processor(
                     text=[f"Speaker 1: {text}"],
                     voice_samples=[[speaker_wav]],
@@ -317,13 +316,13 @@ def main():
                 if seed is not None:
                     generate_kwargs["seed"] = seed
                 
-                logging.info(f"Generazione con parametri: {generate_kwargs}")
+                logging.info(f"Generation with parameters: {generate_kwargs}")
                 with torch.no_grad():
                     output = model.generate(**generate_kwargs)
                 
                 speech_outputs = output.speech_outputs
                 if not speech_outputs:
-                    raise RuntimeError("Nessun output audio generato.")
+                    raise RuntimeError("No audio output generated.")
                 
                 audio_tensor = speech_outputs[0]
                 if isinstance(audio_tensor, (list, tuple)):
@@ -344,18 +343,18 @@ def main():
                 write_wav(output_path, sampling_rate, audio_numpy)
                 
         finally:
-            # Ripristino sys.path originale
+            # Restore original sys.path
             sys.path = original_sys_path
         
-        # Verifica output
+        # Verify output
         if os.path.exists(output_path) and os.path.getsize(output_path) > 1024:
             sys.stdout = original_stdout
-            send_response({"status": "ok", "file": output_path, "message": "Sintesi completata con successo."})
+            send_response({"status": "ok", "file": output_path, "message": "Synthesis completed successfully."})
         else:
-            raise RuntimeError("File di output non creato o vuoto.")
+            raise RuntimeError("Output file not created or empty.")
 
     except Exception as e:
-        logging.error(f"Errore nel subprocess VibeVoice: {e}", exc_info=True)
+        logging.error(f"Error in VibeVoice subprocess: {e}", exc_info=True)
         sys.stdout = original_stdout
         send_response({"status": "error", "message": str(e)})
     finally:

@@ -25,11 +25,11 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# Aggiungi sox/bin al PATH per evitare errori di soundfile
+# Add sox/bin to PATH to avoid soundfile errors
 sox_bin = os.path.join(os.getcwd(), "sox", "bin")
 if os.path.exists(sox_bin):
     os.environ["PATH"] = sox_bin + os.pathsep + os.environ["PATH"]
-    sys.path.insert(0, sox_bin)  # non necessario, ma per sicurezza
+    sys.path.insert(0, sox_bin)  # not necessary, but for safety
 
 # Import necessary functions from our modules
 from audiobook_generator import config
@@ -38,87 +38,87 @@ from audiobook_generator import epub_processor
 from audiobook_generator import ffmpeg_wrapper
 from audiobook_generator import plugin_manager
 
-# Importa modulo per gestione dipendenze
+# Import module for dependency management
 try:
     from audiobook_generator.gradio_UI import dependencies_tab
     HAS_DEPENDENCIES_TAB = True
 except ImportError:
     HAS_DEPENDENCIES_TAB = False
-    print("⚠️ Modulo dependencies_tab.py non trovato. Il tab System/Dependencies non sarà disponibile.")
+    print("⚠️ Module dependencies_tab.py not found. The System/Dependencies tab will not be available.")
 
-# Importa modulo per recovery errori
+# Import module for error recovery
 try:
     from audiobook_generator.gradio_UI import recovery_tab
     HAS_RECOVERY_TAB = True
 except ImportError:
     HAS_RECOVERY_TAB = False
-    print("⚠️ Modulo recovery_tab.py non trovato. Il tab Recovery Errori non sarà disponibile.")
+    print("⚠️ Module recovery_tab.py not found. The Error Recovery tab will not be available.")
 
-# Importa modulo per download modelli
+# Import module for model downloads
 try:
     from audiobook_generator.gradio_UI import models_tab
     HAS_MODELS_TAB = True
 except ImportError:
     HAS_MODELS_TAB = False
-    print("⚠️ Modulo models_tab.py non trovato. Il tab Download Modelli non sarà disponibile.")
+    print("⚠️ Module models_tab.py not found. The Model Download tab will not be available.")
 
-# +++ NUOVE IMPORTAZIONI PER I TAB MODULARI +++
+# +++ NEW IMPORTS FOR MODULAR TABS +++
 from audiobook_generator.gradio_UI.configuration_tab import create_configuration_tab
 from audiobook_generator.gradio_UI.epub_options_tab import create_epub_options_tab
 from audiobook_generator.gradio_UI.generate_tab import create_generate_tab
 from audiobook_generator.gradio_UI.demo_test_tab import create_demo_test_tab
 
 
-# Esegui verifica dipendenze all'avvio
+# Run dependency check at startup
 if HAS_DEPENDENCIES_TAB:
     print("\n" + "="*60)
-    print("Verifica dipendenze di sistema...")
+    print("Checking system dependencies...")
     deps_status = dependencies_tab.check_external_dependencies()
-    print(f"FFmpeg: {'Presente' if deps_status['ffmpeg']['present'] else 'Assente'}")
-    print(f"SoX: {'Presente' if deps_status['sox']['present'] else 'Assente'}")
+    print(f"FFmpeg: {'Present' if deps_status['ffmpeg']['present'] else 'Missing'}")
+    print(f"SoX: {'Present' if deps_status['sox']['present'] else 'Missing'}")
     print("="*60 + "\n")
 else:
     print("\n" + "="*60)
-    print("⚠️ Verifica dipendenze non disponibile (modulo mancante)")
+    print("⚠️ Dependency check unavailable (missing module)")
     print("="*60 + "\n")
 
 # --- Global settings or constants for Gradio ---
 import threading
 
-# Flag per controllo stop (thread-safe)
+# Flag for stop control (thread-safe)
 stop_event = threading.Event()
 
 def set_stop_flag():
-    """Imposta il flag di stop"""
+    """Set the stop flag"""
     stop_event.set()
-    logging.info("Stop flag impostato")
-    return "Processo in arresto..."
+    logging.info("Stop flag set")
+    return "Process stopping..."
 
 def reset_stop_flag():
-    """Resetta il flag di stop"""
+    """Reset the stop flag"""
     stop_event.clear()
-    logging.info("Stop flag resettato")
-    return "Stop flag resettato"
+    logging.info("Stop flag reset")
+    return "Stop flag reset"
 
 def check_stop_flag():
-    """Controlla se il flag di stop è attivo"""
+    """Check if the stop flag is active"""
     return stop_event.is_set()
 
-# Rendi la lista dei modelli dinamica
+# Make model list dynamic
 if config.USE_PLUGIN_ARCHITECTURE:
-    # Carica i modelli abilitati dal registro dei plugin
+    # Load enabled models from plugin registry
     raw_models = plugin_manager.plugin_manager.list_available_models()
     
-    # Filtra: se ci sono modelli VibeVoice specifici, rimuovi "VibeVoice" generico
+    # Filter: if there are specific VibeVoice models, remove generic "VibeVoice"
     vibevoice_specific_models = [m for m in raw_models if m.startswith("VibeVoice-")]
     if vibevoice_specific_models and "VibeVoice" in raw_models:
         raw_models = [m for m in raw_models if m != "VibeVoice"]
     
-    # Aggiungi indicazione "(da scaricare)" per modelli Qwen3-TTS mancanti
+    # Add "(to download)" indication for missing Qwen3-TTS models
     TTS_MODELS = []
     for model in raw_models:
         if model.startswith("Qwen3-TTS-"):
-            # Estrai dimensione e tipo (es: "0.6B-Base", "1.7B-CustomVoice")
+            # Extract size and type (e.g.: "0.6B-Base", "1.7B-CustomVoice")
             parts = model.split("-")
             if len(parts) >= 4:
                 size_type = f"{parts[2]}-{parts[3]}"  # "0.6B-Base"
@@ -127,29 +127,29 @@ if config.USE_PLUGIN_ARCHITECTURE:
             
             model_key = f"Qwen3-TTS-{size_type}"
             
-            # Cerca in MODEL_ASSETS — usa "path" (non "dest") percorso diretto
+            # Search in MODEL_ASSETS — use "path" (not "dest") direct path
             model_path = None
             for asset_key, assets in config.MODEL_ASSETS.items():
                 if asset_key == model_key:
                     for asset in assets:
-                        # MODEL_ASSETS Qwen usa "path", non "dest"
+                        # MODEL_ASSETS Qwen uses "path", not "dest"
                         if "path" in asset:
                             model_path = asset["path"]
                             break
                     break
             
-            # Costruisci percorso assoluto
+            # Build absolute path
             if model_path:
                 abs_dest = os.path.join(config.BASE_PROJECT_DIR, model_path)
             else:
                 abs_dest = None
             
             if abs_dest and os.path.exists(abs_dest):
-                TTS_MODELS.append(model)  # modello presente
+                TTS_MODELS.append(model)  # model present
             else:
-                TTS_MODELS.append(f"{model} (da scaricare)")
+                    TTS_MODELS.append(f"{model} (to download)")
         elif model.startswith("VibeVoice-"):
-            # Verifica filesystem real-time tramite MODEL_ASSETS (NON il JSON statico)
+            # Verify filesystem real-time via MODEL_ASSETS (NOT the static JSON)
             vv_path = None
             for asset_key, assets in config.MODEL_ASSETS.items():
                 if asset_key == model:
@@ -160,20 +160,20 @@ if config.USE_PLUGIN_ARCHITECTURE:
                     break
             if vv_path:
                 vv_abs = os.path.join(config.BASE_PROJECT_DIR, vv_path)
-                # Verifica che la cartella ESISTA e contenga file essenziali
+                # Verify that the folder EXISTS and contains essential files
                 if os.path.exists(vv_abs) and os.listdir(vv_abs):
                     TTS_MODELS.append(model)
                 else:
-                    TTS_MODELS.append(f"{model} (da scaricare)")
+                    TTS_MODELS.append(f"{model} (to download)")
             else:
-                TTS_MODELS.append(model)  # non trovato in MODEL_ASSETS, passa comunque
+                TTS_MODELS.append(model)  # not found in MODEL_ASSETS, pass anyway
         else:
             TTS_MODELS.append(model)
-    print(f"INFO: Modalità Plugin ATTIVA. Modelli caricati: {TTS_MODELS}")
+    print(f"INFO: Plugin mode ACTIVE. Models loaded: {TTS_MODELS}")
 else:
-    # Mantieni la lista statica per retrocompatibilità
+    # Keep static list for backwards compatibility
     TTS_MODELS = ["XTTSv2", "Kokoro", "VibeVoice"]
-    print("INFO: Modalità Plugin DISATTIVATA. Utilizzo della lista modelli statica.")
+    print("INFO: Plugin mode DISABLED. Using static model list.")
 
 # --- Language definitions per model ---
 MODEL_LANGUAGES = {
@@ -218,9 +218,9 @@ def setup_file_logger(log_dir: str, base_filename: str = "generation") -> tuple[
         print(f"  ERROR: Failed to set up file logger at {log_path}: {e}")
         return logging.getLogger('dummy'), None
 
-# --- Funzioni per gestione errori recovery ---
+# --- Functions for error recovery management ---
 def save_failed_chunks_json(book_name: str, data: dict):
-    """Salva il file failed_chunks.json per un audiolibro."""
+    """Save the failed_chunks.json file for an audiobook."""
     import json
     book_dir = os.path.join("Generated_Audiobooks", book_name)
     os.makedirs(book_dir, exist_ok=True)
@@ -230,11 +230,11 @@ def save_failed_chunks_json(book_name: str, data: dict):
             json.dump(data, f, indent=2, ensure_ascii=False)
         return True
     except Exception as e:
-        logging.error(f"Errore salvataggio failed_chunks.json: {e}")
+        logging.error(f"Error saving failed_chunks.json: {e}")
         return False
 
 def load_failed_chunks_json(book_name: str):
-    """Carica il file failed_chunks.json per un audiolibro."""
+    """Load the failed_chunks.json file for an audiobook."""
     import json
     json_path = os.path.join("Generated_Audiobooks", book_name, "failed_chunks.json")
     if not os.path.exists(json_path):
@@ -243,12 +243,12 @@ def load_failed_chunks_json(book_name: str):
         with open(json_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception as e:
-        logging.error(f"Errore caricamento failed_chunks.json: {e}")
+        logging.error(f"Error loading failed_chunks.json: {e}")
         return None
 
 # --- Backend Helper Functions ---
 def update_language_dropdown(model, current_language):
-    base_model = model.split(" (da scaricare)")[0]
+    base_model = model.split(" (to download)")[0]
     if base_model.startswith("Qwen3-TTS-"):
         parts = base_model.split("-")
         if len(parts) >= 3:
@@ -270,7 +270,7 @@ def update_language_dropdown(model, current_language):
     return gr.update(choices=supported_langs, value=new_value)
 
 def update_voice_options_for_model(model, xtts_lang, kokoro_lang, vibevoice_lang):
-    """Aggiorna le opzioni voce in base al modello e alla lingua selezionata"""
+    """Update voice options based on selected model and language"""
     file_update = gr.update(visible=False, value=None, label="Upload Reference WAV (.wav)")
     dropdown_update = gr.update(visible=False, choices=[], value=None, label="Select Voice")
     try:
@@ -314,7 +314,7 @@ def update_qwen_mode_availability(selected_model):
     if not selected_model.startswith("Qwen3-TTS"):
         return gr.update(choices=[], value=None, interactive=False)
     base_dir = os.path.join(config.BASE_PROJECT_DIR, "audiobook_generator/tts_models/qwen3tts")
-    # Nomi ufficiali delle cartelle
+    # Official folder names
     has_base_0_6 = os.path.exists(os.path.join(base_dir, "Qwen3-TTS-12Hz-0.6B-Base"))
     has_base_1_7 = os.path.exists(os.path.join(base_dir, "Qwen3-TTS-12Hz-1.7B-Base"))
     has_custom_voice = os.path.exists(os.path.join(base_dir, "Qwen3-TTS-12Hz-1.7B-CustomVoice"))
@@ -330,9 +330,9 @@ def update_qwen_mode_availability(selected_model):
     for mode in all_modes:
         if mode in available_modes: choices_with_hint.append(mode)
         else:
-            if mode == "Custom Voice": choices_with_hint.append(f"Custom Voice (modello non scaricato)")
-            elif mode == "Voice Design": choices_with_hint.append(f"Voice Design (modello non scaricato)")
-            else: choices_with_hint.append(f"{mode} (modello non scaricato)")
+            if mode == "Custom Voice": choices_with_hint.append(f"Custom Voice (model not downloaded)")
+            elif mode == "Voice Design": choices_with_hint.append(f"Voice Design (model not downloaded)")
+            else: choices_with_hint.append(f"{mode} (model not downloaded)")
     return gr.update(choices=choices_with_hint, value=default_mode, interactive=True)
 
 def update_qwen_clone_text_visibility(is_fast_mode):
@@ -342,7 +342,7 @@ def update_qwen_panel(selected_model):
     if not selected_model.startswith("Qwen3-TTS"):
         return [gr.update(visible=False), gr.update(choices=[], value=None, interactive=False), gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)]
     base_dir = os.path.join(config.BASE_PROJECT_DIR, "audiobook_generator/tts_models/qwen3tts")
-    # Nomi ufficiali delle cartelle
+    # Official folder names
     has_base = os.path.exists(os.path.join(base_dir, "Qwen3-TTS-12Hz-0.6B-Base")) or os.path.exists(os.path.join(base_dir, "Qwen3-TTS-12Hz-1.7B-Base"))
     has_custom = os.path.exists(os.path.join(base_dir, "Qwen3-TTS-12Hz-1.7B-CustomVoice"))
     has_design = os.path.exists(os.path.join(base_dir, "Qwen3-TTS-12Hz-1.7B-VoiceDesign"))
@@ -363,9 +363,9 @@ def update_qwen_panel(selected_model):
         default_mode = available_modes[0] if available_modes else None
     choices = []
     for mode in ["Custom Voice", "Voice Clone", "Voice Design"]:
-        if mode == "Custom Voice" and not has_custom: choices.append("Custom Voice (modello non scaricato)")
-        elif mode == "Voice Design" and not has_design: choices.append("Voice Design (modello non scaricato)")
-        elif mode == "Voice Clone" and not has_base: choices.append("Voice Clone (modello non scaricato)")
+        if mode == "Custom Voice" and not has_custom: choices.append("Custom Voice (model not downloaded)")
+        elif mode == "Voice Design" and not has_design: choices.append("Voice Design (model not downloaded)")
+        elif mode == "Voice Clone" and not has_base: choices.append("Voice Clone (model not downloaded)")
         else: choices.append(mode)
     show_custom = default_mode == "Custom Voice"
     show_clone = default_mode == "Voice Clone"
@@ -373,9 +373,9 @@ def update_qwen_panel(selected_model):
     return [gr.update(visible=True), gr.update(choices=choices, value=default_mode, interactive=True), gr.update(visible=show_custom), gr.update(visible=show_clone), gr.update(visible=show_design)]
 
 def toggle_select_all_chapters(chapter_list, current_selection):
-    if not chapter_list: return gr.update(value=[]), gr.update(value="Seleziona tutto")
-    if current_selection and len(current_selection) == len(chapter_list): return gr.update(value=[]), gr.update(value="Seleziona tutto")
-    else: return gr.update(value=chapter_list), gr.update(value="Deseleziona tutto")
+    if not chapter_list: return gr.update(value=[]), gr.update(value="Select all")
+    if current_selection and len(current_selection) == len(chapter_list): return gr.update(value=[]), gr.update(value="Select all")
+    else: return gr.update(value=chapter_list), gr.update(value="Deselect all")
 
 def invert_chapter_selection(chapter_list, current_selection):
     if not chapter_list: return gr.update(value=[])
@@ -385,7 +385,7 @@ def invert_chapter_selection(chapter_list, current_selection):
     return gr.update(value=inverted)
 
 def get_model_specific_config(model_name):
-    base_model = model_name.split(" (da scaricare)")[0]
+    base_model = model_name.split(" (to download)")[0]
     if base_model in config.TTS_MODEL_CONFIG: return config.TTS_MODEL_CONFIG[base_model]
     if base_model.startswith("VibeVoice"):
         if base_model in config.TTS_MODEL_CONFIG: return config.TTS_MODEL_CONFIG[base_model]
@@ -397,8 +397,8 @@ def get_model_specific_config(model_name):
     return {}
 
 def update_model_specific_options(selected_model, xtts_lang, kokoro_lang, vibevoice_lang, current_chunking_strategy, current_max_chars, current_separator, current_replace_guillemets):
-    # Estrai il nome base (rimuovi "(da scaricare)" se presente)
-    base_model = selected_model.split(" (da scaricare)")[0]
+    # Extract base name (remove "(to download)" if present)
+    base_model = selected_model.split(" (to download)")[0]
     
     model_config = get_model_specific_config(selected_model)
     updates = []
@@ -426,7 +426,7 @@ def update_model_specific_options(selected_model, xtts_lang, kokoro_lang, vibevo
     if base_model == "XTTSv2": updates.append(gr.update(value=True))
     else: updates.append(gr.update(value=False))
     
-    # Verifica stato installazione modello in tempo reale
+    # Real-time model installation status check
     status_msg = ""
     if base_model.startswith("VibeVoice") or base_model.startswith("Qwen3-TTS") or base_model in ["XTTSv2", "Kokoro"]:
         try:
@@ -443,8 +443,8 @@ def update_model_specific_options(selected_model, xtts_lang, kokoro_lang, vibevo
         current_lang = kokoro_lang if kokoro_lang else config.DEFAULT_LANGUAGE
         lang_limits = model_config["char_limits_by_lang"].get(current_lang, {})
         if "note" in lang_limits: note_text += f"\n\n📝 {lang_limits['note']}"
-        if "max" in lang_limits: note_text += f"\n✅ Limite caratteri automaticamente impostato a {lang_limits['max']} (circa {int(lang_limits['max']/6)}-{int(lang_limits['max']/5)} parole)."
-    if base_model == "XTTSv2": note_text += "\n\nℹ️ Replace Guillemets e Pipe separator sono attivati automaticamente per XTTSv2, che non interpreta bene alcuni simboli."
+        if "max" in lang_limits: note_text += f"\n✅ Character limit automatically set to {lang_limits['max']} (about {int(lang_limits['max']/6)}-{int(lang_limits['max']/5)} words)."
+    if base_model == "XTTSv2": note_text += "\n\nℹ️ Replace Guillemets and Pipe separator are automatically enabled for XTTSv2, which does not interpret some symbols well."
     updates.append(gr.update(value=status_msg + note_text, visible=bool(status_msg or note_text)))
     return tuple(updates)
 
@@ -466,7 +466,7 @@ def update_language_dropdown_position(model):
 def get_model_status(model_name):
     if model_name.startswith("Qwen3-TTS"):
         base_dir = os.path.join(config.BASE_PROJECT_DIR, "audiobook_generator/tts_models/qwen3tts")
-        # Nomi ufficiali delle cartelle
+    # Official folder names
         name_map = {
             "Qwen3-TTS-0.6B-Base": "Qwen3-TTS-12Hz-0.6B-Base",
             "Qwen3-TTS-1.7B-Base": "Qwen3-TTS-12Hz-1.7B-Base",
@@ -475,44 +475,44 @@ def get_model_status(model_name):
         }
         folder_name = name_map.get(model_name)
         if not folder_name:
-            return f"❌ Modello '{model_name}' non riconosciuto"
+            return f"❌ Model '{model_name}' not recognized"
         path = os.path.join(base_dir, folder_name)
-        if os.path.exists(os.path.join(path, "config.json")): return f"✅ **{model_name}**: Presente"
-        else: return f"❌ **{model_name}**: Mancante (clicca 'Scarica' per installare)"
+        if os.path.exists(os.path.join(path, "config.json")): return f"✅ **{model_name}**: Present"
+        else: return f"❌ **{model_name}**: Missing (click 'Download' to install)"
     elif model_name.startswith("VibeVoice"):
         base_dir = "audiobook_generator/tts_models/vibevoice"
-        # Path reali (non i nomi dei modelli!)
+        # Real paths (not model names!)
         if model_name == "VibeVoice-7B": target_dir = os.path.join(base_dir, "7B")
         elif model_name == "VibeVoice-1.5B": target_dir = os.path.join(base_dir, "1.5B")
         elif model_name == "VibeVoice-Realtime-0.5B": target_dir = os.path.join(base_dir, "0.5B")
         else: target_dir = os.path.join(base_dir, "model")
-        # Verifica file essenziali: config sempre richiesto, model puo' essere .safetensors O .safetensors.index.json
+        # Verify essential files: config always required, model can be .safetensors OR .safetensors.index.json
         if not os.path.exists(os.path.join(target_dir, "config.json")):
-            return f"❌ **{model_name}**: Mancante (config.json assente)"
+            return f"❌ **{model_name}**: Missing (config.json absent)"
         if not os.path.exists(os.path.join(target_dir, "preprocessor_config.json")):
-            return f"❌ **{model_name}**: Mancante (preprocessor_config.json assente)"
+            return f"❌ **{model_name}**: Missing (preprocessor_config.json absent)"
         has_model = os.path.exists(os.path.join(target_dir, "model.safetensors")) or \
                     os.path.exists(os.path.join(target_dir, "model.safetensors.index.json"))
-        if has_model: return f"✅ **{model_name}**: Presente"
-        else: return f"❌ **{model_name}**: Mancante (file modello assente)"
+        if has_model: return f"✅ **{model_name}**: Present"
+        else: return f"❌ **{model_name}**: Missing (model file absent)"
     elif model_name == "XTTSv2":
         base_dir = "audiobook_generator/tts_models/xttsv2"
-        if os.path.exists(base_dir): return f"✅ **XTTSv2**: Presente"
-        else: return f"❌ **XTTSv2**: Mancante (clicca 'Scarica' per installare)"
+        if os.path.exists(base_dir): return f"✅ **XTTSv2**: Present"
+        else: return f"❌ **XTTSv2**: Missing (click 'Download' to install)"
     elif model_name == "Kokoro":
         base_dir = "audiobook_generator/tts_models/kokoro/models"
-        if os.path.exists(base_dir): return f"✅ **Kokoro**: Presente"
-        else: return f"❌ **Kokoro**: Mancante (clicca 'Scarica' per installare)"
-    else: return f"ℹ️ **{model_name}**: Stato non disponibile"
+        if os.path.exists(base_dir): return f"✅ **Kokoro**: Present"
+        else: return f"❌ **Kokoro**: Missing (click 'Download' to install)"
+    else: return f"ℹ️ **{model_name}**: Status unavailable"
 
 def get_all_models_status():
     status_lines = []
-    status_lines.append("### 📦 Modelli Qwen3-TTS")
+    status_lines.append("### 📦 Qwen3-TTS Models")
     for model in ["Qwen3-TTS-0.6B-Base", "Qwen3-TTS-1.7B-Base", "Qwen3-TTS-1.7B-CustomVoice", "Qwen3-TTS-1.7B-VoiceDesign"]:
         status_lines.append(get_model_status(model))
-    # Tokenizer è incluso dentro ogni directory del modello Qwen (tokenizer_config.json, merges.txt, speech_tokenizer/)
-    # NON esiste una cartella tokenizer/ separata — non serve check qui
-    status_lines.append("\n### 🎵 Altri Modelli")
+    # Tokenizer is included in each Qwen model directory (tokenizer_config.json, merges.txt, speech_tokenizer/)
+    # There is NO separate tokenizer/ directory — no check needed here
+    status_lines.append("\n### 🎵 Other Models")
     for model in ["VibeVoice-7B", "VibeVoice-1.5B", "VibeVoice-Realtime-0.5B", "XTTSv2", "Kokoro"]:
         status_lines.append(get_model_status(model))
     return "\n".join(status_lines)
@@ -563,7 +563,7 @@ def _safe_top_k_conversion(value, default=20):
     except (ValueError, TypeError): return default
 
 def _prepare_tts_config(selected_lang, selected_model, xtts_wav_file_obj, piper_kokoro_voice_desc, xtts_temp, xtts_speed_in, xtts_rep_pen, xtts_top_k, xtts_top_p, xtts_length_penalty, xtts_gpt_cond_len, piper_speed_in, piper_noise_scale, piper_noise_scale_w, kokoro_speed_in, vibevoice_temp=None, vibevoice_top_p=None, vibevoice_cfg_scale=None, vibevoice_diffusion_steps=None, vibevoice_speed_factor=None, vibevoice_seed=None, vibevoice_use_sampling=None, vibevoice_top_k=None, vibevoice_realtime_speaker=None, vibevoice_realtime_cfg_scale=None, vibevoice_realtime_ddpm_steps=None, vibevoice_realtime_temperature=None, vibevoice_realtime_top_p=None, vibevoice_realtime_top_k=None, vibevoice_realtime_seed_number=None):
-    base_model = selected_model.split(" (da scaricare)")[0]
+    base_model = selected_model.split(" (to download)")[0]
     technical_voice_id, final_tts_params, error_message = None, {}, None
     try:
         if base_model in ["XTTSv2"] or (base_model.startswith("VibeVoice") and not base_model == "VibeVoice-Realtime-0.5B"):
@@ -594,7 +594,7 @@ def _prepare_tts_config(selected_lang, selected_model, xtts_wav_file_obj, piper_
                 base_dir = os.path.join(config.BASE_PROJECT_DIR, "audiobook_generator/tts_models/qwen3tts")
                 if model_size == "0.6B": model_type = "base"
                 else:
-                    # Nomi ufficiali delle cartelle
+    # Official folder names
                     if os.path.exists(os.path.join(base_dir, "Qwen3-TTS-12Hz-1.7B-CustomVoice")): model_type = "custom_voice"
                     elif os.path.exists(os.path.join(base_dir, "Qwen3-TTS-12Hz-1.7B-VoiceDesign")): model_type = "voice_design"
                     else: model_type = "base"
@@ -606,7 +606,7 @@ def _prepare_tts_config(selected_lang, selected_model, xtts_wav_file_obj, piper_
 def _load_tts_model_instance(selected_model, language, technical_voice_id):
     start_time = time.time()
     try:
-        base_model = selected_model.split(" (da scaricare)")[0]
+        base_model = selected_model.split(" (to download)")[0]
         model_instance = plugin_manager.plugin_manager.load_model(base_model, language_code=language if base_model == "Kokoro" else None)
         if not model_instance: raise RuntimeError(f"Model loader returned None for {base_model}.")
         logging.info(f"TTS model loaded in {time.time() - start_time:.2f}s.")
@@ -616,8 +616,8 @@ def _load_tts_model_instance(selected_model, language, technical_voice_id):
         return None, str(e)
 
 def _process_ebook_chapters(epub_filepath, book_final_output_dir, book_chunk_output_dir, model_instance_wrapper, selected_lang, selected_model, technical_voice_id, final_tts_params, final_proc_opts, selected_chapter_keys, update_callback, logger):
-    # Estrai il nome base del modello (rimuovi "(da scaricare)" se presente)
-    base_model = selected_model.split(" (da scaricare)")[0]
+    # Extract base model name (remove "(to download)" if present)
+    base_model = selected_model.split(" (to download)")[0]
     
     def _send_update(message, level=logging.INFO):
         if update_callback:
@@ -635,12 +635,12 @@ def _process_ebook_chapters(epub_filepath, book_final_output_dir, book_chunk_out
     total_chapters = len(actual_keys_to_process)
     yield from _send_update(f"Starting processing for {total_chapters} chapters...")
 
-    failed_chunks_data = {"book_title": os.path.basename(book_final_output_dir), "conversion_date": datetime.now().strftime("%Y-%m-%d"), "total_chapters": total_chapters, "total_chunks": 0, "failed_chunks_count": 0, "chapters_with_errors": {}, "failed_chunks_text": {}, "error_types": {}, "model_used": selected_model.split(" (da scaricare)")[0] if " (da scaricare)" in selected_model else selected_model, "language": selected_lang, "tts_params": final_tts_params, "technical_voice_id": technical_voice_id, "proc_opts": final_proc_opts, "note": "File generato automaticamente dal sistema recovery errori."}
+    failed_chunks_data = {"book_title": os.path.basename(book_final_output_dir), "conversion_date": datetime.now().strftime("%Y-%m-%d"), "total_chapters": total_chapters, "total_chunks": 0, "failed_chunks_count": 0, "chapters_with_errors": {}, "failed_chunks_text": {}, "error_types": {}, "model_used": selected_model.split(" (to download)")[0] if " (to download)" in selected_model else selected_model, "language": selected_lang, "tts_params": final_tts_params, "technical_voice_id": technical_voice_id, "proc_opts": final_proc_opts,     "note": "File automatically generated by the error recovery system."}
     
     for i, chapter_key in enumerate(actual_keys_to_process):
         if check_stop_flag():
-            logger.info("Stop flag rilevato, interruzione della generazione.")
-            yield from _send_update("Generazione interrotta dall'utente.")
+            logger.info("Stop flag detected, interrupting generation.")
+            yield from _send_update("Generation interrupted by user.")
             break
         yield from _send_update(f"Processing Chapter {i+1}/{total_chapters}: '{chapter_key}'...")
         chapter_text = chapters_data.get(chapter_key, "").strip()
@@ -682,8 +682,8 @@ def _process_ebook_chapters(epub_filepath, book_final_output_dir, book_chunk_out
                 generated_chunk_files.append(chunk_output_path)
             
             if check_stop_flag():
-                logger.info("Stop flag rilevato durante sintesi chunk, interruzione.")
-                yield from _send_update("Generazione interrotta dall'utente.")
+                logger.info("Stop flag detected during chunk synthesis, interrupting.")
+                yield from _send_update("Generation interrupted by user.")
                 break
 
         if chapter_failed_indices:
@@ -706,12 +706,12 @@ def _process_ebook_chapters(epub_filepath, book_final_output_dir, book_chunk_out
         logger.info(f"Saved failed_chunks.json with {failed_chunks_data['failed_chunks_count']} failed chunks.")
             
     final_message = f"Processing complete. Success: {processed_count}, Failed: {len(failed_chapters)}, Skipped: {skipped_count}"
-    if failed_chunks_data["failed_chunks_count"] > 0: final_message += f"\n⚠️ {failed_chunks_data['failed_chunks_count']} chunk falliti salvati per recovery."
+    if failed_chunks_data["failed_chunks_count"] > 0: final_message += f"\n⚠️ {failed_chunks_data['failed_chunks_count']} failed chunks saved for recovery."
     return final_message, final_mp3s
 
 def run_demo_gradio(demo_text, selected_model, xtts_wav_file, piper_kokoro_voice, xtts_temp, xtts_speed, xtts_rep_pen, piper_speed, piper_noise_scale, piper_noise_scale_w, kokoro_speed, replace_guillemets_demo, separator_dropdown, qwen_mode_radio, qwen_custom_voice_dropdown, qwen_custom_language_dropdown, qwen_custom_instruct_textbox, qwen_clone_ref_audio, qwen_clone_ref_text, qwen_clone_fast_mode_checkbox, qwen_clone_language_dropdown, qwen_design_instruct_textbox, qwen_design_language_dropdown, qwen_speed_slider, qwen_pitch_slider, qwen_volume_slider, qwen_temperature_slider, qwen_top_p_slider, qwen_top_k_slider, qwen_repetition_penalty_slider, qwen_seed_number, vibevoice_temp, vibevoice_top_p, vibevoice_cfg_scale, vibevoice_diffusion_steps, vibevoice_speed_factor, vibevoice_seed, vibevoice_use_sampling, vibevoice_top_k, xtts_lang, kokoro_lang, vibevoice_lang, vibevoice_realtime_speaker, vibevoice_realtime_cfg_scale, vibevoice_realtime_ddpm_steps, vibevoice_realtime_seed, vibevoice_realtime_temperature, vibevoice_realtime_top_p, vibevoice_realtime_top_k, xtts_top_k_slider, xtts_top_p_slider, xtts_length_penalty_slider, xtts_gpt_cond_len_slider):
-    # Estrai il nome base del modello (rimuovi "(da scaricare)" se presente)
-    base_model = selected_model.split(" (da scaricare)")[0]
+    # Extract base model name (remove "(to download)" if present)
+    base_model = selected_model.split(" (to download)")[0]
     
     yield "Starting demo...", gr.update(value=None, visible=False)
     try:
@@ -726,19 +726,19 @@ def run_demo_gradio(demo_text, selected_model, xtts_wav_file, piper_kokoro_voice
         if error: raise ValueError(error)
         
         if selected_model.startswith("Qwen3-TTS"):
-            final_tts_params["qwen_active_tab"] = "Voce Singola"
+            final_tts_params["qwen_active_tab"] = "Single Voice"
             final_tts_params["qwen_mode"] = {"Custom Voice": "custom", "Voice Clone": "clone", "Voice Design": "design"}.get(qwen_mode_radio)
             if final_tts_params["qwen_mode"] is None: final_tts_params["qwen_mode"] = "custom"
             qwen_params = {"temperature": qwen_temperature_slider, "top_p": qwen_top_p_slider, "top_k": _safe_top_k_conversion(qwen_top_k_slider), "repetition_penalty": _safe_float_conversion(qwen_repetition_penalty_slider, default=1.1, min_val=0.001), "seed": _safe_int_conversion(qwen_seed_number), "speed": qwen_speed_slider, "pitch": qwen_pitch_slider, "volume": qwen_volume_slider, "model_size": final_tts_params.get("qwen_model_size", "0.6B"), "model_type": final_tts_params.get("qwen_model_type", "base")}
             if final_tts_params["qwen_mode"] == "custom":
                 qwen_params.update({"speaker": qwen_custom_voice_dropdown, "language": qwen_custom_language_dropdown, "instruct": qwen_custom_instruct_textbox})
             elif final_tts_params["qwen_mode"] == "clone":
-                if not qwen_clone_ref_audio: raise ValueError("Per la modalità Voice Clone, è necessario caricare un file audio di riferimento.")
+                if not qwen_clone_ref_audio: raise ValueError("For Voice Clone mode, a reference audio file must be uploaded.")
                 ref_audio_path = _extract_file_path(qwen_clone_ref_audio)
                 fast_mode = bool(qwen_clone_fast_mode_checkbox)
                 qwen_params.update({"ref_audio": ref_audio_path, "x_vector_only_mode": fast_mode})
                 if not fast_mode:
-                    if not qwen_clone_ref_text: raise ValueError("Per la modalità Clone a qualità massima, è necessaria la trascrizione del testo.")
+                    if not qwen_clone_ref_text: raise ValueError("For maximum quality Clone mode, the text transcription is required.")
                     qwen_params["ref_text"] = qwen_clone_ref_text
             elif final_tts_params["qwen_mode"] == "design":
                 language_val = qwen_design_language_dropdown
@@ -781,13 +781,13 @@ def run_generation(selected_model, xtts_wav_file, piper_kokoro_voice, xtts_temp,
     yield from _update_status("Starting generation process...")
     if HAS_DEPENDENCIES_TAB:
         deps_status = dependencies_tab.check_external_dependencies()
-        ffmpeg_status = "✅ Presente" if deps_status["ffmpeg"]["present"] else "❌ Mancante"
-        sox_status = "✅ Presente" if deps_status["sox"]["present"] else "⚠️ Mancante"
-        yield from _update_status(f"📦 Stato dipendenze: FFmpeg: {ffmpeg_status}, SoX: {sox_status}")
-        if not deps_status["ffmpeg"]["present"]: yield from _update_status("⚠️ FFmpeg non trovato. L'app userà un metodo alternativo (più lento) per unire i file audio.")
-        if not deps_status["sox"]["present"]: yield from _update_status("⚠️ SoX non trovato. Alcune funzionalità audio potrebbero non essere disponibili.")
+        ffmpeg_status = "✅ Present" if deps_status["ffmpeg"]["present"] else "❌ Missing"
+        sox_status = "✅ Present" if deps_status["sox"]["present"] else "⚠️ Missing"
+        yield from _update_status(f"📦 Dependency status: FFmpeg: {ffmpeg_status}, SoX: {sox_status}")
+        if not deps_status["ffmpeg"]["present"]: yield from _update_status("⚠️ FFmpeg not found. The app will use an alternative method (slower) to merge audio files.")
+        if not deps_status["sox"]["present"]: yield from _update_status("⚠️ SoX not found. Some audio features may not be available.")
     else:
-        yield from _update_status("ℹ️ Verifica dipendenze non disponibile (modulo mancante)")
+        yield from _update_status("ℹ️ Dependency check unavailable (missing module)")
     try:
         selected_lang = config.DEFAULT_LANGUAGE
         if selected_model == "XTTSv2" and xtts_lang: selected_lang = xtts_lang
@@ -800,18 +800,18 @@ def run_generation(selected_model, xtts_wav_file, piper_kokoro_voice, xtts_temp,
         if error: raise ValueError(error)
         
         if selected_model.startswith("Qwen3-TTS"):
-            final_tts_params["qwen_active_tab"] = "Voce Singola"
+            final_tts_params["qwen_active_tab"] = "Single Voice"
             final_tts_params["qwen_mode"] = {"Custom Voice": "custom", "Voice Clone": "clone", "Voice Design": "design"}.get(qwen_mode_radio)
             qwen_params = {"temperature": qwen_temperature_slider, "top_p": qwen_top_p_slider, "top_k": _safe_top_k_conversion(qwen_top_k_slider), "repetition_penalty": _safe_float_conversion(qwen_repetition_penalty_slider, default=1.1, min_val=0.001), "seed": _safe_int_conversion(qwen_seed_number), "speed": qwen_speed_slider, "pitch": qwen_pitch_slider, "volume": qwen_volume_slider, "model_size": final_tts_params.get("qwen_model_size", "0.6B"), "model_type": final_tts_params.get("qwen_model_type", "base")}
             if final_tts_params["qwen_mode"] == "custom":
                 qwen_params.update({"speaker": qwen_custom_voice_dropdown, "language": qwen_custom_language_dropdown, "instruct": qwen_custom_instruct_textbox})
             elif final_tts_params["qwen_mode"] == "clone":
-                if not qwen_clone_ref_audio: raise ValueError("Per la modalità Voice Clone, è necessario caricare un file audio di riferimento.")
+                if not qwen_clone_ref_audio: raise ValueError("For Voice Clone mode, a reference audio file must be uploaded.")
                 ref_audio_path = _extract_file_path(qwen_clone_ref_audio)
                 fast_mode = bool(qwen_clone_fast_mode_checkbox)
                 qwen_params.update({"ref_audio": ref_audio_path, "x_vector_only_mode": fast_mode})
                 if not fast_mode:
-                    if not qwen_clone_ref_text: raise ValueError("Per la modalità Clone a qualità massima, è necessaria la trascrizione del testo.")
+                    if not qwen_clone_ref_text: raise ValueError("For maximum quality Clone mode, the text transcription is required.")
                     qwen_params["ref_text"] = qwen_clone_ref_text
             elif final_tts_params["qwen_mode"] == "design":
                 language_val = qwen_design_language_dropdown
@@ -844,7 +844,7 @@ def run_generation(selected_model, xtts_wav_file, piper_kokoro_voice, xtts_temp,
         has_failed_chunks = os.path.exists(os.path.join(book_final_output_dir, "failed_chunks.json"))
         if delete_chunks and os.path.isdir(book_chunk_output_dir):
             if has_failed_chunks:
-                yield from _update_status("⚠️ Chunk falliti rilevati. Directory chunk preservata per recovery.")
+                yield from _update_status("⚠️ Failed chunks detected. Chunk directory preserved for recovery.")
                 status_log.append("Cleanup skipped (failed chunks present).")
             else:
                 yield from _update_status("Cleaning up intermediate chunk files...")
@@ -961,7 +961,7 @@ with gr.Blocks(title="Audiobook Generator EVO") as app:
 
     app.queue()
 
-    # ### GESTIONE DEGLI EVENTI ###
+    # ### EVENT HANDLING ###
     model_radio.change(fn=update_parameter_visibility, inputs=[model_radio], outputs=[xtts_params_group, piper_params_group, kokoro_params_group, qwen_params_group, vibevoice_params_group, vibevoice_realtime_params_group])
     chunking_strategy_radio.change(fn=update_chunking_options_visibility, inputs=[chunking_strategy_radio], outputs=[word_count_group, char_limit_group])
     epub_upload.upload(fn=handle_epub_upload, inputs=[epub_upload], outputs=[audiobook_title_textbox, chapter_list_state, epub_load_notification, chapter_selector])

@@ -1,33 +1,33 @@
-# ATTENZIONE: Questo script è autonomo e non deve importare nulla dal progetto principale.
+# WARNING: This script is standalone and must not import anything from the main project.
 import sys
 import json
 import os
 import logging
 import time
 
-# --- Configurazione Cache HuggingFace per Portabilità ---
-# Imposta la cache dei modelli HuggingFace nella directory del progetto
-# Usa percorso relativo per garantire portabilità multipiattaforma
+# --- HuggingFace Cache Configuration for Portability ---
+# Set HuggingFace model cache in the project directory
+# Use relative path to ensure cross-platform portability
 HF_CACHE_DIR = os.path.join('audiobook_generator', 'tts_models', 'xttsv2')
 os.environ['HF_HOME'] = HF_CACHE_DIR
 os.environ['TRANSFORMERS_CACHE'] = HF_CACHE_DIR
 os.environ['HF_DATASETS_CACHE'] = HF_CACHE_DIR
 
-# Setup di un logger dedicato per il subprocess
+# Setup of a dedicated logger for the subprocess
 log_dir = os.path.join('audiobook_generator', 'Logs')
 os.makedirs(log_dir, exist_ok=True)
 log_file = os.path.join(log_dir, 'xttsv2_subprocess.log')
 logging.basicConfig(level=logging.INFO, filename=log_file, filemode='a',
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
-logging.info(f"Cache HuggingFace configurata su: {HF_CACHE_DIR}")
+logging.info(f"HuggingFace cache configured on: {HF_CACHE_DIR}")
 
 def main():
-    # --- Reindirizzamento stdout a stderr per evitare output non-JSON ---
-    # Salva il riferimento originale a stdout
+    # --- Redirect stdout to stderr to avoid non-JSON output ---
+    # Save original stdout reference
     original_stdout = sys.stdout
     
-    # Crea un redirector che scrive su stderr
+    # Create a redirector that writes to stderr
     class StdoutToStderr:
         def write(self, text):
             sys.stderr.write(text)
@@ -35,16 +35,16 @@ def main():
         def flush(self):
             sys.stderr.flush()
     
-    # Reindirizza stdout a stderr
+    # Redirect stdout to stderr
     sys.stdout = StdoutToStderr()
     
     try:
-        # Importa torch solo quando necessario (per logging GPU)
+        # Import torch only when needed (for GPU logging)
         import torch
         
-        # 1. Legge l'input JSON da stdin
+        # 1. Read JSON input from stdin
         input_data = json.load(sys.stdin)
-        logging.info(f"Ricevuto job XTTSv2: {input_data}")
+        logging.info(f"Received XTTSv2 job: {input_data}")
         
         text = input_data['text']
         output_path = input_data['output_path']
@@ -57,9 +57,9 @@ def main():
         sentence_separator = input_data.get('sentence_separator', ".")
         max_retries = int(input_data.get('max_retries', 3))
         
-        logging.info(f"Parametri XTTSv2: language={language}, speaker_wav={speaker_wav}, temperature={temperature}, speed={speed}")
+        logging.info(f"XTTSv2 parameters: language={language}, speaker_wav={speaker_wav}, temperature={temperature}, speed={speed}")
         
-        # Log dettagliato GPU
+        # Detailed GPU logging
         logging.info(f"Torch version: {torch.__version__}")
         logging.info(f"CUDA available: {torch.cuda.is_available()}")
         if torch.cuda.is_available():
@@ -67,59 +67,59 @@ def main():
             for i in range(torch.cuda.device_count()):
                 logging.info(f"  Device {i}: {torch.cuda.get_device_name(i)}")
         else:
-            logging.warning("CUDA non disponibile. Il modello verrà caricato su CPU.")
+            logging.warning("CUDA not available. The model will be loaded on CPU.")
         
-        # Importa TTS (dipendenza del venv isolato)
+        # Import TTS (isolated venv dependency)
         try:
             from TTS.api import TTS
         except ImportError as e:
-            error_msg = f"ImportError: {e}. Assicurati che TTS sia installato nel venv isolato."
+            error_msg = f"ImportError: {e}. Make sure TTS is installed in the isolated venv."
             logging.error(error_msg)
             sys.stdout = original_stdout
             send_response({"status": "error", "message": error_msg})
             return
         
-        # Caricamento modello con device appropriato
+        # Load model with appropriate device
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        logging.info(f"Caricamento modello XTTSv2 su device '{device}'...")
+        logging.info(f"Loading XTTSv2 model on device '{device}'...")
         
-        # Funzione per caricare il modello XTTSv2 da path locale
+        # Function to load XTTSv2 model from local path
         def load_xtts_model():
-            # base: AudiobookGenerator_CARTELLA DI LAVORO (4 livelli up da synthesize_subprocess.py)
+            # base: AudiobookGenerator_WORKING_DIR (4 levels up from synthesize_subprocess.py)
             base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
             model_dir = os.path.join(base_dir, 'audiobook_generator', 'tts_models', 'xttsv2')
             config_path = os.path.join(model_dir, 'config.json')
             
-            logging.info(f"Caricamento modello XTTSv2 da directory: {model_dir}")
+            logging.info(f"Loading XTTSv2 model from directory: {model_dir}")
             logging.info(f"  - config: {config_path}")
             logging.info(f"  - model (dir): {model_dir}")
             
             try:
-                # Passa la DIRECTORY a model_path — Coqui fa os.path.join(model_path, "model.pth") internamente
+                # Pass the DIRECTORY to model_path — Coqui does os.path.join(model_path, "model.pth") internally
                 return TTS(model_path=model_dir, config_path=config_path, gpu=(device == 'cuda'))
             except Exception as e:
-                logging.error(f"Errore nel caricamento modello XTTSv2: {e}")
+                logging.error(f"Error loading XTTSv2 model: {e}")
                 raise
         
         try:
             model = load_xtts_model()
-            logging.info(f"Modello XTTSv2 caricato con successo.")
+            logging.info(f"XTTSv2 model loaded successfully.")
             logging.info(f"is_multi_speaker={getattr(model, 'is_multi_speaker', '?')}, speakers={getattr(model, 'speakers', '?')}")
         except Exception as e:
-            error_msg = f"ERRORE nel caricamento modello XTTSv2: {e}"
+            error_msg = f"ERROR loading XTTSv2 model: {e}"
             logging.error(error_msg, exc_info=True)
             sys.stdout = original_stdout
             send_response({"status": "error", "message": error_msg})
             return
         
-        # Preprocess text: sostituisce separatore se diverso da "."
+        # Preprocess text: replace separator if different from "."
         processed_text = text.replace(".", sentence_separator) if sentence_separator != "." else text
         
-        # Tentativi di sintesi con retry
+        # Synthesis attempts with retry
         success = False
         for attempt in range(max_retries):
             try:
-                logging.info(f"Sintesi chunk (tentativo {attempt+1}/{max_retries}): '{processed_text[:80]}...'")
+                logging.info(f"Synthesizing chunk (attempt {attempt+1}/{max_retries}): '{processed_text[:80]}...'")
                 
                 model.tts_to_file(
                     text=processed_text,
@@ -136,42 +136,42 @@ def main():
                     success = True
                     break
                 else:
-                    logging.warning(f"File di output non creato dopo il tentativo {attempt+1}.")
+                    logging.warning(f"Output file not created after attempt {attempt+1}.")
             
             except Exception as e:
-                logging.error(f"Sintesi XTTSv2 fallita (tentativo {attempt+1}/{max_retries}): {e}", exc_info=True)
+                logging.error(f"XTTSv2 synthesis failed (attempt {attempt+1}/{max_retries}): {e}", exc_info=True)
                 if attempt < max_retries - 1:
                     wait_time = 2 ** attempt
-                    logging.info(f"Attesa di {wait_time} secondi prima del prossimo tentativo...")
+                    logging.info(f"Waiting {wait_time} seconds before next attempt...")
                     time.sleep(wait_time)
                 else:
-                    logging.error(f"Tutti i {max_retries} tentativi sono falliti.")
+                    logging.error(f"All {max_retries} attempts failed.")
         
-        # Verifica output
+        # Verify output
         if success and os.path.exists(output_path) and os.path.getsize(output_path) > 1024:
-            logging.info(f"File generato con successo: {output_path}")
-            # Ripristina stdout originale prima di inviare la risposta JSON
+            logging.info(f"File generated successfully: {output_path}")
+            # Restore original stdout before sending JSON response
             sys.stdout = original_stdout
-            send_response({"status": "ok", "file": output_path, "message": "Sintesi XTTSv2 completata con successo."})
+            send_response({"status": "ok", "file": output_path, "message": "XTTSv2 synthesis completed successfully."})
         else:
-            error_msg = "File di output non creato o vuoto dopo tutti i tentativi."
+            error_msg = "Output file not created or empty after all attempts."
             logging.error(error_msg)
-            # Ripristina stdout originale prima di inviare la risposta JSON
+            # Restore original stdout before sending JSON response
             sys.stdout = original_stdout
             send_response({"status": "error", "message": error_msg})
             
     except Exception as e:
-        error_msg = f"Errore nel subprocess XTTSv2: {e}"
+        error_msg = f"Error in XTTSv2 subprocess: {e}"
         logging.error(error_msg, exc_info=True)
-        # Ripristina stdout originale prima di inviare la risposta JSON
+        # Restore original stdout before sending JSON response
         sys.stdout = original_stdout
         send_response({"status": "error", "message": error_msg})
     finally:
-        # Assicurati che stdout sia ripristinato anche in caso di eccezioni non catturate
+        # Ensure stdout is restored even for uncaught exceptions
         sys.stdout = original_stdout
 
 def send_response(data):
-    """Invia una risposta JSON a stdout."""
+    """Send a JSON response to stdout."""
     sys.stdout.write(json.dumps(data) + '\n')
     sys.stdout.flush()
 

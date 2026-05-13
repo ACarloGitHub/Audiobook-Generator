@@ -13,8 +13,8 @@
 # limitations under the License.
 
 """
-Modulo per la gestione delle dipendenze esterne (FFmpeg/SoX) nell'interfaccia Gradio.
-Questo modulo è progettato per essere importato in app_gradio.py per mantenere il codice modulare.
+Module for managing external dependencies (FFmpeg/SoX) in the Gradio interface.
+This module is designed to be imported in app_gradio.py to keep the code modular.
 """
 
 import gradio as gr
@@ -28,16 +28,16 @@ from typing import Dict, Any, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Importa configurazioni dal progetto
+# Import project configurations
 try:
     from audiobook_generator import config
 except ImportError:
-    # Fallback per importazioni dirette
+    # Fallback for direct imports
     import sys
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from audiobook_generator import config
 
-# Importa funzioni di setup
+# Import setup functions
 try:
     from setup import setup_helpers
     HAS_SETUP_HELPERS = True
@@ -46,7 +46,7 @@ except ImportError:
 
 
 def check_external_dependencies() -> Dict[str, Any]:
-    """Verifica la presenza di FFmpeg e SoX nel sistema."""
+    """Check for FFmpeg and SoX availability on the system."""
     dependencies_status = {
         "ffmpeg": {
             "present": False,
@@ -62,13 +62,13 @@ def check_external_dependencies() -> Dict[str, Any]:
         }
     }
     
-    # Verifica FFmpeg
+    # Check FFmpeg
     ffmpeg_path = shutil.which("ffmpeg")
     if ffmpeg_path:
         dependencies_status["ffmpeg"]["present"] = True
         dependencies_status["ffmpeg"]["path"] = ffmpeg_path
-        dependencies_status["ffmpeg"]["message"] = "✅ FFmpeg trovato nel PATH di sistema"
-        # Prova a ottenere versione
+        dependencies_status["ffmpeg"]["message"] = "✅ FFmpeg found in system PATH"
+        # Try to get version
         try:
             result = subprocess.run([ffmpeg_path, "-version"], capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
@@ -77,28 +77,28 @@ def check_external_dependencies() -> Dict[str, Any]:
         except Exception:
             pass
     else:
-        # Controlla se FFmpeg è nella cartella locale del progetto
+        # Check if FFmpeg is in the local project folder
         local_ffmpeg = config.DEFAULT_FFMPEG_EXE
         if os.path.exists(local_ffmpeg):
             dependencies_status["ffmpeg"]["present"] = True
             dependencies_status["ffmpeg"]["path"] = local_ffmpeg
-            dependencies_status["ffmpeg"]["message"] = "✅ FFmpeg trovato nella cartella locale del progetto"
+            dependencies_status["ffmpeg"]["message"] = "✅ FFmpeg found in local project folder"
         else:
             dependencies_status["ffmpeg"]["message"] = "❌ FFmpeg not found. The app will use an alternative (slower) method to merge audio files."
     
-    # Verifica SoX
+    # Check SoX
     sox_path = shutil.which("sox")
     if sox_path:
         dependencies_status["sox"]["present"] = True
         dependencies_status["sox"]["path"] = sox_path
-        dependencies_status["sox"]["message"] = "✅ SoX trovato nel PATH di sistema"
+        dependencies_status["sox"]["message"] = "✅ SoX found in system PATH"
     else:
-        # Controlla se SoX è nella cartella locale del progetto
+        # Check if SoX is in the local project folder
         local_sox = os.path.join(os.getcwd(), "sox", "bin", "sox.exe" if os.name == 'nt' else "sox")
         if os.path.exists(local_sox):
             dependencies_status["sox"]["present"] = True
             dependencies_status["sox"]["path"] = local_sox
-            dependencies_status["sox"]["message"] = "✅ SoX trovato nella cartella locale del progetto"
+            dependencies_status["sox"]["message"] = "✅ SoX found in local project folder"
         else:
             dependencies_status["sox"]["message"] = "⚠️ SoX not found. Some audio features may not be available."
     
@@ -134,14 +134,14 @@ def install_ffmpeg_wrapper() -> Tuple[str, bool]:
         return "❌ Cannot install FFmpeg: setup/helpers.py module not found.", False
     
     try:
-        # Esegui la funzione di setup
+        # Run setup function
         success = setup_helpers.setup_ffmpeg()
         if success:
-            return "✅ FFmpeg installato con successo!", True
+            return "✅ FFmpeg installed successfully!", True
         else:
-            return "⚠️ Installazione FFmpeg completata con avvisi. Verifica manualmente.", False
+            return "⚠️ FFmpeg installation completed with warnings. Verify manually.", False
     except Exception as e:
-        return f"❌ Errore durante l'installazione di FFmpeg: {str(e)}", False
+        return f"❌ Error during FFmpeg installation: {str(e)}", False
 
 
 def install_sox_wrapper() -> Tuple[str, bool]:
@@ -150,26 +150,26 @@ def install_sox_wrapper() -> Tuple[str, bool]:
         return "❌ Cannot install SoX: setup/helpers.py module not found.", False
     
     try:
-        # Esegui la funzione di setup
+        # Run setup function
         success = setup_helpers.setup_sox()
         if success:
-            return "✅ SoX installato con successo!", True
+            return "✅ SoX installed successfully!", True
         else:
-            return "⚠️ Installazione SoX completata con avvisi. Verifica manualmente.", False
+            return "⚠️ SoX installation completed with warnings. Verify manually.", False
     except Exception as e:
-        return f"❌ Errore durante l'installazione di SoX: {str(e)}", False
+        return f"❌ Error during SoX installation: {str(e)}", False
 
 
 def refresh_dependencies_status() -> Tuple[str, str, str]:
-    """Aggiorna lo stato delle dipendenze e restituisce messaggi aggiornati."""
+    """Refresh dependency status and return updated messages."""
     deps = check_external_dependencies()
     
-    # Crea messaggio di stato
+    # Create status message
     status_message = get_dependencies_status_message()
     
-    # Determina stato per FFmpeg e SoX (per colore pulsanti)
-    ffmpeg_status = "✅ Presente" if deps["ffmpeg"]["present"] else "❌ Mancante"
-    sox_status = "✅ Presente" if deps["sox"]["present"] else "⚠️ Mancante"
+    # Determine status for FFmpeg and SoX (for button colors)
+    ffmpeg_status = "✅ Present" if deps["ffmpeg"]["present"] else "❌ Missing"
+    sox_status = "✅ Present" if deps["sox"]["present"] else "⚠️ Missing"
     
     return status_message, ffmpeg_status, sox_status
 
@@ -220,13 +220,13 @@ def create_dependencies_tab() -> gr.TabItem:
         # Event handlers
         def on_install_ffmpeg():
             message, success = install_ffmpeg_wrapper()
-            # Aggiorna stato dopo installazione
+            # Update status after installation
             status_msg, ffmpeg_status, sox_status = refresh_dependencies_status()
             return message, status_msg, ffmpeg_status, sox_status
         
         def on_install_sox():
             message, success = install_sox_wrapper()
-            # Aggiorna stato dopo installazione
+            # Update status after installation
             status_msg, ffmpeg_status, sox_status = refresh_dependencies_status()
             return message, status_msg, ffmpeg_status, sox_status
         
@@ -234,7 +234,7 @@ def create_dependencies_tab() -> gr.TabItem:
             status_msg, ffmpeg_status, sox_status = refresh_dependencies_status()
             return status_msg, ffmpeg_status, sox_status, ""
         
-        # Collegamenti eventi
+        # Event bindings
         install_ffmpeg_btn.click(
             fn=on_install_ffmpeg,
             outputs=[install_log, status_display, ffmpeg_status_display, sox_status_display]
@@ -254,13 +254,13 @@ def create_dependencies_tab() -> gr.TabItem:
 
 
 if __name__ == "__main__":
-    # Test del modulo
-    print("Test modulo dependencies_tab.py")
+    # Module test
+    print("Testing dependencies_tab.py module")
     print("=" * 50)
     
     deps = check_external_dependencies()
     print(f"FFmpeg: {deps['ffmpeg']['message']}")
     print(f"SoX: {deps['sox']['message']}")
     
-    print("\nMessaggio di stato:")
+    print("\nStatus message:")
     print(get_dependencies_status_message())
