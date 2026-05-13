@@ -34,7 +34,6 @@ if os.path.exists(sox_bin):
 # Import necessary functions from our modules
 from audiobook_generator import config
 from audiobook_generator import utils
-from audiobook_generator import tts_handler
 from audiobook_generator import epub_processor
 from audiobook_generator import ffmpeg_wrapper
 from audiobook_generator import plugin_manager
@@ -279,7 +278,7 @@ def update_voice_options_for_model(model, xtts_lang, kokoro_lang, vibevoice_lang
             file_update = gr.update(visible=True, label="Upload Reference WAV (.wav)")
         elif model == "Kokoro":
             if kokoro_lang:
-                voices = tts_handler.get_kokoro_voices(kokoro_lang) or []
+                voices = plugin_manager.plugin_manager.get_kokoro_voices(kokoro_lang) or []
                 dropdown_update = gr.update(visible=True, label="Select Kokoro Voice", choices=voices, value=None)
         elif model.startswith("VibeVoice") and not model.endswith("Realtime-0.5B"):
             file_update = gr.update(visible=True, label="Upload Reference WAV (.wav)")
@@ -667,7 +666,7 @@ def _process_ebook_chapters(epub_filepath, book_final_output_dir, book_chunk_out
             
             all_params = {**final_tts_params, **extra_params}
             
-            if not tts_handler.synthesize_audio(base_model, model_instance_wrapper, chunk_text, chunk_output_path, **all_params):
+            if not plugin_manager.plugin_manager.synthesize(base_model, chunk_text, chunk_output_path, model_instance_wrapper, **all_params):
                 logger.error(f"Failed to synthesize chunk {j+1} of chapter '{chapter_key}'.")
                 chapter_failed_indices.append(j+1); chapter_failed_texts[str(j+1)] = chunk_text; chapter_error_types.append("synthesis_failed")
             else:
@@ -753,7 +752,7 @@ def run_demo_gradio(demo_text, selected_model, xtts_wav_file, piper_kokoro_voice
         
         all_params = {**extra_params, **final_tts_params}
         start_time = time.time()
-        success = tts_handler.synthesize_audio(base_model, model_instance, processed_text, demo_output_path, **all_params)
+        success = plugin_manager.plugin_manager.synthesize(base_model, processed_text, demo_output_path, model_instance, **all_params)
         duration = time.time() - start_time
 
         if success: yield f"Demo generated in {duration:.2f}s.", gr.Audio(value=demo_output_path, label="Demo Output", visible=True)

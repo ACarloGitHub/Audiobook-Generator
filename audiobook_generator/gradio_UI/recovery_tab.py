@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Import moduli interni
 try:
-    from audiobook_generator import tts_handler
+    from audiobook_generator import plugin_manager
     from audiobook_generator import config
     from audiobook_generator import ffmpeg_wrapper
     from audiobook_generator import epub_processor
@@ -206,7 +206,7 @@ def retry_synthesis_real(book_name: str, chapter_name: str, selected_chunks: Lis
     # Carica modello una volta per tutti i chunk (performance)
     model_instance = None
     try:
-        model_instance = tts_handler.plugin_manager.load_model(model_used, language_code=language if model_used == "Kokoro" else None)
+        model_instance = plugin_manager.plugin_manager.load_model(model_used, language_code=language if model_used == "Kokoro" else None)
         
         if not model_instance:
             error_messages.append(f"Impossibile caricare modello '{model_used}'.")
@@ -283,12 +283,12 @@ def retry_synthesis_real(book_name: str, chapter_name: str, selected_chunks: Lis
                 # Aggiungi language per compatibilità
                 all_params["language"] = language
             
-            # Chiamata reale a TTS handler con TUTTI i parametri
-            success = tts_handler.synthesize_audio(
+            # Call TTS plugin manager with all parameters
+            success = plugin_manager.plugin_manager.synthesize(
                 model_name=model_used,
-                model_instance=model_instance,
                 text=chunk_text,
                 output_path=chunk_path,
+                model_instance=model_instance,
                 **all_params
             )
             
