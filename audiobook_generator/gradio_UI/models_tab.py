@@ -27,6 +27,8 @@ import queue
 from typing import Dict, Any, List, Tuple, Optional
 import logging
 
+logger = logging.getLogger(__name__)
+
 # Importa configurazioni dal progetto
 try:
     from audiobook_generator import config
@@ -169,137 +171,94 @@ def check_model_installed(model_name: str) -> bool:
     if not HAS_SETUP_HELPERS:
         return False
     
-    # Percorsi base
     base_project_dir = config.BASE_PROJECT_DIR if hasattr(config, 'BASE_PROJECT_DIR') else os.getcwd()
     
-    if model_name.startswith("Qwen3-TTS"):
-        # Struttura: tts_models/qwen3tts/Qwen3-TTS-12Hz-{version}-{type}/ (NO models/ sottocartella)
-        base_dir = os.path.join(base_project_dir, "audiobook_generator/tts_models/qwen3tts")
-        
-        # Mappa nome plugin -> nome cartella (corrisponde al nome HuggingFace senza org)
-        folder_map = {
-            "Qwen3-TTS-0.6B-Base": "Qwen3-TTS-12Hz-0.6B-Base",
-            "Qwen3-TTS-1.7B-Base": "Qwen3-TTS-12Hz-1.7B-Base",
-            "Qwen3-TTS-1.7B-CustomVoice": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
-            "Qwen3-TTS-1.7B-VoiceDesign": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
-        }
-        
-        folder_name = folder_map.get(model_name)
-        if not folder_name:
-            return False
-        model_dir = os.path.join(base_dir, folder_name)
-        
-        # File essenziali per Qwen3-TTS
-        essential_files = [
-            "config.json",
-            "generation_config.json",
-            "preprocessor_config.json",
-            "tokenizer_config.json",
-            "vocab.json",
-            "merges.txt"
-        ]
-        
-        if not os.path.exists(model_dir):
-            return False
-        
-        # Verifica file essenziali
-        for file in essential_files:
-            file_path = os.path.join(model_dir, file)
-            if not os.path.exists(file_path):
+    try:
+        if model_name.startswith("Qwen3-TTS"):
+            base_dir = os.path.join(base_project_dir, "audiobook_generator/tts_models/qwen3tts")
+            folder_map = {
+                "Qwen3-TTS-0.6B-Base": "Qwen3-TTS-12Hz-0.6B-Base",
+                "Qwen3-TTS-1.7B-Base": "Qwen3-TTS-12Hz-1.7B-Base",
+                "Qwen3-TTS-1.7B-CustomVoice": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+                "Qwen3-TTS-1.7B-VoiceDesign": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+            }
+            folder_name = folder_map.get(model_name)
+            if not folder_name:
                 return False
-        
-        return True
-    
-    elif model_name.startswith("VibeVoice"):
-        base_dir = os.path.join(base_project_dir, "audiobook_generator/tts_models/vibevoice")
-        
-        # Map model name -> folder name (0.5B, 1.5B, 7B - NOT the model name!)
-        vibe_map = {
-            "VibeVoice-1.5B": "1.5B",
-            "VibeVoice-7B": "7B",
-            "VibeVoice-Realtime-0.5B": "0.5B",
-        }
-        
-        folder_name = vibe_map.get(model_name)
-        if not folder_name:
-            return False
-        model_dir = os.path.join(base_dir, folder_name)
-        
-        if not os.path.exists(model_dir):
-            return False
-        
-        # Essential files for VibeVoice
-        essential_files = ["config.json", "preprocessor_config.json"]
-        # Also need model file - either safetensors or first shard
-        has_model = (
-            os.path.exists(os.path.join(model_dir, "model.safetensors")) or
-            os.path.exists(os.path.join(model_dir, "model-00001-of-00003.safetensors")) or
-            os.path.exists(os.path.join(model_dir, "model-00001-of-00010.safetensors"))
-        )
-        
-        has_files = all(os.path.exists(os.path.join(model_dir, f)) for f in essential_files) and has_model
-        return has_files
-    
-    elif model_name == "XTTSv2":
-        model_dir = os.path.join(base_project_dir, "audiobook_generator/tts_models/xttsv2")
-        if not os.path.exists(model_dir):
-            return False
-        
-        # File essenziali per XTTSv2
-        essential_files = [
-            "config.json",
-            "model.pth",
-            "dvae.pth"
-        ]
-        
-        for file in essential_files:
-            file_path = os.path.join(model_dir, file)
-            if not os.path.exists(file_path):
+            model_dir = os.path.join(base_dir, folder_name)
+            essential_files = [
+                "config.json", "generation_config.json",
+                "preprocessor_config.json", "tokenizer_config.json",
+                "vocab.json", "merges.txt"
+            ]
+            if not os.path.exists(model_dir):
                 return False
+            for file in essential_files:
+                if not os.path.exists(os.path.join(model_dir, file)):
+                    return False
+            return True
         
-        return True
-    
-    elif model_name == "Kokoro":
-        # Kokoro uses HuggingFace cache structure
-        # models/hub/models--hexgrad--Kokoro-82M/snapshots/<hash>/
-        base_dir = os.path.join(base_project_dir, "audiobook_generator/tts_models/kokoro/models")
-        hub_dir = os.path.join(base_dir, "hub")
-        if not os.path.exists(hub_dir):
-            return False
+        elif model_name.startswith("VibeVoice"):
+            base_dir = os.path.join(base_project_dir, "audiobook_generator/tts_models/vibevoice")
+            vibe_map = {
+                "VibeVoice-1.5B": "1.5B",
+                "VibeVoice-7B": "7B",
+                "VibeVoice-Realtime-0.5B": "0.5B",
+            }
+            folder_name = vibe_map.get(model_name)
+            if not folder_name:
+                return False
+            model_dir = os.path.join(base_dir, folder_name)
+            if not os.path.exists(model_dir):
+                return False
+            essential_files = ["config.json", "preprocessor_config.json"]
+            has_model = (
+                os.path.exists(os.path.join(model_dir, "model.safetensors")) or
+                os.path.exists(os.path.join(model_dir, "model-00001-of-00003.safetensors")) or
+                os.path.exists(os.path.join(model_dir, "model-00001-of-00010.safetensors"))
+            )
+            return all(os.path.exists(os.path.join(model_dir, f)) for f in essential_files) and has_model
         
-        # Find the snapshot folder (hash folder)
-        snapshots_parent = None
-        for item in os.listdir(hub_dir):
-            if item.startswith("models--hexgrad--Kokoro-82M"):
-                snapshots_parent = os.path.join(hub_dir, item)
-                break
+        elif model_name == "XTTSv2":
+            model_dir = os.path.join(base_project_dir, "audiobook_generator/tts_models/xttsv2")
+            if not os.path.exists(model_dir):
+                return False
+            essential_files = ["config.json", "model.pth", "dvae.pth"]
+            for file in essential_files:
+                if not os.path.exists(os.path.join(model_dir, file)):
+                    return False
+            return True
         
-        if not snapshots_parent or not os.path.exists(snapshots_parent):
-            return False
+        elif model_name == "Kokoro":
+            base_dir = os.path.join(base_project_dir, "audiobook_generator/tts_models/kokoro/models")
+            hub_dir = os.path.join(base_dir, "hub")
+            if not os.path.exists(hub_dir):
+                return False
+            snapshots_parent = None
+            for item in os.listdir(hub_dir):
+                if item.startswith("models--hexgrad--Kokoro-82M"):
+                    snapshots_parent = os.path.join(hub_dir, item)
+                    break
+            if not snapshots_parent or not os.path.exists(snapshots_parent):
+                return False
+            snapshots_dir = None
+            for item in os.listdir(snapshots_parent):
+                if item == "snapshots" or os.path.isdir(os.path.join(snapshots_parent, item)):
+                    snapshots_dir = os.path.join(snapshots_parent, "snapshots") if item == "snapshots" else os.path.join(snapshots_parent, item)
+                    break
+            if not snapshots_dir or not os.path.exists(snapshots_dir):
+                return False
+            snapshot_folders = [d for d in os.listdir(snapshots_dir) if os.path.isdir(os.path.join(snapshots_dir, d))]
+            if not snapshot_folders:
+                return False
+            actual_snapshot = os.path.join(snapshots_dir, snapshot_folders[0])
+            essential_files = ["config.json", "kokoro-v1_0.pth"]
+            return all(os.path.exists(os.path.join(actual_snapshot, f)) for f in essential_files)
         
-        # Find actual snapshot folder
-        snapshots_dir = None
-        for item in os.listdir(snapshots_parent):
-            if item == "snapshots" or os.path.isdir(os.path.join(snapshots_parent, item)):
-                snapshots_dir = os.path.join(snapshots_parent, "snapshots") if item == "snapshots" else os.path.join(snapshots_parent, item)
-                break
-        
-        if not snapshots_dir or not os.path.exists(snapshots_dir):
-            return False
-        
-        # Find the actual snapshot (hash folder)
-        snapshot_folders = [d for d in os.listdir(snapshots_dir) if os.path.isdir(os.path.join(snapshots_dir, d))]
-        if not snapshot_folders:
-            return False
-        
-        actual_snapshot = os.path.join(snapshots_dir, snapshot_folders[0])
-        
-        # Essential files for Kokoro
-        essential_files = ["config.json", "kokoro-v1_0.pth"]
-        
-        return all(os.path.exists(os.path.join(actual_snapshot, f)) for f in essential_files)
-    
-    return False
+        return False
+    except OSError as e:
+        logger.warning("Error checking model installation for '%s': %s", model_name, e)
+        return False
 
 
 def get_models_status_message() -> str:
