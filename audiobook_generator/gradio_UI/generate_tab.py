@@ -2,7 +2,7 @@
 import gradio as gr
 
 def create_generate_tab(config):
-    """Crea e restituisce i componenti della scheda di generazione."""
+    """Creates and returns the generation tab components."""
     with gr.TabItem("3. Generate"):
         with gr.Row():
             select_all_toggle_btn = gr.Button("Select All", variant="secondary", size="sm")

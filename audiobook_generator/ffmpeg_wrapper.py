@@ -51,31 +51,31 @@ def merge_audio_files_ffmpeg(chapter_chunk_dir, final_output_path, ffmpeg_execut
 
     logger.info("Found %d chunk files to merge.", len(sorted_chunk_files))
     
-    # Prima prova con FFmpeg
+    # First try with FFmpeg
     ffmpeg_success = _try_ffmpeg_merge(chapter_chunk_dir, final_output_path, ffmpeg_executable_path, sorted_chunk_files)
     if ffmpeg_success:
         return True
     
-    # Se FFmpeg fallisce, prova con fallback
+    # If FFmpeg fails, try fallback methods
     logger.warning("FFmpeg not available or failed. Trying alternative method...")
     logger.warning("Generation will be slower and quality may be lower.")
     
-    # Prova con pydub (se disponibile)
+    # Try with pydub (if available)
     pydub_success = _try_pydub_merge(chapter_chunk_dir, final_output_path, sorted_chunk_files_full)
     if pydub_success:
         return True
     
-    # Prova con scipy (fallback più basilare)
+    # Try with scipy (more basic fallback)
     scipy_success = _try_scipy_merge(chapter_chunk_dir, final_output_path, sorted_chunk_files_full)
     if scipy_success:
         return True
     
-    # Tutti i metodi hanno fallito
+    # All methods have failed
     logger.error("All merge methods failed.")
     return False
 
 def _try_ffmpeg_merge(chapter_chunk_dir, final_output_path, ffmpeg_executable_path, sorted_chunk_files):
-    """Tenta il merge con FFmpeg."""
+    """Try merging with FFmpeg."""
     list_filename = os.path.join(chapter_chunk_dir, "mylist.txt")
     
     try:
@@ -156,15 +156,15 @@ def _try_pydub_merge(chapter_chunk_dir, final_output_path, sorted_chunk_files_fu
         from pydub import AudioSegment
         logger.info("Attempting merge with pydub...")
         
-        # Carica il primo file per inizializzare
+        # Load the first file to initialize
         combined = AudioSegment.from_file(sorted_chunk_files_full[0])
         
-        # Aggiungi gli altri file
+        # Append the other files
         for chunk_file in sorted_chunk_files_full[1:]:
             audio = AudioSegment.from_file(chunk_file)
             combined = combined + audio
         
-        # Esporta come MP3
+        # Export as MP3
         combined.export(final_output_path, format="mp3", bitrate="192k")
         
         if os.path.exists(final_output_path) and os.path.getsize(final_output_path) > 512:
@@ -189,41 +189,41 @@ def _try_scipy_merge(chapter_chunk_dir, final_output_path, sorted_chunk_files_fu
         import shutil
         logger.info("Attempting merge with scipy (WAV only)...")
         
-        # Verifica che tutti i file siano WAV
+        # Verify all files are WAV
         if not all(f.lower().endswith('.wav') for f in sorted_chunk_files_full):
             logger.error("scipy merge only supports WAV files.")
             return False
         
-        # Leggi il primo file per ottenere sample rate
+        # Read the first file to get sample rate
         sample_rate, first_data = wavfile.read(sorted_chunk_files_full[0])
         all_data = [first_data]
         
-        # Leggi gli altri file
+        # Read the other files
         for chunk_file in sorted_chunk_files_full[1:]:
             sr, data = wavfile.read(chunk_file)
             if sr != sample_rate:
                 logger.warning("Sample rate mismatch (%d vs %d). Attempting resampling...", sr, sample_rate)
-                # Prova a ricampionare (semplice)
+                # Try to resample (simple)
                 if sr > sample_rate:
                     data = data[::sr//sample_rate]
                 else:
-                    # Ripetizione semplice (non ideale)
+                    # Simple repetition (not ideal)
                     data = np.repeat(data, sample_rate//sr)
             
             all_data.append(data)
         
-        # Concatena tutti i dati
+        # Concatenate all data
         combined_data = np.concatenate(all_data)
         
-        # Salva come WAV (scipy non supporta MP3 direttamente)
+        # Save as WAV (scipy does not support MP3 directly)
         wav_output = final_output_path.replace('.mp3', '.wav')
         wavfile.write(wav_output, sample_rate, combined_data)
         
-        # Converti in MP3 con ffmpeg se disponibile, altrimenti lascia come WAV
+        # Convert to MP3 with ffmpeg if available, otherwise leave as WAV
         if os.path.exists(wav_output) and os.path.getsize(wav_output) > 512:
             logger.info("Merge with scipy completed. File saved as WAV: %s", os.path.basename(wav_output))
             
-            # Prova a convertire in MP3 se possibile
+            # Try to convert to MP3 if possible
             try:
                 ffmpeg_path = shutil.which("ffmpeg")
                 if ffmpeg_path:

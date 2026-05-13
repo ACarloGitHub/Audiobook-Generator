@@ -2,7 +2,7 @@
 import gradio as gr
 
 def create_demo_test_tab():
-    """Crea e restituisce i componenti della scheda demo e test."""
+    """Creates and returns the demo and test tab components."""
     with gr.TabItem("4. Demo & Test"):
         demo_text_input = gr.Textbox(label="Text", lines=3)
         demo_generate_button = gr.Button("Generate Demo", variant="secondary")

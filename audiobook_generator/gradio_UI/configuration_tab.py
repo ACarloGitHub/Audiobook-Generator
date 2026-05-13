@@ -2,7 +2,7 @@
 import gradio as gr
 
 def create_configuration_tab(TTS_MODELS, MODEL_LANGUAGES, config):
-    """Crea e restituisce i componenti della scheda di configurazione."""
+    """Creates and returns the configuration tab components."""
     with gr.TabItem("1. Configuration"):
         gr.Markdown("## TTS Engine and Voice")
         with gr.Row():
@@ -102,7 +102,7 @@ def create_configuration_tab(TTS_MODELS, MODEL_LANGUAGES, config):
                             qwen_repetition_penalty_slider = gr.Slider(label="Repetition Penalty", minimum=1.0, maximum=2.0, value=1.1, step=0.05)
                             qwen_seed_number = gr.Number(label="Seed (leave empty for random)", value=None)
 
-        # Ritorna tutti i componenti in modo che possano essere referenziati nel file principale
+        # Return all components so they can be referenced in the main file
         return (
             model_radio, xtts_voice_file, xtts_params_group, piper_params_group, kokoro_params_group,
             qwen_params_group, vibevoice_params_group, vibevoice_realtime_params_group,

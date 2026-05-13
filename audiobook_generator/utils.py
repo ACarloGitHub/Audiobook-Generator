@@ -89,20 +89,20 @@ def replace_guillemets_text(text: str) -> str:
 
 def parse_dialogue_script(script_text: str) -> list[dict]:
     """
-    Parsa un testo con tag [Attore] e lo divide in una lista di dizionari.
-    Es: [{'actor': 'Narratore', 'text': '...'}, {'actor': 'Protagonista', 'text': '...'}]
+    Parses text with [Actor] tags and splits it into a list of dictionaries.
+    E.g.: [{'actor': 'Narrator', 'text': '...'}, {'actor': 'Protagonist', 'text': '...'}]
     """
     if not script_text:
         return []
     
-    # Regex per trovare i tag [Attore]
+    # Regex to find [Actor] tags
     pattern = r"\[([a-zA-Z0-9_\s]+)\]"
     
     parts = re.split(pattern, script_text)
     
     dialogue = []
-    # Il primo elemento è il testo prima del primo tag, che ignoriamo
-    # Poi procediamo a coppie: attore, testo
+    # The first element is text before the first tag, which we skip
+    # Then we process pairs: actor, text
     for i in range(1, len(parts), 2):
         actor = parts[i].strip()
         text = parts[i+1].strip()

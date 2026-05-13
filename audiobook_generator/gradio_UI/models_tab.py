@@ -507,7 +507,7 @@ def create_models_tab() -> gr.TabItem:
             **Note**: Downloads may take a long time depending on your internet connection.
             """)
         
-        # Funzioni per gestione UI
+        # UI management functions
         def on_refresh():
             """Refresh model status."""
             status_msg, model_names, status_disp = refresh_models_status()
@@ -591,7 +591,7 @@ def create_models_tab() -> gr.TabItem:
 
 
 if __name__ == "__main__":
-    # Test del modulo
+    # Module test
     print("Testing models_tab.py module")
     print("=" * 50)
     
