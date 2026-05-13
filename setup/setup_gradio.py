@@ -232,7 +232,7 @@ def application_phase():
                 }
                 for key, installed in data.items():
                     name = model_mapping.get(key, key)
-                    registry.append({"name": name, "version": "1.0", "installed": installed})
+                    registry.append({"name": name, "version": "1.0"})
                 return registry
             return data
         except Exception as e:

@@ -15,9 +15,7 @@ class PluginManager:
                 registry = json.load(f)
             
             for plugin_info in registry:
-                # ATTENZIONE: il campo "installed" nel JSON NON è fonte di verità.
-                # Lo stato reale viene determinato dinamicamente tramite filesystem.
-                # Qui carichiamo TUTTI i plugin definiti, poi la UI verifica se i file esistono.
+                # Skip stale "installed" field if present (status is determined dynamically)
                 try:
                     module_path, class_name = plugin_info["entry_point"].rsplit(':', 1)
                     module = importlib.import_module(module_path)

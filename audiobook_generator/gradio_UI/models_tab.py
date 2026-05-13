@@ -392,13 +392,8 @@ def download_model_wrapper(model_info: Dict[str, Any]) -> Tuple[str, bool]:
             return f"❌ Tipo modello non supportato: {model_type}", False
         
         if success:
-            # Aggiorna plugin registry se necessario
-            if model_type in ["qwen3tts", "vibevoice", "xttsv2", "kokoro"]:
-                try:
-                    plugin_name = model_name
-                    setup_helpers.update_plugin_registry(plugin_name, installed=True)
-                except Exception as e:
-                    logging.warning(f"Impossibile aggiornare plugin registry: {e}")
+            # Il plugin registry non ha più il campo "installed"
+            # Lo stato viene determinato dinamicamente tramite filesystem
             
             return f"✅ Modello {model_name} scaricato con successo!", True
         else:

@@ -17,7 +17,13 @@ def _get_registry_path():
     return registry_path if os.path.exists(registry_path) else None
 
 def update_plugin_registry(plugin_name, installed=True):
-    """Aggiorna plugin_registry.json in modo thread-safe."""
+    """
+    Aggiorna plugin_registry.json. Il campo 'installed' è stato rimosso
+    perché lo stato di installazione viene determinato dinamicamente
+    tramite filesystem (vedi models_tab.py check_model_installed).
+    Questa funzione mantiene la firma per compatibilità ma è sostanzialmente
+    un no-op: verifica solo che il plugin sia presente nel registry.
+    """
     with _registry_lock:
         registry_path = _get_registry_path()
         if not registry_path:
@@ -25,29 +31,38 @@ def update_plugin_registry(plugin_name, installed=True):
             return False
         
         try:
-            with open(registry_path, 'r+', encoding='utf-8') as f:
+            with open(registry_path, 'r', encoding='utf-8') as f:
                 registry = json.load(f)
                 
-                updated = False
+                # Remove stale "installed" field if present
+                changed = False
                 for plugin_info in registry:
-                    if plugin_info.get("name") == plugin_name:
-                        if plugin_info.get("installed") != installed:
-                            plugin_info["installed"] = installed
-                            updated = True
-                            print(f"Registry: '{plugin_name}' impostato a installed={installed}.")
-                        break
+                    if "installed" in plugin_info:
+                        del plugin_info["installed"]
+                        changed = True
+
+                # Verify plugin exists in registry
+                found = any(plugin_info.get("name") == plugin_name for plugin_info in registry)
+                if not found:
+                    print(f"ATTENZIONE: Plugin '{plugin_name}' non trovato nel registry.")
                 
-                if updated:
-                    f.seek(0)
-                    json.dump(registry, f, indent=2, ensure_ascii=False)
-                    f.truncate()
+                if changed:
+                    with open(registry_path, 'w', encoding='utf-8') as f_write:
+                        json.dump(registry, f_write, indent=2, ensure_ascii=False)
+                        f_write.write('\n')
+
             return True
         except (IOError, json.JSONDecodeError) as e:
             print(f"ERRORE durante l'aggiornamento del plugin registry: {e}")
             return False
 
 def update_plugin_registry_with_lock(plugin_name, installed=True):
-    """Aggiorna plugin_registry.json con lock esclusivo per evitare corruzione (usa file lock)."""
+    """
+    Aggiorna plugin_registry.json con lock esclusivo.
+    Il campo 'installed' è stato rimosso perché lo stato viene determinato
+    dinamicamente tramite filesystem. Questa funzione mantiene la firma per
+    compatibilità ma rimuove solo eventuali campi 'installed' residui.
+    """
     registry_path = _get_registry_path()
     if not registry_path:
         print(f"ERRORE: Non trovo plugin_registry.json")
@@ -69,21 +84,26 @@ def update_plugin_registry_with_lock(plugin_name, installed=True):
         with open(registry_path, 'r', encoding='utf-8') as f:
             registry = json.load(f)
         
-        updated = False
+        # Remove stale "installed" field and verify plugin exists
+        changed = False
+        found = False
         for plugin_info in registry:
-            if plugin_info["name"] == plugin_name:
-                plugin_info["installed"] = installed
-                updated = True
-                break
+            if "installed" in plugin_info:
+                del plugin_info["installed"]
+                changed = True
+            if plugin_info.get("name") == plugin_name:
+                found = True
         
-        if not updated:
+        if not found:
             print(f"ATTENZIONE: Plugin '{plugin_name}' non trovato nel registry.")
             return False
         
-        with open(registry_path, 'w', encoding='utf-8') as f:
-            json.dump(registry, f, indent=2, ensure_ascii=False)
+        if changed:
+            with open(registry_path, 'w', encoding='utf-8') as f:
+                json.dump(registry, f, indent=2, ensure_ascii=False)
+                f.write('\n')
+            print(f"Plugin registry pulito: rimosso campo 'installed' residuo.")
         
-        print(f"Plugin registry aggiornato per '{plugin_name}' (installed={installed}).")
         return True
     
     except Exception as e:
