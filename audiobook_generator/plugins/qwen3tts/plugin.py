@@ -10,10 +10,9 @@ class Qwen3TTSPlugin(BaseTTSPlugin):
         if not os.path.exists(config.QWEN3TTS_PYTHON_EXECUTABLE):
             raise FileNotFoundError("Eseguibile Python di Qwen3-TTS non trovato. Esegui l'installer.")
         
-        print("Verifica degli asset per Qwen3-TTS...")
-        # NOTA: Qui gestiamo la scelta del modello, anche se per ora è semplice
-        if not model_manager.ensure_assets("Qwen3-TTS"): # Potremmo passare qui la dimensione del modello in futuro
-            raise RuntimeError("Download degli asset di Qwen3-TTS fallito.")
+        print(f"Verifica degli asset per {self.name}...")
+        if not model_manager.ensure_assets(self.name):
+            raise RuntimeError(f"Download degli asset di {self.name} fallito.")
             
         return {"status": "ready"}
 

@@ -10,9 +10,9 @@ class Qwen3TTS_1_7B_Plugin(BaseTTSPlugin):
         if not os.path.exists(config.QWEN3TTS_PYTHON_EXECUTABLE):
             raise FileNotFoundError("Eseguibile Python di Qwen3-TTS non trovato. Esegui l'installer.")
         
-        print("Verifica degli asset per Qwen3-TTS 1.7B...")
-        if not model_manager.ensure_assets("Qwen3-TTS-1.7B"):
-            raise RuntimeError("Download degli asset di Qwen3-TTS 1.7B fallito.")
+        print(f"Verifica degli asset per {self.name}...")
+        if not model_manager.ensure_assets(self.name):
+            raise RuntimeError(f"Download degli asset di {self.name} fallito.")
             
         return {"status": "ready"}
 
