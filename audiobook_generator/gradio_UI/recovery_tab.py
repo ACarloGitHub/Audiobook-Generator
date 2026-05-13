@@ -11,6 +11,8 @@ import shutil
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 
+logger = logging.getLogger(__name__)
+
 # Import moduli interni
 try:
     from audiobook_generator import tts_handler
@@ -89,7 +91,8 @@ def load_failed_chunks_json(book_name: str) -> Optional[Dict]:
     try:
         with open(json_path, 'r', encoding='utf-8') as f:
             return json.load(f)
-    except:
+    except Exception as e:
+        logger.error("Failed to load failed_chunks.json for '%s': %s", book_name, e)
         return None
 
 def get_chapters_with_errors(book_name: str) -> List[str]:
@@ -349,8 +352,17 @@ def merge_all_chunks_real(book_name: str, chapter_name: str) -> Tuple[str, bool]
     if not chunk_files:
         return f"Nessun file chunk trovato in {book_chunk_dir}", False
     
-    # Ordina chunk per numero
-    chunk_files.sort(key=lambda x: int(os.path.basename(x).split('_')[1].split('.')[0]))
+    # Sort chunks by number
+    def safe_chunk_sort(filepath):
+        try:
+            return int(os.path.basename(filepath).split('_')[1].split('.')[0])
+        except (ValueError, IndexError):
+            logger.warning("Unexpected chunk filename format: %s", filepath)
+            return float('inf')
+    
+    chunk_files.sort(key=safe_chunk_sort)
+    # Filter out files that could not be parsed
+    chunk_files = [f for f in chunk_files if safe_chunk_sort(f) != float('inf')]
     
     # Percorso output MP3
     output_dir = os.path.join(GENERATED_AUDIOBOOKS_DIR, book_name)
@@ -591,7 +603,3 @@ def create_recovery_tab():
         )
     
     return tab
-
-# Funzione per compatibilità
-def dummy_recovery_function():
-    return None
