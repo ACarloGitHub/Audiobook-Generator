@@ -14,13 +14,15 @@
 
 import os
 import re
+import logging
 import warnings
 import ebooklib
 from ebooklib import epub
 from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from . import utils
-import traceback
 from typing import Optional, Dict
+
+logger = logging.getLogger(__name__)
 
 FALLBACK_CHAPTER_PATTERN = re.compile(r"^\s*(\d+)\s*$", re.MULTILINE)
 
@@ -37,7 +39,7 @@ def extract_text_from_item(item) -> str:
             parser_to_use = 'lxml'
             lxml_parsing = True
         except ImportError:
-            pass
+            logger.debug("lxml not available, using html.parser")
 
         soup = None
         if lxml_parsing:
@@ -65,10 +67,10 @@ def extract_text_from_item(item) -> str:
         return text.strip()
     except Exception as e:
         parser_desc = "lxml (HTML mode)" if lxml_parsing else "html.parser"
-        print(f"    WARNING: Could not extract text from item '{item.get_name()}' using {parser_desc}: {e}")
+        logger.warning("Could not extract text from item '%s' using %s: %s", item.get_name(), parser_desc, e)
         if lxml_parsing:
              try:
-                 print("      Retrying with html.parser...")
+                 logger.debug("Retrying with html.parser...")
                  soup = BeautifulSoup(content_bytes, features='html.parser')
                  for tag_name in tags_to_remove:
                      for tag in soup.find_all(tag_name):
@@ -79,7 +81,7 @@ def extract_text_from_item(item) -> str:
                  text = re.sub(r'\n\s*\n', '\n', text)
                  return text.strip()
              except Exception as e2:
-                 print(f"      ERROR: Fallback extraction with html.parser also failed: {e2}")
+                 logger.error("Fallback extraction with html.parser also failed: %s", e2)
         return ""
 
 def extract_chapters_from_epub(epub_path: str) -> Optional[Dict[str, str]]:
@@ -88,14 +90,13 @@ def extract_chapters_from_epub(epub_path: str) -> Optional[Dict[str, str]]:
     Returns a dictionary of chapters.
     """
     if not os.path.isfile(epub_path):
-        print(f"  ERROR: File does not exist: {epub_path}")
+        logger.error("File does not exist: %s", epub_path)
         return None
 
     try:
         book = epub.read_epub(epub_path, options={'ignore_ncx': True})
     except Exception as e:
-        print(f"  ERROR: Failed to read EPUB: {e}")
-        traceback.print_exc()
+        logger.error("Failed to read EPUB: %s", e, exc_info=True)
         return None
 
     chapters = {}
@@ -134,11 +135,11 @@ def extract_chapters_from_epub(epub_path: str) -> Optional[Dict[str, str]]:
                     chapter_count += 1
 
     if chapter_count > 0:
-        print(f"  Successfully extracted {chapter_count} chapters via ToC.")
+        logger.info("Successfully extracted %d chapters via ToC.", chapter_count)
         return chapters
 
     # --- Fallback Logic ---
-    print("  WARNING: ToC not found or did not yield chapters. Using fallback sequential extraction.")
+    logger.warning("ToC not found or did not yield chapters. Using fallback sequential extraction.")
     full_text = ""
     # Use spine order if available, otherwise process all documents.
     items_in_order = book.spine if book.spine else list(book.get_items_of_type(ebooklib.ITEM_DOCUMENT))
@@ -150,10 +151,10 @@ def extract_chapters_from_epub(epub_path: str) -> Optional[Dict[str, str]]:
                 full_text += text.strip() + "\n\n"
     
     if full_text:
-        print("  Fallback: Treating entire book content as a single chapter.")
+        logger.info("Fallback: Treating entire book content as a single chapter.")
         return {"Chapter_01_Full_Book": full_text.strip()}
 
-    print("  ERROR: Failed to extract any meaningful content from the EPUB.")
+    logger.error("Failed to extract any meaningful content from the EPUB.")
     return None
 
 # --- Text Chunking Functions ---
@@ -218,19 +219,19 @@ def chunk_chapter_text(chapter_text, use_char_limit_chunking, max_chars_per_chun
     
     sentences = split_into_sentences(chapter_text)
     if not sentences:
-        print("    WARNING: No sentences found after splitting. Cannot chunk chapter.")
+        logger.warning("No sentences found after splitting. Cannot chunk chapter.")
         return []
 
     chunks = []
     
     if use_char_limit_chunking:
-        print(f"    Chunking strategy: Character limit (max: {max_chars_per_chunk} chars)")
+        logger.info("Chunking strategy: Character limit (max: %d chars)", max_chars_per_chunk)
         current_chunk = ""
         for sentence in sentences:
             if not sentence: continue
 
             if len(sentence) > max_chars_per_chunk:
-                print(f"    INFO: Sentence exceeds max_chars limit ({len(sentence)} > {max_chars_per_chunk}). Splitting it: '{sentence[:80]}...'")
+                logger.info("Sentence exceeds max_chars limit (%d > %d). Splitting it: '%s...'", len(sentence), max_chars_per_chunk, sentence[:80])
                 if current_chunk:
                     chunks.append(current_chunk)
                     current_chunk = ""
@@ -249,7 +250,7 @@ def chunk_chapter_text(chapter_text, use_char_limit_chunking, max_chars_per_chun
             chunks.append(current_chunk)
             
     else: # Word Count Chunking Logic
-        print(f"    Chunking strategy: Word count approx (target: {min_words_approx}-{max_words_approx} words)")
+        logger.info("Chunking strategy: Word count approx (target: %d-%d words)", min_words_approx, max_words_approx)
         current_chunk_sentences = []
         current_word_count = 0
         for sentence in sentences:
@@ -270,5 +271,5 @@ def chunk_chapter_text(chapter_text, use_char_limit_chunking, max_chars_per_chun
             chunks.append(" ".join(current_chunk_sentences).strip())
 
     final_chunks = [c.strip() for c in chunks if c.strip()]
-    print(f"    Divided into {len(final_chunks)} final chunks.")
+    logger.info("Divided into %d final chunks.", len(final_chunks))
     return final_chunks
