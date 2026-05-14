@@ -41,7 +41,11 @@ def run_command_git(command):
 class ModelManager:
     def ensure_assets(self, model_name: str) -> bool:
         if model_name not in config.MODEL_ASSETS:
-            return True 
+            # No asset definition for this model — nothing to verify, assume ready.
+            # This is intentional: models that manage their own downloads (e.g. via
+            # HuggingFace hub) do not need entries in MODEL_ASSETS.
+            logger.debug("No MODEL_ASSETS entry for '%s'; skipping asset check.", model_name)
+            return True
 
         assets = config.MODEL_ASSETS[model_name]
         for asset in assets:

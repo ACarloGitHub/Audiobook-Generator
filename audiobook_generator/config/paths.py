@@ -29,7 +29,7 @@ import os
 from typing import Final
 
 # --- Base Project Paths ---
-BASE_PROJECT_DIR: Final[str] = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_PROJECT_DIR: Final[str] = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # --- Main Application Directories ---
 FFMPEG_DIR: Final[str] = os.path.join(BASE_PROJECT_DIR, "ffmpeg", "bin")

@@ -18,12 +18,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import os
 import logging
-from typing import Any
 from audiobook_generator.base_subprocess_plugin import BaseSubprocessPlugin
 from audiobook_generator import config
-from audiobook_generator.model_manager import model_manager
 from audiobook_generator.payload_types import Qwen3TTSPayload
 
 logger = logging.getLogger(__name__)
@@ -33,16 +30,6 @@ class Qwen3TTSPlugin(BaseSubprocessPlugin):
 
     def _get_python_executable(self) -> str:
         return config.QWEN3TTS_PYTHON_EXECUTABLE
-
-    def load_model(self, *args, **kwargs):
-        if not os.path.exists(config.QWEN3TTS_PYTHON_EXECUTABLE):
-            raise FileNotFoundError(f"Python executable for {self.name} not found. Run the installer.")
-
-        logger.info(f"Checking assets for {self.name}...")
-        if not model_manager.ensure_assets(self.name):
-            raise RuntimeError(f"Asset download for {self.name} failed.")
-
-        return {"status": "ready"}
 
     def _build_payload(self, text: str, output_path: str, **kwargs) -> Qwen3TTSPayload:
         mode = kwargs.get("qwen_mode")
