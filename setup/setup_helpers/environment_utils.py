@@ -1,7 +1,10 @@
 # audiobook_generator/setup_helpers/environment_utils.py
 import subprocess
 import sys
+import logging
 from .system_utils import command_exists, run_command
+
+logger = logging.getLogger(__name__)
 
 def detect_nvidia_gpu():
     """Checks if an NVIDIA GPU is present."""
@@ -100,9 +103,9 @@ def check_pytorch_cuda_all_venvs():
         
         if not os.path.exists(python_exe):
             # Corrupted venv
-            print(f"⚠ Corrupted venv (missing python): {venv_path}")
+            logger.warning("Corrupted venv (missing python): %s", venv_path)
             continue
-        
+
         try:
             result = subprocess.run(
                 [python_exe, "-c", "import torch; print('CUDA_OK' if torch.cuda.is_available() else 'CUDA_NO')"],
@@ -111,16 +114,16 @@ def check_pytorch_cuda_all_venvs():
             if result.returncode == 0:
                 output = result.stdout.strip()
                 if output == "CUDA_OK":
-                    print(f"✓ CUDA in {venv_path}")
+                    logger.debug("CUDA OK in %s", venv_path)
                     venvs_with_cuda += 1
                 else:
-                    print(f"✗ CUDA NOT available in {venv_path}")
+                    logger.debug("CUDA NOT available in %s", venv_path)
             else:
-                print(f"✗ Error in {venv_path}: {result.stderr.strip()}")
+                logger.debug("Error checking CUDA in %s: %s", venv_path, result.stderr.strip())
         except subprocess.TimeoutExpired:
-            print(f"⚠ Timeout verifying CUDA in {venv_path}")
+            logger.warning("Timeout verifying CUDA in %s", venv_path)
         except Exception as e:
-            print(f"✗ Error in {venv_path}: {e}")
+            logger.warning("Error verifying CUDA in %s: %s", venv_path, e)
     
     # If no existing venvs, return True (no models installed = OK)
     if existing_venvs == 0:

@@ -331,21 +331,15 @@ def application_phase():
                             status = "❌ Missing"
                             status_already_set = True
                 elif model_name == "Kokoro":
-                    # Kokoro uses HuggingFace cache structure
-                    model_dir = BASE_DIR.parent / "audiobook_generator" / "tts_models" / "kokoro" / "models" / "hub" / "models--hexgrad--Kokoro-82M" / "snapshots"
-                    # Find snapshot folder (hash)
+                    # Kokoro stores model files directly in tts_models/kokoro/models/
+                    model_dir = BASE_DIR.parent / "audiobook_generator" / "tts_models" / "kokoro" / "models"
                     if model_dir.exists():
-                        snapshots = list(model_dir.iterdir())
-                        if snapshots:
-                            snapshot_dir = snapshots[0]  # Takes the first (and only) snapshot
-                            essential_files = ["config.json", "kokoro-v1_0.pth"]
-                            has_files = all((snapshot_dir / f).exists() for f in essential_files)
-                            status = "✅ Installed (verified)" if has_files else "⚠️ Incomplete"
-                        else:
-                            status = "❌ Missing (no snapshot)"
+                        essential_files = ["config.json", "kokoro-v1_0.pth"]
+                        has_files = all((model_dir / f).exists() for f in essential_files)
+                        status = "✅ Installed (verified)" if has_files else "⚠️ Incomplete"
                     else:
                         status = "❌ Missing"
-                    status_already_set = True  # Kokoro already set status
+                    status_already_set = True
                 else:
                     model_dir = None
                     essential_files = []
@@ -554,10 +548,13 @@ def application_phase():
         
         if sys.platform == "win32":
             pip_exe = venv_path / "Scripts" / "pip.exe"
+            python_venv_exe = venv_path / "Scripts" / "python.exe"
         else:
             pip_exe = venv_path / "bin" / "pip"
-        
-        run_command([str(pip_exe), "install", "--upgrade", "pip"], idle_timeout=600)
+            python_venv_exe = venv_path / "bin" / "python"
+
+        # On Windows, pip.exe cannot upgrade itself — must use python -m pip
+        run_command([str(python_venv_exe), "-m", "pip", "install", "--upgrade", "pip"], idle_timeout=600)
         req_file = BASE_DIR.parent / "requirements" / "requirements-base.txt"
         if req_file.exists():
             run_command([str(pip_exe), "install", "-r", str(req_file)], idle_timeout=1800)
@@ -585,10 +582,13 @@ def application_phase():
         
         if sys.platform == "win32":
             pip_exe = venv_path / "Scripts" / "pip.exe"
+            python_venv_exe = venv_path / "Scripts" / "python.exe"
         else:
             pip_exe = venv_path / "bin" / "pip"
-        
-        run_command([str(pip_exe), "install", "--upgrade", "pip"], idle_timeout=600)
+            python_venv_exe = venv_path / "bin" / "python"
+
+        # On Windows, pip.exe cannot upgrade itself — must use python -m pip
+        run_command([str(python_venv_exe), "-m", "pip", "install", "--upgrade", "pip"], idle_timeout=600)
         gpu_detected = detect_gpu()
         if gpu_detected:
             cuda_recommended = detect_recommended_cuda()
@@ -632,10 +632,13 @@ def application_phase():
         
         if sys.platform == "win32":
             pip_exe = venv_path / "Scripts" / "pip.exe"
+            python_venv_exe = venv_path / "Scripts" / "python.exe"
         else:
             pip_exe = venv_path / "bin" / "pip"
-        
-        run_command([str(pip_exe), "install", "--upgrade", "pip"], idle_timeout=600)
+            python_venv_exe = venv_path / "bin" / "python"
+
+        # On Windows, pip.exe cannot upgrade itself — must use python -m pip
+        run_command([str(python_venv_exe), "-m", "pip", "install", "--upgrade", "pip"], idle_timeout=600)
         gpu_detected = detect_gpu()
         if gpu_detected:
             cuda_recommended = detect_recommended_cuda()
@@ -677,13 +680,27 @@ def application_phase():
         
         if sys.platform == "win32":
             pip_exe = venv_path / "Scripts" / "pip.exe"
+            python_venv_exe = venv_path / "Scripts" / "python.exe"
         else:
             pip_exe = venv_path / "bin" / "pip"
+            python_venv_exe = venv_path / "bin" / "python"
+
+        # On Windows, pip.exe cannot upgrade itself — must use python -m pip
+        run_command([str(python_venv_exe), "-m", "pip", "install", "--upgrade", "pip"], idle_timeout=600)
         
-        run_command([str(pip_exe), "install", "--upgrade", "pip"], idle_timeout=600)
-        
-        # Install kokoro - pip will automatically install torch and all dependencies
-        # Working test shows pip installs torch 2.10.0+cu128 with CUDA automatically
+        # Install torch with CUDA explicitly first, same pattern as other engines.
+        # Letting kokoro pull its own torch results in a CPU-only build.
+        gpu_detected = detect_gpu()
+        if gpu_detected:
+            cuda_recommended = detect_recommended_cuda()
+            if cuda_recommended == "cuda121":
+                run_command([str(pip_exe), "install", "torch", "torchvision", "torchaudio", "--index-url", "https://download.pytorch.org/whl/cu121"], idle_timeout=7200)
+            else:
+                run_command([str(pip_exe), "install", "torch", "torchvision", "torchaudio", "--index-url", "https://download.pytorch.org/whl/cu118"], idle_timeout=7200)
+        else:
+            run_command([str(pip_exe), "install", "torch", "torchvision", "torchaudio", "--index-url", "https://download.pytorch.org/whl/cpu"], idle_timeout=3600)
+
+        # Install kokoro after torch is in place
         run_command([str(pip_exe), "install", "kokoro>=0.9.4", "soundfile"], idle_timeout=3600)
         
         # Install Kokoro-specific requirements
@@ -715,10 +732,13 @@ def application_phase():
         
         if sys.platform == "win32":
             pip_exe = venv_path / "Scripts" / "pip.exe"
+            python_venv_exe = venv_path / "Scripts" / "python.exe"
         else:
             pip_exe = venv_path / "bin" / "pip"
-        
-        run_command([str(pip_exe), "install", "--upgrade", "pip"], idle_timeout=600)
+            python_venv_exe = venv_path / "bin" / "python"
+
+        # On Windows, pip.exe cannot upgrade itself — must use python -m pip
+        run_command([str(python_venv_exe), "-m", "pip", "install", "--upgrade", "pip"], idle_timeout=600)
         gpu_detected = detect_gpu()
         if gpu_detected:
             cuda_recommended = detect_recommended_cuda()

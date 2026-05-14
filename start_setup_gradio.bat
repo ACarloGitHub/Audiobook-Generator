@@ -12,6 +12,9 @@ set "SCRIPT_DIR=%~dp0"
 set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
 set "SETUP_VENV_DIR=%SCRIPT_DIR%\setup_venv"
 
+:: Set working directory to project root (required for relative paths in Python scripts)
+cd /d "%SCRIPT_DIR%"
+
 :: === CONFIG ===
 set "MAX_RETRIES=3"
 set "PIP_TIMEOUT=300"
@@ -83,6 +86,15 @@ if exist "%SETUP_VENV_DIR%" (
 echo.
 
 :: === Step 3: Install gradio and requests (with retry + timeout) ===
+
+:: Fast path: if gradio is already importable, skip installation entirely
+"%VENV_PYTHON%" -c "import gradio, requests" >nul 2>&1
+if not errorlevel 1 (
+    echo Gradio already installed, skipping...
+    echo.
+    goto :launch
+)
+
 echo Installing gradio and requests...
 echo (Timeout: %PIP_TIMEOUT%s per attempt, up to %MAX_RETRIES% retries)
 echo.
@@ -94,21 +106,23 @@ set "PIP_SUCCESS=0"
 set /a RETRY_COUNT+=1
 echo   Attempt %RETRY_COUNT% of %MAX_RETRIES%
 
-:: Upgrade pip first
+:: Upgrade pip first (optional - failure here does NOT abort the attempt)
 "%VENV_PIP%" install --timeout %PIP_TIMEOUT% --upgrade pip >nul 2>&1
 if errorlevel 1 (
-    echo   pip upgrade failed
-    goto :retry_check
+    echo   pip upgrade skipped (not critical, continuing...)
 )
 
-:: Install wheel
+:: Install wheel (optional)
 "%VENV_PIP%" install --timeout %PIP_TIMEOUT% wheel >nul 2>&1
 
-:: Install gradio and requests
-"%VENV_PIP%" install --timeout %PIP_TIMEOUT% gradio requests >nul 2>&1
+:: Install gradio and requests (this is the critical step)
+echo   Installing gradio and requests...
+"%VENV_PIP%" install --timeout %PIP_TIMEOUT% gradio requests -q
 if not errorlevel 1 (
     set "PIP_SUCCESS=1"
     goto :install_done
+) else (
+    echo   ERROR: gradio installation failed (see output above)
 )
 
 :retry_check
@@ -146,12 +160,13 @@ if errorlevel 1 (
 echo Gradio installed successfully!
 echo.
 
+:launch
 :: === Step 4: Launch setup_gradio.py ===
 echo ========================================
 echo Starting Setup Gradio...
 echo ========================================
 echo.
-echo Open http://localhost:7860 in your browser
+echo Open http://localhost:7861 in your browser
 echo Press CTRL+C to stop the server
 echo.
 

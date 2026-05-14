@@ -123,6 +123,13 @@ if [ -z "$VENV_PIP" ]; then
     exit 1
 fi
 
+# Fast path: if gradio is already importable, skip installation entirely
+if "$VENV_PYTHON" -c "import gradio, requests" 2>/dev/null; then
+    echo -e "${GREEN}✓${NC} Gradio already installed, skipping..."
+    echo ""
+    exec "$VENV_PYTHON" setup/setup_gradio.py
+fi
+
 # Retry loop for pip install
 RETRY_COUNT=0
 PIP_SUCCESS=0
@@ -133,21 +140,17 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     echo ""
     echo -e "${YELLOW}   Attempt $RETRY_COUNT of $MAX_RETRIES${NC}"
     
-    # Upgrade pip first (with timeout)
-    if ! "$VENV_PIP" install --timeout "$PIP_TIMEOUT" --upgrade pip -q 2>&1; then
-        echo -e "${RED}   ❌ pip upgrade failed${NC}"
-        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-            echo -e "${YELLOW}   ⏳ Retrying in ${PIP_DELAY}s...${NC}"
-            sleep $PIP_DELAY
-        fi
-        continue
+    # Upgrade pip first (optional — failure here does NOT abort the attempt)
+    if ! "$VENV_PIP" install --timeout "$PIP_TIMEOUT" --upgrade pip -q 2>/dev/null; then
+        echo -e "${YELLOW}   ⚠️  pip upgrade skipped (not critical, continuing...)${NC}"
     fi
-    
+
     # Install wheel
-    "$VENV_PIP" install --timeout "$PIP_TIMEOUT" wheel -q 2>&1 || true
-    
-    # Install gradio and requests (the key dependencies)
-    if "$VENV_PIP" install --timeout "$PIP_TIMEOUT" gradio requests -q 2>&1; then
+    "$VENV_PIP" install --timeout "$PIP_TIMEOUT" wheel -q 2>/dev/null || true
+
+    # Install gradio and requests (this is the critical step)
+    echo "   Installing gradio and requests..."
+    if "$VENV_PIP" install --timeout "$PIP_TIMEOUT" gradio requests -q; then
         PIP_SUCCESS=1
         break
     else
@@ -192,7 +195,7 @@ LOG_FILE="setup_logs/setup_gradio_$(date +%Y%m%d_%H%M%S).log"
 echo "   Log file: $LOG_FILE"
 echo ""
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}  Open http://localhost:7860 in your browser${NC}"
+echo -e "${GREEN}  Open http://localhost:7861 in your browser${NC}"
 echo -e "${GREEN}  Press CTRL+C to stop${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
