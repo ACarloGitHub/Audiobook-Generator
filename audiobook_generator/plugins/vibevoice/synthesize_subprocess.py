@@ -57,6 +57,7 @@ def main():
         logging.info(f"Received job: {input_data}")
         
         text = input_data['text']
+        text = ' '.join(text.replace('\r\n', '\n').replace('\r', '\n').split())
         output_path = input_data['output_path']
         speaker_wav = input_data['speaker_wav']
         model_name = input_data.get('model_name', 'VibeVoice')
@@ -89,6 +90,20 @@ def main():
         # Structure: vibevoice/{1.5B,7B,0.5B}/ for models
         # repo_community/vibevoice for code (streaming + inference)
         vibevoice_model_dir = os.path.join(base_project_dir, 'audiobook_generator', 'tts_models', 'vibevoice', model_subdir)
+        
+        # Pre-flight: verify all safetensors shards are present
+        index_path = os.path.join(vibevoice_model_dir, 'model.safetensors.index.json')
+        if os.path.exists(index_path):
+            with open(index_path, 'r', encoding='utf-8') as f:
+                index_data = json.load(f)
+            weight_map = index_data.get('weight_map', {})
+            shard_files = set(weight_map.values())
+            missing_shards = [s for s in sorted(shard_files) if not os.path.exists(os.path.join(vibevoice_model_dir, s))]
+            if missing_shards:
+                raise RuntimeError(
+                    f"Model {model_name} is incomplete. Missing shard files: {missing_shards}. "
+                    f"Please re-download the model using the Setup Manager."
+                )
         
         # Qwen2.5-1.5B tokenizer: separate folder tts_models/vibevoice/tokenizer/
         # (NOT inside the model — the model on HF does not include tokenizer files)

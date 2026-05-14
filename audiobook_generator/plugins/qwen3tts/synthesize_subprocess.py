@@ -74,6 +74,7 @@ def main():
         logging.info(f"Received job: {payload}")
         
         text = payload['text']
+        text = ' '.join(text.replace('\r\n', '\n').replace('\r', '\n').split())
         output_path = payload['output_path']
         mode = payload.get('mode')
         if mode is None:
