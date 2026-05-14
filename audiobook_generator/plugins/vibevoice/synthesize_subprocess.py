@@ -164,41 +164,13 @@ def main():
                 
                 logging.info("Import completed. Loading processor...")
                 
-                # Patch preprocessor_config.json to use the local tokenizer path.
-                # The VibeVoiceProcessor reads language_model_pretrained_name from
-                # preprocessor_config.json and the OR logic means the config value
-                # ("Qwen/Qwen2.5-7B" or "Qwen/Qwen2.5-1.5B") takes precedence over
-                # the kwargs argument. We must overwrite it to point to the local
-                # tokenizer directory so from_pretrained loads from disk, not HF hub.
-                preprocessor_config_path = os.path.join(vibevoice_model_dir, 'preprocessor_config.json')
-                original_language_model_name = None
-                if os.path.exists(preprocessor_config_path):
-                    with open(preprocessor_config_path, 'r', encoding='utf-8') as f:
-                        preprocessor_config = json.load(f)
-                    original_language_model_name = preprocessor_config.get('language_model_pretrained_name')
-                    preprocessor_config['language_model_pretrained_name'] = vibevoice_tokenizer_dir
-                    with open(preprocessor_config_path, 'w', encoding='utf-8') as f:
-                        json.dump(preprocessor_config, f, indent=2)
-                    logging.info(f"Patched preprocessor_config.json: language_model_pretrained_name -> {vibevoice_tokenizer_dir}")
-                
-                try:
-                    logging.info("Loading VibeVoiceProcessor from model directory...")
-                    processor = VibeVoiceProcessor.from_pretrained(
-                        vibevoice_model_dir,
-                        language_model_pretrained_name=vibevoice_tokenizer_dir,
-                        local_files_only=True,
-                        trust_remote_code=False
-                    )
-                finally:
-                    # Restore original config to avoid polluting the model files
-                    if original_language_model_name is not None and os.path.exists(preprocessor_config_path):
-                        with open(preprocessor_config_path, 'r', encoding='utf-8') as f:
-                            preprocessor_config = json.load(f)
-                        preprocessor_config['language_model_pretrained_name'] = original_language_model_name
-                        with open(preprocessor_config_path, 'w', encoding='utf-8') as f:
-                            json.dump(preprocessor_config, f, indent=2)
-                        logging.info(f"Restored preprocessor_config.json: language_model_pretrained_name -> {original_language_model_name}")
-                
+                logging.info("Loading VibeVoiceProcessor from model directory...")
+                processor = VibeVoiceProcessor.from_pretrained(
+                    vibevoice_model_dir,
+                    language_model_pretrained_name=vibevoice_tokenizer_dir,
+                    local_files_only=True,
+                    trust_remote_code=False
+                )
                 logging.info(f"Processor loaded: {processor.__class__.__name__}")
                 
                 tokenizer = processor.tokenizer
