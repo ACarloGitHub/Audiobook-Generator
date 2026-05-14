@@ -42,7 +42,7 @@ from audiobook_generator import config
 from audiobook_generator import utils
 from audiobook_generator import epub_processor
 from audiobook_generator import ffmpeg_wrapper
-from audiobook_generator import plugin_manager
+from audiobook_generator.plugin_manager import plugin_manager as pm
 
 # Import module for dependency management
 try:
@@ -113,7 +113,7 @@ def check_stop_flag():
 # Make model list dynamic
 if config.USE_PLUGIN_ARCHITECTURE:
     # Load enabled models from plugin registry
-    raw_models = plugin_manager.plugin_manager.list_available_models()
+    raw_models = pm.list_available_models()
     
     # Filter: if there are specific VibeVoice models, remove generic "VibeVoice"
     vibevoice_specific_models = [m for m in raw_models if m.startswith("VibeVoice-")]
@@ -284,7 +284,7 @@ def update_voice_options_for_model(model, xtts_lang, kokoro_lang, vibevoice_lang
             file_update = gr.update(visible=True, label="Upload Reference WAV (.wav)")
         elif model == "Kokoro":
             if kokoro_lang:
-                voices = plugin_manager.plugin_manager.get_kokoro_voices(kokoro_lang) or []
+                voices = pm.get_kokoro_voices(kokoro_lang) or []
                 dropdown_update = gr.update(visible=True, label="Select Kokoro Voice", choices=voices, value=None)
         elif model.startswith("VibeVoice") and not model.endswith("Realtime-0.5B"):
             file_update = gr.update(visible=True, label="Upload Reference WAV (.wav)")
@@ -486,13 +486,11 @@ def get_model_status(model_name):
         if os.path.exists(os.path.join(path, "config.json")): return f"✅ **{model_name}**: Present"
         else: return f"❌ **{model_name}**: Missing (click 'Download' to install)"
     elif model_name.startswith("VibeVoice"):
-        base_dir = "audiobook_generator/tts_models/vibevoice"
-        # Real paths (not model names!)
+        base_dir = os.path.join(config.TTS_MODELS_DIR, "vibevoice")
         if model_name == "VibeVoice-7B": target_dir = os.path.join(base_dir, "7B")
         elif model_name == "VibeVoice-1.5B": target_dir = os.path.join(base_dir, "1.5B")
         elif model_name == "VibeVoice-Realtime-0.5B": target_dir = os.path.join(base_dir, "0.5B")
         else: target_dir = os.path.join(base_dir, "model")
-        # Verify essential files: config always required, model can be .safetensors OR .safetensors.index.json
         if not os.path.exists(os.path.join(target_dir, "config.json")):
             return f"❌ **{model_name}**: Missing (config.json absent)"
         if not os.path.exists(os.path.join(target_dir, "preprocessor_config.json")):
@@ -502,12 +500,14 @@ def get_model_status(model_name):
         if has_model: return f"✅ **{model_name}**: Present"
         else: return f"❌ **{model_name}**: Missing (model file absent)"
     elif model_name == "XTTSv2":
-        base_dir = "audiobook_generator/tts_models/xttsv2"
-        if os.path.exists(base_dir): return f"✅ **XTTSv2**: Present"
+        essential = ["config.json", "model.pth", "dvae.pth"]
+        if all(os.path.exists(os.path.join(config.XTTSV2_MODELS_DIR, f)) for f in essential):
+            return f"✅ **XTTSv2**: Present"
         else: return f"❌ **XTTSv2**: Missing (click 'Download' to install)"
     elif model_name == "Kokoro":
-        base_dir = "audiobook_generator/tts_models/kokoro/models"
-        if os.path.exists(base_dir): return f"✅ **Kokoro**: Present"
+        essential = ["config.json", "kokoro-v1_0.pth"]
+        if all(os.path.exists(os.path.join(config.KOKORO_MODELS_DIR, f)) for f in essential):
+            return f"✅ **Kokoro**: Present"
         else: return f"❌ **Kokoro**: Missing (click 'Download' to install)"
     else: return f"ℹ️ **{model_name}**: Status unavailable"
 
@@ -613,7 +613,7 @@ def _load_tts_model_instance(selected_model, language, technical_voice_id):
     start_time = time.time()
     try:
         base_model = selected_model.split(" (to download)")[0]
-        model_instance = plugin_manager.plugin_manager.load_model(base_model, language_code=language if base_model == "Kokoro" else None)
+        model_instance = pm.load_model(base_model, language_code=language if base_model == "Kokoro" else None)
         if not model_instance: raise RuntimeError(f"Model loader returned None for {base_model}.")
         logging.info(f"TTS model loaded in {time.time() - start_time:.2f}s.")
         return model_instance, None
@@ -681,7 +681,7 @@ def _process_ebook_chapters(epub_filepath, book_final_output_dir, book_chunk_out
             
             all_params = {**final_tts_params, **extra_params}
             
-            if not plugin_manager.plugin_manager.synthesize(base_model, chunk_text, chunk_output_path, model_instance_wrapper, **all_params):
+            if not pm.synthesize(base_model, chunk_text, chunk_output_path, model_instance_wrapper, **all_params):
                 logger.error(f"Failed to synthesize chunk {j+1} of chapter '{chapter_key}'.")
                 chapter_failed_indices.append(j+1); chapter_failed_texts[str(j+1)] = chunk_text; chapter_error_types.append("synthesis_failed")
             else:
@@ -755,19 +755,21 @@ def run_demo_gradio(demo_text, selected_model, xtts_wav_file, piper_kokoro_voice
         model_instance, error = _load_tts_model_instance(selected_model, selected_lang, technical_voice_id)
         if error: raise RuntimeError(f"Model loading failed: {error}")
 
-        processed_text = utils.replace_guillemets_text(demo_text.strip()) if replace_guillemets_demo else demo_text.strip()
+        processed_text = ' '.join(demo_text.strip().split())
+        if replace_guillemets_demo:
+            processed_text = utils.replace_guillemets_text(processed_text)
         demo_output_path = os.path.join(config.DEMO_OUTPUT_DIR, f"demo_{int(time.time())}.wav")
         sep_value = next((val for name, val in SENTENCE_SEPARATOR_OPTIONS if name == separator_dropdown), ".")
         
         extra_params = {}
-        if selected_model == "XTTSv2": extra_params.update({"language": selected_lang, "speaker_wav": technical_voice_id, "use_tts_splitting": False, "sentence_separator": sep_value})
+        if selected_model == "XTTSv2": extra_params.update({"language": selected_lang, "speaker_wav": technical_voice_id, "use_tts_splitting": True, "sentence_separator": sep_value})
         elif selected_model == "Kokoro": extra_params.update({"voice_id": technical_voice_id, "language_code": selected_lang})
         elif selected_model.startswith("VibeVoice"): extra_params.update({"language": selected_lang, "speaker_wav": technical_voice_id})
         elif selected_model.startswith("Qwen3-TTS"): extra_params.update({"language": selected_lang, "speaker_wav": technical_voice_id})
         
         all_params = {**extra_params, **final_tts_params}
         start_time = time.time()
-        success = plugin_manager.plugin_manager.synthesize(base_model, processed_text, demo_output_path, model_instance, **all_params)
+        success = pm.synthesize(base_model, processed_text, demo_output_path, model_instance, **all_params)
         duration = time.time() - start_time
 
         if success: yield f"Demo generated in {duration:.2f}s.", gr.Audio(value=demo_output_path, label="Demo Output", visible=True)
