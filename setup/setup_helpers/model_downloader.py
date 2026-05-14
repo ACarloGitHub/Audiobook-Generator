@@ -51,6 +51,37 @@ def download_xttsv2_model(idle_timeout=1800):
         print("ERROR: XTTSv2 download failed.")
         return False
 
+def _check_safetensors_shards(model_dir):
+    """Checks that all safetensors shard files referenced in model.safetensors.index.json exist.
+    
+    Returns a list of missing shard filenames, or an empty list if all are present.
+    If model.safetensors.index.json does not exist, returns an empty list (no shards to check).
+    """
+    import json as _json
+    index_path = os.path.join(model_dir, "model.safetensors.index.json")
+    if not os.path.exists(index_path):
+        # Single-file model (e.g. 0.5B) or no index — nothing to check
+        return []
+    try:
+        with open(index_path, 'r', encoding='utf-8') as f:
+            index_data = _json.load(f)
+        metadata = index_data.get("metadata", {})
+        total_size = metadata.get("total_size", 0)
+        weight_map = index_data.get("weight_map", {})
+        # Collect unique shard filenames from the weight_map
+        shard_files = set()
+        for tensor_name, filename in weight_map.items():
+            shard_files.add(filename)
+        missing = []
+        for shard_file in sorted(shard_files):
+            if not os.path.exists(os.path.join(model_dir, shard_file)):
+                missing.append(shard_file)
+        return missing
+    except Exception as e:
+        print(f"Warning: could not parse model.safetensors.index.json: {e}")
+        return []
+
+
 def download_vibevoice_tokenizer(idle_timeout=300):
     """Downloads the Qwen2.5-1.5B tokenizer for VibeVoice 1.5B and 7B.
     
@@ -207,12 +238,22 @@ def download_vibevoice_model_multiple(version_choice, idle_timeout=1800):
     print(f"Downloading VibeVoice-{version_choice} model...")
     print(f"Target: {target_dir}")
     if os.path.exists(target_dir):
-        essential_files = ["config.json", "preprocessor_config.json", "model.safetensors.index.json"]
+        # Essential config files (present in all versions)
+        essential_files = ["config.json", "preprocessor_config.json"]
+        # Sharded models (1.5B, 7B) have index file; single-file models (0.5B) have model.safetensors
+        if os.path.exists(os.path.join(target_dir, "model.safetensors.index.json")):
+            essential_files.append("model.safetensors.index.json")
+        elif os.path.exists(os.path.join(target_dir, "model.safetensors")):
+            essential_files.append("model.safetensors")
         missing_files = []
         for file in essential_files:
             file_path = os.path.join(target_dir, file)
             if not os.path.exists(file_path):
                 missing_files.append(file)
+        # Also check that all safetensors shard files are present
+        missing_shards = _check_safetensors_shards(target_dir)
+        if missing_shards:
+            missing_files.extend(missing_shards)
         if not missing_files:
             print(f"VibeVoice-{version_choice} model already present and complete in '{target_dir}'. Download skipped.")
             update_plugin_registry_with_lock(plugin_name, installed=True)
@@ -226,7 +267,7 @@ def download_vibevoice_model_multiple(version_choice, idle_timeout=1800):
                 download_vibevoice_tokenizer()  # Qwen2.5-1.5B tokenizer for 1.5B and 7B
             return True
         else:
-            print(f"VibeVoice-{version_choice} model exists but {len(missing_files)} essential files are missing: {missing_files}")
+            print(f"VibeVoice-{version_choice} model exists but {len(missing_files)} files are missing: {missing_files}")
             print("Proceeding with download to complete the model...")
     else:
         print(f"VibeVoice-{version_choice} model not present in '{target_dir}'. Proceeding with download...")

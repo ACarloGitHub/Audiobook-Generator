@@ -21,9 +21,22 @@ def run_command(command, cwd=None, idle_timeout=1800):
 
     output_queue = queue.Queue()
     def output_reader(pipe, queue):
+        """Read output splitting on both \n and \r so pip download progress
+        (which uses \r) still resets the idle-timeout timer."""
         try:
-            for line in iter(pipe.readline, ''):
-                queue.put(line)
+            buf = ''
+            while True:
+                ch = pipe.read(1)
+                if not ch:
+                    if buf:
+                        queue.put(buf)
+                    break
+                if ch in ('\n', '\r'):
+                    if buf:
+                        queue.put(buf)
+                        buf = ''
+                else:
+                    buf += ch
         finally:
             pipe.close()
 
@@ -72,10 +85,12 @@ def get_python_executable(version="3.11"):
     return None
 
 def clone_repo(repo_url, dest_path, progress=True):
-    """Clones a Git repository."""
+    """Clones a Git repository. Removes dest_path first if it exists as a leftover from a failed clone."""
     if os.path.exists(dest_path):
-        print(f"Folder '{dest_path}' already exists. Download skipped.")
-        return True
+        # A leftover temp directory from a previous failed clone will block the new clone.
+        # Remove it before attempting a fresh clone.
+        print(f"Removing existing temporary directory '{dest_path}' before cloning...")
+        shutil.rmtree(dest_path, ignore_errors=True)
     cmd = ["git", "clone", repo_url, dest_path]
     if progress: cmd.insert(2, "--progress")
     return run_command(cmd)
