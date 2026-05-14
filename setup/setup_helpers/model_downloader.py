@@ -6,11 +6,20 @@ from .system_utils import command_exists, run_command, clone_repo
 from .download_utils import download_with_huggingface_hub, download_file, extract_archive
 from .plugin_utils import update_plugin_registry, update_plugin_registry_with_lock
 
+# Absolute path to project root — derived from this file's location.
+# model_downloader.py is at: <project_root>/setup/setup_helpers/model_downloader.py
+# so project root is 3 levels up.
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+def _proj(*parts):
+    """Return an absolute path under the project root, regardless of cwd."""
+    return os.path.join(_PROJECT_ROOT, *parts)
+
 def download_kokoro_model(idle_timeout=1800):
     """Downloads the Kokoro-82M model from HuggingFace."""
     repo_id = "hexgrad/Kokoro-82M"
-    target_dir = "audiobook_generator/tts_models/kokoro/models"
-    
+    target_dir = _proj("audiobook_generator", "tts_models", "kokoro", "models")
+
     if os.path.exists(os.path.join(target_dir, "kokoro-v1_0.pth")):
         print("Kokoro model already present. Download skipped.")
         update_plugin_registry("Kokoro", installed=True)
@@ -27,7 +36,7 @@ def download_kokoro_model(idle_timeout=1800):
 def download_xttsv2_model(idle_timeout=1800):
     """Downloads the XTTS-v2 model from HuggingFace."""
     repo_id = "coqui/XTTS-v2"
-    target_dir = "audiobook_generator/tts_models/xttsv2"
+    target_dir = _proj("audiobook_generator", "tts_models", "xttsv2")
 
     if os.path.exists(os.path.join(target_dir, "model.pth")):
         print("XTTSv2 model already present. Download skipped.")
@@ -51,80 +60,112 @@ def download_vibevoice_tokenizer(idle_timeout=300):
     The tokenizer is saved in tts_models/vibevoice/tokenizer/
     with files: tokenizer.json, tokenizer_config.json, merges.txt, vocab.json
     
-    The synthesis code uses:
-        processor = VibeVoiceProcessor.from_pretrained(
-            vibevoice_model_dir,
-            language_model_pretrained_name=vibevoice_tokenizer_dir,
-            ...
-        )
+    The synthesis code loads the tokenizer from the local directory:
+        tokenizer = VibeVoiceTextTokenizerFast.from_pretrained(vibevoice_tokenizer_dir, ...)
+    
+    Additionally, since the VibeVoice 7B preprocessor_config.json references
+    "Qwen/Qwen2.5-7B" as language_model_pretrained_name, and Qwen2.5-1.5B and
+    Qwen2.5-7B share the same tokenizer, we create a HuggingFace cache entry
+    for Qwen2.5-7B by copying the Qwen2.5-1.5B cache structure.
+    
+    Uses a lock file to prevent race conditions when two downloads start
+    concurrently (e.g. "Download All VibeVoice").
     """
-    tokenizer_dir = os.path.join("audiobook_generator", "tts_models", "vibevoice", "tokenizer")
+    import time
+    
+    tokenizer_dir = _proj("audiobook_generator", "tts_models", "vibevoice", "tokenizer")
     
     # Required files for the Qwen tokenizer
     tokenizer_files = ["tokenizer.json", "tokenizer_config.json", "merges.txt", "vocab.json"]
     
-    # Check if local tokenizer already exists
-    tokenizer_present = all(os.path.exists(os.path.join(tokenizer_dir, f)) for f in tokenizer_files)
-    
-    # Check if HuggingFace cache for Qwen2.5-7B already exists
+    # Determine HF cache directory
     try:
         from huggingface_hub import constants
         hf_cache = constants.HUGGINGFACE_HUB_CACHE
     except ImportError:
         hf_cache = os.path.expanduser("~/.cache/huggingface/hub")
     qwen_7b_cache = os.path.join(hf_cache, "models--Qwen--Qwen2.5-7B")
-    cache_7b_present = os.path.exists(qwen_7b_cache)
+    lock_file = qwen_7b_cache + ".lock"
     
-    # If both are already present, nothing to do
-    if tokenizer_present and cache_7b_present:
-        print("Qwen2.5-1.5B tokenizer already present and Qwen2.5-7B cache exists. Nothing to do.")
-        return True
-    
-    # If local tokenizer is missing, download it
-    if not tokenizer_present:
-        print("Downloading Qwen2.5-1.5B tokenizer...")
+    # ============================================================
+    # LOCK: prevent race condition if two downloads start concurrently
+    # (e.g. "Download All VibeVoice" triggers both 1.5B and 7B)
+    # ============================================================
+    waited = 0
+    wait_interval = 1.0
+    while True:
         try:
-            from huggingface_hub import hf_hub_download
-        except ImportError:
-            print("ERROR: huggingface_hub not available.")
-            return False
-        
-        os.makedirs(tokenizer_dir, exist_ok=True)
-        
-        repo_id = "Qwen/Qwen2.5-1.5B"
-        for filename in tokenizer_files:
-            try:
-                local_path = hf_hub_download(repo_id, filename)
-                dest_path = os.path.join(tokenizer_dir, filename)
-                if os.path.abspath(local_path) != os.path.abspath(dest_path):
-                    shutil.copy2(local_path, dest_path)
-                print(f"  {filename} -> {dest_path}")
-            except Exception as e:
-                print(f"ERROR downloading {filename}: {e}")
+            # O_EXCL makes creation atomic: fails if file already exists
+            lock_fd = os.open(lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(lock_fd, str(os.getpid()).encode())
+            os.close(lock_fd)
+            break  # Lock acquired
+        except FileExistsError:
+            # Lock already exists — wait and retry
+            if waited >= idle_timeout:
+                print(f"TIMEOUT: lock file still present after {idle_timeout}s. Likely crash of a previous process.")
                 return False
-        print("Qwen2.5-1.5B tokenizer downloaded successfully.")
+            time.sleep(wait_interval)
+            waited += wait_interval
+            wait_interval = min(wait_interval * 1.5, 10)  # backoff max 10s
     
-    # ============================================================
-    # FIX: The VibeVoice code for 7B looks for "Qwen/Qwen2.5-7B" in the cache.
-    # Since Qwen2.5-1.5B and Qwen2.5-7B use the SAME tokenizer,
-    # we create a cache entry for Qwen2.5-7B by copying the entire cache structure.
-    # ============================================================
-    if not cache_7b_present:
-        qwen_1_5b_cache = os.path.join(hf_cache, "models--Qwen--Qwen2.5-1.5B")
-        if os.path.exists(qwen_1_5b_cache):
-            import shutil
-            print("Creating cache for Qwen2.5-7B (same tokenizer as Qwen2.5-1.5B)...")
+    try:
+        # Verify ONLY AFTER acquiring the lock (no other process is writing)
+        tokenizer_present = all(os.path.exists(os.path.join(tokenizer_dir, f)) for f in tokenizer_files)
+        cache_7b_present = os.path.exists(qwen_7b_cache)
+        
+        if tokenizer_present and cache_7b_present:
+            print("Qwen2.5-1.5B tokenizer already present and Qwen2.5-7B cache exists. Nothing to do.")
+            return True
+        
+        # If local tokenizer is missing, download it
+        if not tokenizer_present:
+            print("Downloading Qwen2.5-1.5B tokenizer...")
             try:
-                if os.path.exists(qwen_7b_cache):
-                    shutil.rmtree(qwen_7b_cache)
-                shutil.copytree(qwen_1_5b_cache, qwen_7b_cache)
-                print("  Qwen2.5-7B cache created successfully (full structure).")
-            except Exception as e:
-                print(f"  Error during cache copy: {e}")
-        else:
-            print("WARNING: Qwen2.5-1.5B cache not found, cannot create 7B cache.")
-    
-    return True
+                from huggingface_hub import hf_hub_download
+            except ImportError:
+                print("ERROR: huggingface_hub not available.")
+                return False
+            
+            os.makedirs(tokenizer_dir, exist_ok=True)
+            
+            repo_id = "Qwen/Qwen2.5-1.5B"
+            for filename in tokenizer_files:
+                try:
+                    local_path = hf_hub_download(repo_id, filename)
+                    dest_path = os.path.join(tokenizer_dir, filename)
+                    if os.path.abspath(local_path) != os.path.abspath(dest_path):
+                        shutil.copy2(local_path, dest_path)
+                    print(f"  {filename} -> {dest_path}")
+                except Exception as e:
+                    print(f"ERROR downloading {filename}: {e}")
+                    return False
+            print("Qwen2.5-1.5B tokenizer downloaded successfully.")
+        
+        # ============================================================
+        # FIX: The VibeVoice code for 7B looks for "Qwen/Qwen2.5-7B" in the cache.
+        # Since Qwen2.5-1.5B and Qwen2.5-7B use the SAME tokenizer,
+        # we create a cache entry for Qwen2.5-7B by copying the entire cache structure.
+        # ============================================================
+        if not cache_7b_present:
+            qwen_1_5b_cache = os.path.join(hf_cache, "models--Qwen--Qwen2.5-1.5B")
+            if os.path.exists(qwen_1_5b_cache):
+                print("Creating cache for Qwen2.5-7B (same tokenizer as Qwen2.5-1.5B)...")
+                try:
+                    if os.path.exists(qwen_7b_cache):
+                        shutil.rmtree(qwen_7b_cache)
+                    shutil.copytree(qwen_1_5b_cache, qwen_7b_cache)
+                    print("  Qwen2.5-7B cache created successfully (full structure).")
+                except Exception as e:
+                    print(f"  Error during cache copy: {e}")
+            else:
+                print("WARNING: Qwen2.5-1.5B cache not found, cannot create 7B cache.")
+        
+        return True
+    finally:
+        # Release the lock
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
 
 
 def download_vibevoice_model_multiple(version_choice, idle_timeout=1800):
@@ -142,7 +183,7 @@ def download_vibevoice_model_multiple(version_choice, idle_timeout=1800):
     Note: The 1.5B and 7B models also require the Qwen2.5-1.5B tokenizer
     (downloaded separately by download_vibevoice_tokenizer()).
     """
-    model_dir = "audiobook_generator/tts_models/vibevoice"
+    model_dir = _proj("audiobook_generator", "tts_models", "vibevoice")
     # Version -> (HuggingFace repo, local folder) mapping
     # Struttura: {1.5B, 7B, 0.5B}/
     repo_map = {
@@ -227,9 +268,9 @@ def download_vibevoice_vvembed():
     """
     import requests
     import zipfile
-    repo_community_dir = "audiobook_generator/tts_models/vibevoice/repo_community"
+    repo_community_dir = _proj("audiobook_generator", "tts_models", "vibevoice", "repo_community")
     repo_url = "https://github.com/vibevoice-community/VibeVoice"
-    temp_dir = "audiobook_generator/tts_models/vibevoice/repo_community_temp"
+    temp_dir = _proj("audiobook_generator", "tts_models", "vibevoice", "repo_community_temp")
     
     if os.path.exists(repo_community_dir):
         essential_files = [
@@ -340,9 +381,9 @@ def download_vibevoice_repo_microsoft():
     """
     import requests
     import zipfile
-    repo_dir = "audiobook_generator/tts_models/vibevoice/repo"
+    repo_dir = _proj("audiobook_generator", "tts_models", "vibevoice", "repo")
     repo_url = "https://github.com/microsoft/VibeVoice.git"
-    temp_dir = "audiobook_generator/tts_models/vibevoice/repo_temp"
+    temp_dir = _proj("audiobook_generator", "tts_models", "vibevoice", "repo_temp")
     
     if os.path.exists(repo_dir):
         essential_files = [
@@ -457,9 +498,9 @@ def download_vibevoice_realtime_voices():
     The voices are in demo/voices/streaming_model/ in the Microsoft repo.
     """
     import requests
-    source_dir = "audiobook_generator/tts_models/vibevoice/repo"
+    source_dir = _proj("audiobook_generator", "tts_models", "vibevoice", "repo")
     voices_source = os.path.join(source_dir, "demo", "voices", "streaming_model")
-    voices_target = "audiobook_generator/tts_models/vibevoice/reference_voices/vibevoice RealTime"
+    voices_target = _proj("audiobook_generator", "tts_models", "vibevoice", "reference_voices", "vibevoice RealTime")
     
     os.makedirs(voices_target, exist_ok=True)
     
@@ -502,7 +543,7 @@ def download_qwen3tts_model(version_choice, model_type="base", idle_timeout=1800
         type_folder = model_type.capitalize()  # base -> Base
     folder_name = f"Qwen3-TTS-12Hz-{version_choice}-{type_folder}"
     plugin_name = f"Qwen3-TTS-{version_choice}-{type_folder}"
-    target_dir = f"audiobook_generator/tts_models/qwen3tts/{folder_name}"
+    target_dir = _proj("audiobook_generator", "tts_models", "qwen3tts", folder_name)
 
     if os.path.exists(os.path.join(target_dir, "config.json")):
         print(f"{plugin_name} model already present. Download skipped.")
@@ -523,7 +564,7 @@ def download_qwen3tts_model(version_choice, model_type="base", idle_timeout=1800
 def download_qwen3tts_tokenizer(idle_timeout=1800):
     """Downloads the tokenizer for Qwen3-TTS."""
     repo_id = "Qwen/Qwen3-TTS-12Hz-0.6B-Base" # Tokenizer is the same for all
-    target_dir = "audiobook_generator/tts_models/qwen3tts/tokenizer"
+    target_dir = _proj("audiobook_generator", "tts_models", "qwen3tts", "tokenizer")
     
     if os.path.exists(os.path.join(target_dir, "tokenizer_config.json")):
         print("Qwen3-TTS tokenizer already present.")

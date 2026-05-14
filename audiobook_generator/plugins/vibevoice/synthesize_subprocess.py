@@ -94,6 +94,19 @@ def main():
         # (NOT inside the model — the model on HF does not include tokenizer files)
         vibevoice_tokenizer_dir = os.path.join(base_project_dir, 'audiobook_generator', 'tts_models', 'vibevoice', 'tokenizer')
         
+        # Validate tokenizer directory for non-streaming models
+        if model_name != 'VibeVoice-Realtime-0.5B':
+            required_tokenizer_files = ['tokenizer.json', 'tokenizer_config.json']
+            missing_tokenizer_files = [f for f in required_tokenizer_files if not os.path.exists(os.path.join(vibevoice_tokenizer_dir, f))]
+            if missing_tokenizer_files:
+                logging.error(f"Tokenizer directory '{vibevoice_tokenizer_dir}' is missing required files: {missing_tokenizer_files}")
+                logging.error("Run the Setup Manager and download the VibeVoice model to populate the tokenizer directory.")
+                raise FileNotFoundError(
+                    f"VibeVoice tokenizer not found in '{vibevoice_tokenizer_dir}'. "
+                    f"Missing files: {missing_tokenizer_files}. "
+                    f"Please run the Setup Manager to download the tokenizer."
+                )
+        
         # Source code: repo_community/vibevoice for Realtime-0.5B (streaming), repo/vibevoice for 1.5B/7B
         # VibeVoiceStreamingForConditionalGenerationInference is in repo_community (community repo with streaming classes)
         # VibeVoiceForConditionalGenerationInference (non-streaming) and streaming are both in repo_community
