@@ -94,7 +94,7 @@ class BaseSubprocessPlugin(BaseTTSPlugin):
 
         process = None
         try:
-            project_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            project_dir = config.BASE_PROJECT_DIR
 
             process = subprocess.Popen(
                 [self._get_python_executable(), script_path],
@@ -103,6 +103,7 @@ class BaseSubprocessPlugin(BaseTTSPlugin):
                 stderr=subprocess.PIPE,
                 text=True,
                 encoding='utf-8',
+                errors='replace',
                 cwd=project_dir
             )
 
