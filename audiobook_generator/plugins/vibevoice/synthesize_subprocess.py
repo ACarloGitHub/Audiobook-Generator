@@ -161,26 +161,54 @@ def main():
                 # =====================================================================
                 from modular.modeling_vibevoice_inference import VibeVoiceForConditionalGenerationInference
                 from processor.vibevoice_processor import VibeVoiceProcessor
+                from modular.modular_vibevoice_text_tokenizer import VibeVoiceTextTokenizerFast
+                from processor.vibevoice_tokenizer_processor import VibeVoiceTokenizerProcessor
                 
                 logging.info("Import completed. Loading processor...")
                 
-                logging.info("Loading VibeVoiceProcessor from model directory...")
-                processor = VibeVoiceProcessor.from_pretrained(
-                    vibevoice_model_dir,
-                    language_model_pretrained_name=vibevoice_tokenizer_dir,
+                # Load the tokenizer separately from the local directory.
+                # VibeVoiceProcessor.from_pretrained() reads language_model_pretrained_name
+                # from preprocessor_config.json and the OR logic ignores the kwargs argument
+                # when the config value is set (e.g. "Qwen/Qwen2.5-7B"). To avoid modifying
+                # model files, we load the tokenizer manually and construct the processor.
+                logging.info(f"Loading tokenizer from local directory: {vibevoice_tokenizer_dir}")
+                tokenizer = VibeVoiceTextTokenizerFast.from_pretrained(
+                    vibevoice_tokenizer_dir,
                     local_files_only=True,
                     trust_remote_code=False
                 )
-                logging.info(f"Processor loaded: {processor.__class__.__name__}")
-                
-                tokenizer = processor.tokenizer
-                if tokenizer is None:
-                    raise RuntimeError("FATAL: Tokenizer is None after loading processor.")
-                logging.info(f"Tokenizer wrapper loaded: {tokenizer.__class__.__name__}")
+                logging.info(f"Tokenizer loaded: {tokenizer.__class__.__name__}")
                 
                 if tokenizer.bos_token_id is None:
                     logging.warning(f"bos_token_id is None, set to eos_token_id: {tokenizer.eos_token_id}")
                     tokenizer.bos_token_id = tokenizer.eos_token_id
+                
+                # Load preprocessor config to get audio processor parameters
+                preprocessor_config_path = os.path.join(vibevoice_model_dir, "preprocessor_config.json")
+                if os.path.exists(preprocessor_config_path):
+                    with open(preprocessor_config_path, 'r', encoding='utf-8') as f:
+                        preprocessor_config = json.load(f)
+                    speech_tok_compress_ratio = preprocessor_config.get("speech_tok_compress_ratio", 3200)
+                    db_normalize = preprocessor_config.get("db_normalize", True)
+                    audio_config = preprocessor_config.get("audio_processor", {})
+                    audio_processor = VibeVoiceTokenizerProcessor(
+                        sampling_rate=audio_config.get("sampling_rate", 24000),
+                        normalize_audio=audio_config.get("normalize_audio", True),
+                        target_dB_FS=audio_config.get("target_dB_FS", -25),
+                        eps=audio_config.get("eps", 1e-6),
+                    )
+                else:
+                    speech_tok_compress_ratio = 3200
+                    db_normalize = True
+                    audio_processor = VibeVoiceTokenizerProcessor()
+                
+                processor = VibeVoiceProcessor(
+                    tokenizer=tokenizer,
+                    audio_processor=audio_processor,
+                    speech_tok_compress_ratio=speech_tok_compress_ratio,
+                    db_normalize=db_normalize,
+                )
+                logging.info(f"Processor constructed manually: {processor.__class__.__name__}")
                 
                 logging.info("Processor loaded. Loading model...")
                 
