@@ -218,12 +218,21 @@ def check_model_installed(model_name: str) -> bool:
             if not os.path.exists(model_dir):
                 return False
             essential_files = ["config.json", "preprocessor_config.json"]
+            if not all(os.path.exists(os.path.join(model_dir, f)) for f in essential_files):
+                return False
             has_model = (
                 os.path.exists(os.path.join(model_dir, "model.safetensors")) or
                 os.path.exists(os.path.join(model_dir, "model-00001-of-00003.safetensors")) or
                 os.path.exists(os.path.join(model_dir, "model-00001-of-00010.safetensors"))
             )
-            return all(os.path.exists(os.path.join(model_dir, f)) for f in essential_files) and has_model
+            if not has_model:
+                return False
+            if HAS_SETUP_HELPERS:
+                missing_shards = setup_helpers.model_downloader._check_safetensors_shards(model_dir)
+                if missing_shards:
+                    logger.warning("Model %s is incomplete: missing shards: %s", model_name, missing_shards)
+                    return False
+            return True
         
         elif model_name == "XTTSv2":
             model_dir = os.path.join(base_project_dir, "audiobook_generator/tts_models/xttsv2")
@@ -236,30 +245,10 @@ def check_model_installed(model_name: str) -> bool:
             return True
         
         elif model_name == "Kokoro":
-            base_dir = os.path.join(base_project_dir, "audiobook_generator/tts_models/kokoro/models")
-            hub_dir = os.path.join(base_dir, "hub")
-            if not os.path.exists(hub_dir):
-                return False
-            snapshots_parent = None
-            for item in os.listdir(hub_dir):
-                if item.startswith("models--hexgrad--Kokoro-82M"):
-                    snapshots_parent = os.path.join(hub_dir, item)
-                    break
-            if not snapshots_parent or not os.path.exists(snapshots_parent):
-                return False
-            snapshots_dir = None
-            for item in os.listdir(snapshots_parent):
-                if item == "snapshots" or os.path.isdir(os.path.join(snapshots_parent, item)):
-                    snapshots_dir = os.path.join(snapshots_parent, "snapshots") if item == "snapshots" else os.path.join(snapshots_parent, item)
-                    break
-            if not snapshots_dir or not os.path.exists(snapshots_dir):
-                return False
-            snapshot_folders = [d for d in os.listdir(snapshots_dir) if os.path.isdir(os.path.join(snapshots_dir, d))]
-            if not snapshot_folders:
-                return False
-            actual_snapshot = os.path.join(snapshots_dir, snapshot_folders[0])
+            # Kokoro stores model files directly in tts_models/kokoro/models/
+            model_dir = config.KOKORO_MODELS_DIR
             essential_files = ["config.json", "kokoro-v1_0.pth"]
-            return all(os.path.exists(os.path.join(actual_snapshot, f)) for f in essential_files)
+            return all(os.path.exists(os.path.join(model_dir, f)) for f in essential_files)
         
         return False
     except OSError as e:
