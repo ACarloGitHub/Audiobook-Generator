@@ -26,6 +26,20 @@ thiserror = "1"
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs"] }
+futures = "0.3"
+regex = "1.10"
+hound = "3.5"
+# EPUB parsing (zip + xml, both MIT)
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+quick-xml = { version = "0.36", features = ["serialize"] }
+# Kokoro TTS (uses ort 2.0 RC internally)
+# We disable the default `g2p-espeak` feature for now: it requires CMake
+# and a C/C++ toolchain to build bundled espeak-ng.
+kokoro-en = { version = "0.1", default-features = false }
+# ORT CUDA / cuDNN support is enabled at runtime by placing the
+# vendored DLLs next to the binary. The Kokoro engine searches for
+# them on PATH (which we prepend in the engine's load()).
 
 [profile.release]
 panic = "abort"

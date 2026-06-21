@@ -8,9 +8,14 @@
 //! See AudiobookGenerator-Wiki/wiki/concepts/plugin-architecture.md
 //! and AudiobookGenerator-Wiki/wiki/concepts/engine-lifecycle.md.
 
+mod chunker;
 mod commands;
-mod engines;
-mod recovery;
+pub mod engines;
+pub mod merger;
+pub mod recovery;
+
+pub use engines::kokoro;
+pub mod epub;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

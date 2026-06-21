@@ -14,7 +14,9 @@ use std::sync::Arc;
 use serde::Serialize;
 use tauri::State;
 
+use crate::engines::kokoro::synthesize_book;
 use crate::engines::{EngineHandle, EngineInfo, EngineRegistry, SynthesizeRequest};
+use crate::merger;
 use crate::recovery::{self, RecoveryState};
 
 #[derive(Debug, Serialize, Clone)]
@@ -128,12 +130,38 @@ pub fn check_recovery(book_dir: PathBuf) -> Result<Option<RecoveryState>, String
         .or_else(|e| Err(format!("recovery load failed: {e:#}")))
 }
 
+/// Synthesize an entire book with the currently loaded Kokoro engine.
+/// This is the only "high-level" command the frontend needs: drop an
+/// EPUB, click Generate, get MP3s.
+///
+/// Other engines (Qwen3-TTS, OuteTTS, NeuTTS Air) will get their own
+/// top-level helpers as they land. The engine-agnostic plumbing
+/// (load / unload / status) is unchanged.
+#[tauri::command]
+pub async fn start_kokoro_generation(
+    handle: EngineHandle,
+    epub_path: PathBuf,
+    output_dir: PathBuf,
+    max_words: usize,
+    registry: State<'_, Arc<EngineRegistry>>,
+) -> Result<usize, String> {
+    let engine = registry
+        .get(&handle.engine_id)
+        .ok_or_else(|| format!("unknown engine '{}'", handle.engine_id))?;
+
+    // KokoroEngine is the only engine that exposes the book-level
+    // helper. Other engines (Qwen3-TTS, OuteTTS, NeuTTS) will get
+    // their own top-level Tauri command.
+    let kokoro = engine
+        .as_kokoro()
+        .ok_or_else(|| "this engine does not support book-level synthesis yet".to_string())?;
+
+    let ffmpeg = merger::find_ffmpeg().map_err(|e| e.to_string())?;
+    synthesize_book(kokoro, &handle, &epub_path, &output_dir, max_words, &ffmpeg)
+        .map_err(|e| format!("book synthesis failed: {e:#}"))
+}
+
 // ---- stub hardware detection -----------------------------------------
-//
-// The real implementation will be wired up in the "Hardware detection
-// + first-run wizard" task (see todo.md). For now we return a fixed
-// summary that matches Carlo's RTX 3090 + Windows host so the UI has
-// something to render.
 
 fn detect_hardware_stub() -> HardwareSummary {
     HardwareSummary {

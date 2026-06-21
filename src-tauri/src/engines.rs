@@ -8,11 +8,15 @@
 //! See AudiobookGenerator-Wiki/wiki/concepts/plugin-architecture.md
 //! and AudiobookGenerator-Wiki/wiki/concepts/engine-lifecycle.md.
 
+pub mod kokoro;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
+
+use kokoro::KokoroEngine;
 
 /// A request to synthesize a chunk of text.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,8 +48,7 @@ pub struct EngineInfo {
     pub languages: Vec<String>,
 }
 
-/// The trait every engine implements. Stub for now; Kokoro lands in
-/// the next commit when we absorb the prototype's `kokoro.rs`.
+/// The trait every engine implements.
 pub trait Engine: Send + Sync {
     fn info(&self) -> &EngineInfo;
     fn is_loaded(&self) -> bool;
@@ -58,16 +61,22 @@ pub trait Engine: Send + Sync {
     ) -> anyhow::Result<()>;
     fn unload(&self, handle: &EngineHandle) -> anyhow::Result<()>;
     fn current_vram_bytes(&self) -> Option<u64>;
+    /// Book-level synthesis entry point. Default is `None`; engines
+    /// that have a top-level "process this EPUB" command override
+    /// this. The frontend dispatches on the engine id and calls the
+    /// matching `start_*_generation` Tauri command.
+    fn as_kokoro(&self) -> Option<&kokoro::KokoroEngine> {
+        None
+    }
 }
 
 /// Global engine registry. One Engine impl per engine id. The active
 /// handle (if any) is recorded here.
-#[derive(Default)]
+#[derive(Clone)]
 pub struct EngineRegistry {
-    inner: Mutex<RegistryInner>,
+    inner: Arc<Mutex<RegistryInner>>,
 }
 
-#[derive(Default)]
 struct RegistryInner {
     engines: HashMap<String, Arc<dyn Engine>>,
     active: Option<EngineHandle>,
@@ -75,11 +84,28 @@ struct RegistryInner {
 
 impl EngineRegistry {
     pub fn new() -> Self {
-        let mut r = Self::default();
-        r.register(Arc::new(KokoroEngineStub));
+        let mut r = Self {
+            inner: Arc::new(Mutex::new(RegistryInner {
+                engines: HashMap::new(),
+                active: None,
+            })),
+        };
+
+        // Kokoro: the only engine with a real implementation so far.
+        // The paths default to `<app_data>/kokoro/{models,voices}`.
+        // The First-Run Wizard populates these directories.
+        let paths = KokoroEngine::default_data_paths();
+        let kokoro = Arc::new(KokoroEngine::new(paths, "af_heart"));
+        r.register(kokoro);
+
+        // Stubs for the other engines. Each carries the real
+        // `EngineInfo` so the Models panel can render the catalogue
+        // accurately; they all bail on `load()` until the next
+        // plugin lands.
         r.register(Arc::new(QwenEngineStub));
         r.register(Arc::new(OuteTtsEngineStub));
         r.register(Arc::new(NeuttsEngineStub));
+
         r
     }
 
@@ -109,47 +135,17 @@ impl EngineRegistry {
     }
 }
 
-// Stubs ------------------------------------------------------------
+impl Default for EngineRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
-struct KokoroEngineStub;
+// Stubs for engines that are not yet implemented -------------
+
 struct QwenEngineStub;
 struct OuteTtsEngineStub;
 struct NeuttsEngineStub;
-
-impl KokoroEngineStub {
-    fn info_static() -> EngineInfo {
-        EngineInfo {
-            id: "kokoro".into(),
-            display_name: "Kokoro 82M".into(),
-            format: "ONNX".into(),
-            voice_cloning: false,
-            hardware: vec!["CPU".into(), "CUDA".into()],
-            license: "Apache 2.0".into(),
-            languages: vec![
-                "en".into(), "ja".into(), "zh".into(), "es".into(),
-                "fr".into(), "hi".into(), "it".into(), "pt".into(),
-            ],
-        }
-    }
-}
-
-impl Engine for KokoroEngineStub {
-    fn info(&self) -> &EngineInfo {
-        // EngineInfo is cheap to clone, but we keep a static to avoid
-        // re-allocating on every call.
-        static I: std::sync::OnceLock<Box<EngineInfo>> = std::sync::OnceLock::new();
-        I.get_or_init(|| Box::new(Self::info_static()))
-    }
-    fn is_loaded(&self) -> bool { false }
-    fn load(&self, _model_id: &str) -> anyhow::Result<EngineHandle> {
-        anyhow::bail!("Kokoro engine not yet implemented; absorbed from prototype in next step")
-    }
-    fn synthesize(&self, _: &EngineHandle, _: &SynthesizeRequest, _: &Path) -> anyhow::Result<()> {
-        anyhow::bail!("Kokoro engine not yet implemented")
-    }
-    fn unload(&self, _: &EngineHandle) -> anyhow::Result<()> { Ok(()) }
-    fn current_vram_bytes(&self) -> Option<u64> { None }
-}
 
 impl QwenEngineStub {
     fn info_static() -> EngineInfo {
