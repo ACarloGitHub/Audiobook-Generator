@@ -1,4 +1,17 @@
-# Modelli TTS scaricati (GB di dati - MAI in git!)
+# Audiobook Generator — Local-only artifacts
+
+## TTS model weights (NEVER commit)
+# GGUF models downloaded by the user at runtime (hundreds of MB to several GB)
+*.gguf
+*.bin
+# ONNX models (Kokoro, decoders)
+*.onnx
+# Tokenizer / config files that ship with the models
+tokenizer/
+voices/
+speech_tokenizer/
+
+# Per-engine model directories inside the project tree
 audiobook_generator/tts_models/kokoro/*
 !audiobook_generator/tts_models/kokoro/.gitkeep
 audiobook_generator/tts_models/qwen3tts/*
@@ -9,43 +22,36 @@ audiobook_generator/tts_models/xttsv2/*
 !audiobook_generator/tts_models/xttsv2/.gitkeep
 tts_models/
 
-# Virtualenv
+# HuggingFace / llama.cpp download caches
+.cache/
+huggingface/
+hf_cache/
+
+# Python (legacy — only present during the migration window)
+# Will be deleted entirely once Phase 8 of the migration roadmap is done.
 venv/
 setup_venv/
 .venv/
 env/
-
-# Model venvs (created by setup in tts_models folders)
 **/venv/
-
-# Cache Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python/
+setup/
+setup_logs/
+requirements/
 
-# Output e risultati
+# Generated and downloaded artifacts
 Demo_Outputs/*
 !Demo_Outputs/.gitkeep
 Generated_Audiobooks/*
 !Generated_Audiobooks/.gitkeep
 Intermediate_Audio_Chunks/*
 !Intermediate_Audio_Chunks/.gitkeep
-
-# Log
-setup_logs/*
-!setup_logs/.gitkeep
-setup/setup_logs/
-*.log
-audiobook_generator/Logs/
-
-# Input files
 Ebooks_to_Convert/*
-!Ebooks_to_Convert/.gitkeep*
 !Ebooks_to_Convert/.gitkeep
-
-# Reference audio (cartelle vuote + file ignorati)
 Reference_Voices/*
 !Reference_Voices/.gitkeep
 !Reference_Voices/*/.gitkeep
@@ -55,16 +61,19 @@ Reference_Voices/*/*.flac
 Reference_Voices/*/*.ogg
 Reference_Voices/*/*.m4a
 
-# Backup files
+# Logs
+*.log
+audiobook_generator/Logs/
+
+# Backups
 *.backup
 *.BACKUP*
 *.bak
 
-# Sync tool (Syncthing)
+# Syncthing
 .stfolder/
 .stversions/
 *.sync-conflict*
-.sync-conflict*
 *~[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-*
 
 # IDE
@@ -73,23 +82,32 @@ Reference_Voices/*/*.m4a
 *.swp
 *.swo
 
-# Binari esterni
+# External binaries shipped with the installer (Tauri sidecars)
+# Keep the directories; ignore their contents.
 ffmpeg/*
 !ffmpeg/.gitkeep
 sox/*
 !sox/.gitkeep
+src-tauri/sidecars/*
+!src-tauri/sidecars/.gitkeep
+
+# Build output
+src-tauri/target/
+dist/
+node_modules/
+*.tsbuildinfo
 
 # OS files
 .DS_Store
 Thumbs.db
 
-# Config locale (se presente)
+# Local-only configuration
 local_config.json
 
-# Documentation and wiki (generated, not for repo)
+# Knowledge base and agent guidance (LOCAL ONLY — never push to GitHub)
 AGENTS.md
 AudiobookGenerator-Wiki/
+CLAUDE.md
 DEV_LOG.md
 TODO_NEXT.md
 ANALISI_ARCHITETTURALE.md
-CLAUDE.md
