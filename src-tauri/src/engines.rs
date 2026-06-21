@@ -5,6 +5,14 @@
 //! which engine is currently loaded. The Tauri commands in
 //! `commands.rs` are thin shims over this registry.
 //!
+//! Engine discovery is dynamic: at startup we scan the
+//! `src-tauri/models/` tree for engines whose on-disk assets are
+//! complete enough to be loaded. Engines that have no real Rust
+//! implementation today are listed in the catalogue with
+//! `installed: false` so the Models panel can offer them as
+//! "coming soon" without misleading the user into trying to load
+//! them.
+//!
 //! See AudiobookGenerator-Wiki/wiki/concepts/plugin-architecture.md
 //! and AudiobookGenerator-Wiki/wiki/concepts/engine-lifecycle.md.
 
@@ -46,6 +54,8 @@ pub struct EngineInfo {
     pub hardware: Vec<String>,      // e.g. ["CPU", "CUDA", "Vulkan"]
     pub license: String,
     pub languages: Vec<String>,
+    pub installed: bool,            // true if the engine plugin has a real implementation
+    pub size_mb: u32,               // approximate model size on disk
 }
 
 /// Per-engine auto-loaded defaults. Returned by the `engine_defaults`
@@ -241,20 +251,30 @@ impl EngineRegistry {
             })),
         };
 
-        // Kokoro: the only engine with a real implementation so far.
-        // The paths default to `<app_data>/kokoro/{models,voices}`.
-        // The First-Run Wizard populates these directories.
+        // Kokoro is the only engine with a real Rust implementation
+        // today. Register it only if its model and voice packs are
+        // present on disk. This matches the legacy `ensure_assets`
+        // gate: if the assets are not there, the plugin is not
+        // listed as ready.
         let paths = KokoroEngine::default_data_paths();
-        let kokoro = Arc::new(KokoroEngine::new(paths, "af_heart"));
-        r.register(kokoro);
-
-        // Stubs for the other engines. Each carries the real
-        // `EngineInfo` so the Models panel can render the catalogue
-        // accurately; they all bail on `load()` until the next
-        // plugin lands.
-        r.register(Arc::new(QwenEngineStub));
-        r.register(Arc::new(OuteTtsEngineStub));
-        r.register(Arc::new(NeuttsEngineStub));
+        let model_ok = ["model_quantized.onnx", "model_q8f16.onnx", "model.onnx"]
+            .iter()
+            .any(|n| paths.model_dir.join(n).exists());
+        let voices_ok = paths
+            .voices_dir
+            .join("af_heart.bin")
+            .exists();
+        if model_ok && voices_ok {
+            eprintln!(
+                "[EngineRegistry::new] Kokoro assets found at {}, registering",
+                paths.model_dir.display()
+            );
+            r.register(Arc::new(KokoroEngine::new(paths, "af_heart")));
+        } else {
+            eprintln!(
+                "[EngineRegistry::new] Kokoro assets missing (model_ok={model_ok}, voices_ok={voices_ok}); engine not registered. Open Models to install."
+            );
+        }
 
         r
     }
@@ -269,6 +289,30 @@ impl EngineRegistry {
         let mut out: Vec<EngineInfo> =
             g.engines.values().map(|e| e.info().clone()).collect();
         out.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+        out
+    }
+
+    /// Full catalogue: registered engines plus the planned-but-not-yet
+    /// stub engines. The Models panel uses this to show "coming soon"
+    /// entries that the user can see but not yet select.
+    pub fn catalogue(&self) -> Vec<EngineInfo> {
+        let mut out = self.list();
+        let have_ids: std::collections::HashSet<String> =
+            out.iter().map(|e| e.id.clone()).collect();
+        for stub in [
+            QwenEngineStub::info_static(),
+            OuteTtsEngineStub::info_static(),
+            NeuttsEngineStub::info_static(),
+        ] {
+            if !have_ids.contains(&stub.id) {
+                out.push(stub);
+            }
+        }
+        out.sort_by(|a, b| {
+            b.installed
+                .cmp(&a.installed)
+                .then(a.display_name.cmp(&b.display_name))
+        });
         out
     }
 
@@ -311,6 +355,8 @@ impl QwenEngineStub {
                 "de".into(), "fr".into(), "ru".into(), "pt".into(),
                 "es".into(), "it".into(),
             ],
+            installed: false,
+            size_mb: 5000,
         }
     }
 }
@@ -345,6 +391,8 @@ impl OuteTtsEngineStub {
                 "fr".into(), "de".into(), "it".into(), "ja".into(),
                 "ko".into(), "lt".into(), "ru".into(), "es".into(),
             ],
+            installed: false,
+            size_mb: 1200,
         }
     }
 }
@@ -375,6 +423,8 @@ impl NeuttsEngineStub {
             hardware: vec!["CPU".into()],
             license: "Apache 2.0".into(),
             languages: vec!["en".into()],
+            installed: false,
+            size_mb: 500,
         }
     }
 }

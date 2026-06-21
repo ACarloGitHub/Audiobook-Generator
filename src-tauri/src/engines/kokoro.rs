@@ -44,7 +44,7 @@ impl KokoroPaths {
 }
 
 pub struct KokoroEngine {
-    paths: KokoroPaths,
+    pub paths: KokoroPaths,
     /// The inner `KokoroTts` is built lazily on first `load`. It is
     /// wrapped in a `Mutex` because `KokoroTts` is `!Sync` (it holds
     /// ONNX Runtime session state).
@@ -52,9 +52,7 @@ pub struct KokoroEngine {
     /// The currently loaded model id, kept so `current_vram_bytes` and
     /// `info` can report it.
     current: Mutex<Option<String>>,
-    /// Holds the model id; `EngineHandle.model_id` is a `String`, so we
-    /// just need to keep it around for the status command.
-    voice: String,
+    pub voice: String,
 }
 
 impl KokoroEngine {
@@ -70,12 +68,44 @@ impl KokoroEngine {
     /// Default data paths for the engine. The First-Run Wizard places
     /// the model and voice packs in these directories.
     ///
-    /// For now we resolve them under the current working directory's
-    /// `kokoro/{models,voices}/` so the engine works in dev without a
-    /// Tauri runtime. The wizard will redirect the paths to the real
-    /// per-user data dir when it lands.
+    /// Searches a handful of candidate roots so the engine works both
+    /// in dev (binary in `target/<profile>/`, data in
+    /// `src-tauri/models/kokoro/`) and in a bundled install (data
+    /// beside the executable). The first root that contains a model
+    /// wins; if none do, the dev root is returned so the wizard has
+    /// somewhere to download to.
     pub fn default_data_paths() -> KokoroPaths {
-        KokoroPaths::from_data_root(&std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+        let mut candidates: Vec<PathBuf> = Vec::new();
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(parent) = exe.parent() {
+                candidates.push(parent.join("kokoro"));
+                if let Some(workspace) = parent.parent().and_then(|p| p.parent()) {
+                    candidates.push(workspace.join("src-tauri").join("models").join("kokoro"));
+                    candidates.push(workspace.join("src-tauri").join("models"));
+                }
+                if let Some(target) = parent.parent() {
+                    candidates.push(target.join("models").join("kokoro"));
+                }
+            }
+        }
+        if let Ok(cwd) = std::env::current_dir() {
+            candidates.push(cwd.join("src-tauri").join("models").join("kokoro"));
+            candidates.push(cwd.join("models").join("kokoro"));
+        }
+
+        for root in &candidates {
+            if root.join("models").join("model_quantized.onnx").exists() {
+                eprintln!("[KokoroPaths] using existing data root: {}", root.display());
+                return KokoroPaths::from_data_root(root);
+            }
+        }
+
+        let fallback = candidates
+            .first()
+            .cloned()
+            .unwrap_or_else(|| PathBuf::from("models/kokoro"));
+        eprintln!("[KokoroPaths] no model found, falling back to: {}", fallback.display());
+        KokoroPaths::from_data_root(&fallback)
     }
 
     fn resolve_model(&self) -> Result<PathBuf> {
@@ -113,6 +143,8 @@ impl Engine for KokoroEngine {
                     "it".into(),
                     "pt".into(),
                 ],
+                installed: true,
+                size_mb: 92,
             })
         })
     }
@@ -230,6 +262,15 @@ impl KokoroEngine {
         self.voice = voice.to_string();
         self
     }
+
+    pub fn clone_with_voice(&self, voice: &str) -> Self {
+        Self {
+            paths: self.paths.clone(),
+            inner: Mutex::new(None),
+            current: Mutex::new(None),
+            voice: voice.to_string(),
+        }
+    }
 }
 
 fn write_wav(path: &Path, sample_rate: u32, samples: &[f32]) -> Result<()> {
@@ -295,6 +336,11 @@ fn prepend_cuda_to_path() {
 /// This is the only function the frontend needs to know about. It
 /// coordinates the engine, the chunker, the merger, and the recovery
 /// state.
+///
+/// If `progress` is provided, it is invoked with human-readable
+/// progress messages as the synthesis advances. The Tauri command
+/// layer wraps this in an `app.emit("generation-progress", ...)` so
+/// the frontend log textarea updates live.
 pub fn synthesize_book(
     engine: &KokoroEngine,
     handle: &EngineHandle,
@@ -302,19 +348,36 @@ pub fn synthesize_book(
     output_dir: &Path,
     max_words: usize,
     ffmpeg: &Path,
+    mut progress: Option<Box<dyn FnMut(&str) + Send>>,
 ) -> Result<usize> {
+    if let Some(cb) = progress.as_deref_mut() {
+        cb("Reading EPUB...");
+    }
     let chapters = crate::epub::extract_chapters(epub_path)?;
+    let total_chapters = chapters.len();
     std::fs::create_dir_all(output_dir)?;
     let recovery_path = output_dir.join("failed_chunks.json");
 
+    if let Some(cb) = progress.as_deref_mut() {
+        cb(&format!("Extracted {total_chapters} chapters"));
+    }
+
     let mut recovery = crate::recovery::RecoveryState::load(output_dir).unwrap_or_default();
     let mut done_count = 0usize;
+    let mut failed_count = 0usize;
 
     for (i, chapter) in chapters.iter().enumerate() {
         let chapter_dir = output_dir.join(sanitize_filename(&chapter.title));
         std::fs::create_dir_all(&chapter_dir)?;
 
         let chunks = chunker::chunk_text(&chapter.text, max_words);
+        if let Some(cb) = progress.as_deref_mut() {
+            cb(&format!(
+                "Chapter {i}/{total_chapters}: {} ({} chunks)",
+                chapter.title,
+                chunks.len()
+            ));
+        }
         let mut wavs = Vec::with_capacity(chunks.len());
         for (j, chunk_text) in chunks.iter().enumerate() {
             let wav_path = chapter_dir.join(format!("chunk_{:04}.wav", j + 1));
@@ -336,38 +399,54 @@ pub fn synthesize_book(
                     done_count += 1;
                 }
                 Err(e) => {
+                    failed_count += 1;
                     warn!("chunk {}/{} failed: {e:#}", j + 1, chunks.len());
-                    let mut failed_map = std::collections::HashMap::new();
-                    failed_map.insert(
-                        chapter.title.clone(),
-                        vec![crate::recovery::FailedChunk {
-                            chunk_index: j,
-                            text: chunk_text.clone(),
-                            error: format!("{e:#}"),
-                        }],
-                    );
-                    // Persist via the recovery module's writer hook.
-                    let _ = std::fs::write(
-                        &recovery_path,
-                        serde_json::to_string_pretty(&recovery)
-                            .unwrap_or_else(|_| "{}".to_string()),
-                    );
-                    let _ = failed_map;
+                    if let Some(cb) = progress.as_deref_mut() {
+                        cb(&format!(
+                            "WARN: chunk {}/{} failed: {}",
+                            j + 1,
+                            chunks.len(),
+                            short_err(&format!("{e:#}"))
+                        ));
+                    }
+                    recovery.mark_failed(&chapter.title, j, chunk_text, &format!("{e:#}"));
                 }
             }
         }
         if !wavs.is_empty() {
             let mp3_path = output_dir.join(format!("{}.mp3", sanitize_filename(&chapter.title)));
-            merger::merge_wavs_to_mp3(&wavs, &mp3_path, ffmpeg)?;
+            if let Err(e) = merger::merge_wavs_to_mp3(&wavs, &mp3_path, ffmpeg) {
+                warn!("merge failed for {}: {e:#}", chapter.title);
+                if let Some(cb) = progress.as_deref_mut() {
+                    cb(&format!("ERROR: merge failed for {}: {}", chapter.title, short_err(&format!("{e:#}"))));
+                }
+            }
         }
-        // Persist recovery after every chapter.
         let _ = std::fs::write(
             &recovery_path,
             serde_json::to_string_pretty(&recovery).unwrap_or_else(|_| "{}".to_string()),
         );
         info!("chapter {}/{} done", i + 1, chapters.len());
+        if let Some(cb) = progress.as_deref_mut() {
+            cb(&format!("Chapter {}/{} done", i + 1, total_chapters));
+        }
+    }
+
+    if let Some(cb) = progress.as_deref_mut() {
+        cb(&format!(
+            "Done: {done_count} chunks synthesized, {failed_count} failed across {total_chapters} chapters"
+        ));
     }
     Ok(done_count)
+}
+
+fn short_err(s: &str) -> String {
+    let one_line = s.lines().next().unwrap_or(s);
+    if one_line.len() > 200 {
+        format!("{}...", &one_line[..200])
+    } else {
+        one_line.to_string()
+    }
 }
 
 fn sanitize_filename(s: &str) -> String {

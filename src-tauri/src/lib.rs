@@ -24,7 +24,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
-        .manage(engines::EngineRegistry::new())
+        .manage(std::sync::Arc::new(engines::EngineRegistry::new()))
         .invoke_handler(tauri::generate_handler![
             commands::engine_status,
             commands::load_engine,
@@ -34,6 +34,10 @@ pub fn run() {
             commands::check_recovery,
             commands::engine_defaults,
             commands::load_epub,
+            commands::start_kokoro_generation,
+            commands::scan_recovery_books,
+            commands::get_failed_chunks,
+            commands::synthesize_demo,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

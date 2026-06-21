@@ -19,6 +19,8 @@ interface EngineInfo {
   hardware: string[];
   license: string;
   languages: string[];
+  installed: boolean;
+  size_mb: number;
 }
 
 interface EngineStatus {
@@ -73,6 +75,29 @@ interface BookInfo {
   title: string;
   chapters: ChapterSummary[];
 }
+
+interface BookErrorSummary {
+  book_title: string;
+  book_dir: string;
+  chapters_with_errors: ChapterErrorSummary[];
+}
+
+interface ChapterErrorSummary {
+  title: string;
+  failed_chunks: number;
+  total_chunks: number;
+}
+
+interface FailedChunkInfo {
+  chapter: string;
+  chunk_index: number;
+  text: string;
+  error: string;
+}
+
+let recoveryBooks: BookErrorSummary[] = [];
+let recoverySelectedBook: BookErrorSummary | null = null;
+let recoverySelectedChapter: string | null = null;
 
 let currentPanel: PanelId = "generate";
 let engineStatus: EngineStatus = {
@@ -148,6 +173,12 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#039;");
 }
 
+function ts(): string {
+  const d = new Date();
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 function bytesToGB(n: number | null): string {
   if (n === null || n === undefined) return "?";
   return (n / 1024 / 1024 / 1024).toFixed(2);
@@ -195,10 +226,14 @@ function renderSidebar(): string {
 
 function engineOptions(): string {
   return engineStatus.engines
-    .map(
-      (e) =>
-        `<option value="${escapeHtml(e.id)}" ${e.id === state.selectedEngineId ? "selected" : ""}>${escapeHtml(e.display_name)} · ${escapeHtml(e.format)} · ${escapeHtml(e.license)}</option>`,
-    )
+    .map((e) => {
+      const label = e.installed
+        ? `${e.display_name} · ${e.format} · ${e.license} · ${e.size_mb} MB`
+        : `${e.display_name} — coming soon`;
+      const attr = e.installed ? "" : "disabled";
+      const sel = e.id === state.selectedEngineId && e.installed ? "selected" : "";
+      return `<option value="${escapeHtml(e.id)}" ${attr} ${sel}>${escapeHtml(label)}</option>`;
+    })
     .join("");
 }
 
@@ -241,6 +276,10 @@ function panelConfiguration(): string {
         <textarea class="text-input" rows="2" id="reference-transcript" placeholder="Exact transcription of the reference audio (required for Voice Clone)">${escapeHtml(state.referenceTranscript)}</textarea>
       </div>
 
+      <p class="field-help">
+        Engine is loaded automatically when you click Generate Audiobook. Use the engine strip header to release VRAM between books.
+      </p>
+
       <div class="field-row">
         <label class="field-label">Language</label>
         <select class="select" id="language-select">
@@ -267,6 +306,15 @@ function panelConfiguration(): string {
         <input type="number" class="num-input" min="0.5" max="2.0" step="0.1" value="1.0" />
       </div>
       <p class="field-help">Defaults auto-load from the selected engine. Override any value; the override persists in localStorage.</p>
+    </div>
+
+    <div class="card">
+      <h2>Debug</h2>
+      <p class="field-help" id="debug-config">
+        engines from backend: ${engineStatus.engines.length}
+        · selected: ${escapeHtml(state.selectedEngineId)}
+        · first id: ${escapeHtml(engineStatus.engines[0]?.id ?? "(none)")}
+      </p>
     </div>
   `;
 }
@@ -378,17 +426,39 @@ function panelGenerate(): string {
 }
 
 function panelRecovery(): string {
+  const bookOpts = recoveryBooks
+    .map(
+      (b) =>
+        `<option value="${escapeHtml(b.book_title)}" ${recoverySelectedBook?.book_title === b.book_title ? "selected" : ""}>${escapeHtml(b.book_title)} (${b.chapters_with_errors.length} chapter(s))</option>`,
+    )
+    .join("");
+  const chapterOpts =
+    recoverySelectedBook
+      ? recoverySelectedBook.chapters_with_errors
+          .map(
+            (c) =>
+              `<option value="${escapeHtml(c.title)}" ${recoverySelectedChapter === c.title ? "selected" : ""}>${escapeHtml(c.title)} (${c.failed_chunks}/${c.total_chunks} failed)</option>`,
+          )
+          .join("")
+      : "";
+
   return `
     <div class="card">
       <h2>🔄 Synthesis Errors Recovery System</h2>
       <div class="row">
         <div class="col">
           <label class="field-label">Audiobooks with Errors</label>
-          <select class="select" id="recovery-book-select"><option>— scan —</option></select>
+          <select class="select" id="recovery-book-select">
+            <option value="">— select a book —</option>
+            ${bookOpts}
+          </select>
         </div>
         <div class="col">
           <label class="field-label">Chapters with Errors</label>
-          <select class="select" id="recovery-chapter-select"><option>— pick a book —</option></select>
+          <select class="select" id="recovery-chapter-select" ${recoverySelectedBook ? "" : "disabled"}>
+            <option value="">— select a chapter —</option>
+            ${chapterOpts}
+          </select>
         </div>
         <div class="col-auto">
           <button class="btn-secondary btn-large" id="recovery-refresh-btn">🔄 Refresh</button>
@@ -597,6 +667,11 @@ function attachListeners(): void {
   const engineSelect = document.getElementById("engine-select") as HTMLSelectElement | null;
   if (engineSelect) {
     engineSelect.addEventListener("change", async () => {
+      const selected = engineStatus.engines.find((e) => e.id === engineSelect.value);
+      if (!selected || !selected.installed) {
+        engineSelect.value = state.selectedEngineId;
+        return;
+      }
       state.selectedEngineId = engineSelect.value;
       await applyEngineDefaults(state.selectedEngineId);
       render();
@@ -717,16 +792,66 @@ function attachListeners(): void {
     });
   }
 
-  const generateBtn = document.getElementById("generate-btn");
-  if (generateBtn) {
+  const generateBtn = document.getElementById("generate-btn") as HTMLButtonElement | null;
+  const stopBtn = document.getElementById("stop-btn") as HTMLButtonElement | null;
+  const progressLog = document.getElementById("progress-log") as HTMLTextAreaElement | null;
+
+  if (generateBtn && stopBtn && progressLog) {
     generateBtn.addEventListener("click", async () => {
-      const log = document.getElementById("progress-log") as HTMLTextAreaElement;
-      log.value = "[INFO] Starting generation...\n";
+      if (!bookInfo || state.selectedChapters.size === 0) return;
+      const engine = engineStatus.engines.find((e) => e.id === state.selectedEngineId);
+      if (!engine || !engine.installed) {
+        progressLog.value = `[ERROR] No installed engine selected. Pick one in Configuration.\n`;
+        return;
+      }
+      const outputDir = pickOutputDir(bookInfo.title);
+      generateBtn.disabled = true;
+      stopBtn.disabled = false;
+      const t0 = Date.now();
+      progressLog.value = `[INFO] Book: ${bookInfo.title}\n`;
+      progressLog.value += `[INFO] Selected engine: ${engine.display_name}\n`;
+      progressLog.value += `[INFO] Chapters: ${state.selectedChapters.size}\n`;
+      progressLog.value += `[INFO] Output: ${outputDir}\n`;
+      progressLog.value += `[INFO] --- starting generation ---\n`;
+
+      let unlistenProgress: (() => void) | null = null;
+      let unlistenComplete: (() => void) | null = null;
       try {
-        log.value += "[INFO] Calling backend (TBD)...\n";
-        log.value += "[INFO] Backend command not yet wired to UI (Phase 2).\n";
+        unlistenProgress = await listen<string>("generation-progress", (e) => {
+          progressLog.value += `[${ts()}] ${e.payload}\n`;
+          progressLog.scrollTop = progressLog.scrollHeight;
+        });
+        unlistenComplete = await listen("generation-complete", () => {
+          const secs = ((Date.now() - t0) / 1000).toFixed(1);
+          progressLog.value += `[${ts()}] [INFO] Generation finished in ${secs}s\n`;
+          progressLog.scrollTop = progressLog.scrollHeight;
+        });
+        await invoke("start_kokoro_generation", {
+          engineId: engine.id,
+          modelId: "kokoro-82M-quantized",
+          voice: state.selectedVoiceId || null,
+          epubPath: state.epubPath,
+          outputDir,
+          maxWords: state.chunkMaxWords,
+        });
       } catch (e) {
-        log.value += `[ERROR] ${e}\n`;
+        progressLog.value += `[${ts()}] [ERROR] ${e}\n`;
+      } finally {
+        if (unlistenProgress) unlistenProgress();
+        if (unlistenComplete) unlistenComplete();
+        generateBtn.disabled = state.selectedChapters.size === 0;
+        stopBtn.disabled = true;
+        await refreshEngineStatus();
+      }
+    });
+
+    stopBtn.addEventListener("click", async () => {
+      try {
+        await invoke("stop_generation");
+        if (progressLog) progressLog.value += `[${ts()}] [WARN] Stop requested.\n`;
+        stopBtn.disabled = true;
+      } catch (e) {
+        if (progressLog) progressLog.value += `[${ts()}] [ERROR] stop failed: ${e}\n`;
       }
     });
   }
@@ -737,9 +862,130 @@ function attachListeners(): void {
       state.deleteIntermediateChunks = deleteChunks.checked;
     });
   }
+
+  // Error Recovery panel.
+  const recoveryRefreshBtn = document.getElementById("recovery-refresh-btn");
+  if (recoveryRefreshBtn) {
+    recoveryRefreshBtn.addEventListener("click", async () => {
+      await scanRecoveryBooks();
+      render();
+    });
+  }
+  const recoveryBookSelect = document.getElementById("recovery-book-select") as HTMLSelectElement | null;
+  if (recoveryBookSelect) {
+    recoveryBookSelect.addEventListener("change", async () => {
+      const title = recoveryBookSelect.value;
+      recoverySelectedBook = recoveryBooks.find((b) => b.book_title === title) ?? null;
+      recoverySelectedChapter = null;
+      const failedTextarea = document.getElementById("failed-chunks") as HTMLTextAreaElement | null;
+      if (failedTextarea) failedTextarea.value = "";
+      render();
+    });
+  }
+  const recoveryChapterSelect = document.getElementById("recovery-chapter-select") as HTMLSelectElement | null;
+  if (recoveryChapterSelect) {
+    recoveryChapterSelect.addEventListener("change", async () => {
+      recoverySelectedChapter = recoveryChapterSelect.value || null;
+      if (recoverySelectedBook && recoverySelectedChapter) {
+        await loadFailedChunks(recoverySelectedBook.book_dir, recoverySelectedChapter);
+        render();
+      }
+    });
+  }
+
+  // Demo & Test panel.
+  const demoOutputBtn = document.getElementById("demo-pick-output-btn");
+  if (demoOutputBtn) {
+    demoOutputBtn.addEventListener("click", async () => {
+      try {
+        const path = await open({ multiple: false, directory: true });
+        if (typeof path === "string") {
+          state.demoOutputPath = path;
+          render();
+        }
+      } catch (e) {
+        console.warn("dialog open failed:", e);
+      }
+    });
+  }
+
+  const demoGenBtn = document.getElementById("demo-generate-btn") as HTMLButtonElement | null;
+  if (demoGenBtn) {
+    demoGenBtn.disabled = false;
+    demoGenBtn.addEventListener("click", async () => {
+      const text = (document.getElementById("demo-text") as HTMLTextAreaElement | null)?.value ?? "";
+      if (!text.trim()) {
+        alert("Type some text first.");
+        return;
+      }
+      if (!engineStatus.active_engine) {
+        alert("Load an engine first (Models panel).");
+        return;
+      }
+      const status = document.getElementById("demo-status") as HTMLTextAreaElement | null;
+      const audio = document.getElementById("demo-audio") as HTMLAudioElement | null;
+      const outDir = state.demoOutputPath ?? "Generated_Audiobooks/demo";
+      const out = `${outDir}/demo_${Date.now()}.wav`;
+      if (status) status.value = `[INFO] Synthesizing...\n`;
+      try {
+        await invoke("synthesize_demo", {
+          handle: {
+            engine_id: engineStatus.active_engine,
+            model_id: engineStatus.active_model ?? "kokoro-82M-quantized",
+          },
+          text,
+          voice: state.selectedVoiceId || null,
+          outputWav: out,
+        });
+        if (status) status.value = `[INFO] Saved to ${out}\n`;
+        if (audio) {
+          audio.src = `file:///${out.replace(/\\/g, "/")}`;
+          audio.style.display = "block";
+        }
+      } catch (e) {
+        if (status) status.value = `[ERROR] ${e}\n`;
+      }
+    });
+  }
+}
+
+async function scanRecoveryBooks(): Promise<void> {
+  try {
+    recoveryBooks = await invoke<BookErrorSummary[]>("scan_recovery_books", {
+      rootDir: "Generated_Audiobooks",
+    });
+  } catch (e) {
+    console.warn("scan_recovery_books failed:", e);
+    recoveryBooks = [];
+  }
+}
+
+async function loadFailedChunks(bookDir: string, chapter: string): Promise<void> {
+  try {
+    const failed = await invoke<FailedChunkInfo[]>("get_failed_chunks", { bookDir, chapter });
+    const textarea = document.getElementById("failed-chunks") as HTMLTextAreaElement | null;
+    if (!textarea) return;
+    textarea.value = failed
+      .map(
+        (f) =>
+          `chunk ${f.chunk_index + 1}: "${f.text.length > 200 ? f.text.slice(0, 200) + "..." : f.text}"\n  -> ${f.error}`,
+      )
+      .join("\n\n");
+    const retryBtn = document.getElementById("retry-btn") as HTMLButtonElement | null;
+    const mergeBtn = document.getElementById("merge-btn") as HTMLButtonElement | null;
+    if (retryBtn) retryBtn.disabled = failed.length === 0;
+    if (mergeBtn) mergeBtn.disabled = failed.length === 0;
+  } catch (e) {
+    console.warn("get_failed_chunks failed:", e);
+  }
 }
 
 // ---------- Bootstrap ----------
+
+function pickOutputDir(bookTitle: string): string {
+  const safe = bookTitle.replace(/[^a-zA-Z0-9-_ ]/g, "_").trim() || "audiobook";
+  return `Generated_Audiobooks/${safe}`;
+}
 
 async function loadEpub(path: string): Promise<void> {
   try {
@@ -755,9 +1001,12 @@ async function loadEpub(path: string): Promise<void> {
 }
 
 async function refreshEngineStatus(): Promise<void> {
+  console.log("[refreshEngineStatus] calling engine_status...");
   try {
     engineStatus = await invoke<EngineStatus>("engine_status");
-  } catch {
+    console.log("[refreshEngineStatus] got:", JSON.stringify(engineStatus).slice(0, 200));
+  } catch (e) {
+    console.error("[refreshEngineStatus] failed:", e);
     engineStatus = {
       active_engine: null,
       active_model: null,
@@ -769,7 +1018,10 @@ async function refreshEngineStatus(): Promise<void> {
   }
 }
 
+void main();
+
 async function main(): Promise<void> {
+  console.log("[main] starting Audiobook Generator UI");
   await refreshEngineStatus();
   if (engineStatus.engines.length > 0) {
     state.selectedEngineId = engineStatus.engines[0].id;

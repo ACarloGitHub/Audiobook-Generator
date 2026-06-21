@@ -46,6 +46,7 @@ fn main() -> anyhow::Result<()> {
         &out_dir,
         6,
         &ffmpeg,
+        None,
     )
     .map_err(|e| anyhow::anyhow!("synthesize_book failed: {e:#}"))?;
     println!("synthesized {} chapters in {:?}", chapters, t1.elapsed());
