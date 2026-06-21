@@ -21,19 +21,26 @@ pub struct KokoroEngine {
 impl KokoroEngine {
     /// Load the Kokoro ONNX model from a directory of voices.
     pub fn load(model_dir: &Path, voices_dir: &Path, voice: &str) -> Result<Self> {
-        // kokoro-en takes the path to a single model.onnx file plus the
-        // voices directory. We pick the smallest quantised variant that
-        // exists, falling back to the full-precision model.
         let model_path = pick_model_file(model_dir)
             .with_context(|| format!("no model.onnx found in {}", model_dir.display()))?;
         info!("loading Kokoro ONNX from {}", model_path.display());
         info!("loading voices from {}", voices_dir.display());
 
-        let inner = futures::executor::block_on(KokoroTts::new(
-            model_path.to_str().context("model path is not valid UTF-8")?,
-            voices_dir.to_str().context("voices dir is not valid UTF-8")?,
-        ))
-        .context("failed to construct KokoroTts")?;
+        // kokoro-en's `new` and `synth` are async and need a Tokio
+        // runtime. We build a single-threaded runtime here because the
+        // CLI is otherwise synchronous; if the workload ever needs
+        // parallelism we switch to multi-threaded.
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .context("failed to build tokio runtime")?;
+
+        let inner = rt
+            .block_on(KokoroTts::new(
+                model_path.to_str().context("model path is not valid UTF-8")?,
+                voices_dir.to_str().context("voices dir is not valid UTF-8")?,
+            ))
+            .context("failed to construct KokoroTts")?;
 
         Ok(Self {
             inner,
@@ -54,7 +61,12 @@ impl KokoroEngine {
         }
 
         let voice = Voice::new(&self.voice);
-        let (samples, took) = futures::executor::block_on(self.inner.synth(text, voice))
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .context("failed to build tokoro runtime for synthesis")?;
+        let (samples, took) = rt
+            .block_on(self.inner.synth(text, voice))
             .with_context(|| format!("Kokoro synthesis failed for text: {:.40}...", text))?;
 
         write_wav(output_wav, self.sample_rate, &samples)?;

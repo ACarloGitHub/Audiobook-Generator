@@ -14,19 +14,23 @@ pub fn merge_wavs_to_mp3(wavs: &[PathBuf], out_mp3: &Path, ffmpeg: &Path) -> Res
     }
 
     // Build a concat list file so ffmpeg can stream the inputs in order.
-    let list_path = wavs
-        .first()
-        .and_then(|p| p.parent())
-        .map(|d| d.join("_concat.txt"))
-        .context("first WAV has no parent directory")?;
+    // We always put the list in the same directory as the output MP3 and
+    // reference the WAVs by absolute path, so the file works no matter
+    // what ffmpeg's working directory is.
+    let list_path = out_mp3
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .join("_concat.txt");
 
     let mut list_body = String::new();
     for w in wavs {
-        // ffmpeg's concat demuxer wants paths quoted and escaped. We use
-        // forward slashes and quote everything; ffmpeg on Windows
-        // accepts both.
-        let p = w.to_string_lossy().replace('\\', "/");
-        list_body.push_str(&format!("file '{}'\n", p.replace('\'', "'\\''")));
+        // Resolve to absolute so ffmpeg can find the files regardless
+        // of its CWD. Forward slashes; ffmpeg on Windows accepts both.
+        let abs = std::fs::canonicalize(w)
+            .unwrap_or_else(|_| w.to_path_buf())
+            .to_string_lossy()
+            .replace('\\', "/");
+        list_body.push_str(&format!("file '{}'\n", abs.replace('\'', "'\\''")));
     }
     std::fs::write(&list_path, list_body)
         .with_context(|| format!("failed to write concat list {}", list_path.display()))?;
