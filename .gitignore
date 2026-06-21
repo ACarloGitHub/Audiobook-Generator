@@ -104,8 +104,13 @@ prototype/**/out/
 prototype/**/*.wav
 prototype/**/*.mp3
 prototype/**/failed_chunks.json
+prototype/**/test_books/
+prototype/**/_concat.txt
 prototype/.idea/
 prototype/.vscode/
+# failed_chunks.json from prototype is also written in the project root
+# (relative to CWD) by the prototype CLI. Same file, different cwd.
+failed_chunks.json
 
 # OS files
 .DS_Store

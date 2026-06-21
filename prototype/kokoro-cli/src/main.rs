@@ -46,6 +46,12 @@ struct Cli {
     #[arg(long, default_value_t = 200)]
     max_words: usize,
 
+    /// Stop after this many chapters (0 = process every chapter). Useful
+    /// for smoke-testing a real EPUB without committing to the full
+    /// conversion time.
+    #[arg(long, default_value_t = 0)]
+    max_chapters: usize,
+
     /// Skip the confirmation prompt before processing.
     #[arg(long, short = 'y')]
     yes: bool,
@@ -105,6 +111,15 @@ fn run(cli: Cli) -> Result<()> {
         tracing::info!("  [{}] {} ({} chars)", i + 1, ch.title, ch.text.len());
     }
 
+    if cli.max_chapters > 0 && chapters.len() > cli.max_chapters {
+        tracing::info!(
+            "--max-chapters={} requested: truncating from {} to {} chapter(s)",
+            cli.max_chapters,
+            chapters.len(),
+            cli.max_chapters
+        );
+    }
+
     if !cli.yes {
         let proceed = dialoguer_confirm("Proceed?");
         if !proceed {
@@ -115,7 +130,13 @@ fn run(cli: Cli) -> Result<()> {
 
     let mut recovery_state = recovery::RecoveryState::load(&cli.output);
 
-    for (i, chapter) in chapters.iter().enumerate() {
+    let chapter_limit = if cli.max_chapters > 0 {
+        cli.max_chapters.min(chapters.len())
+    } else {
+        chapters.len()
+    };
+
+    for (i, chapter) in chapters.iter().take(chapter_limit).enumerate() {
         let chapter_dir = cli.output.join(sanitize_filename(&chapter.title));
         std::fs::create_dir_all(&chapter_dir)?;
 
