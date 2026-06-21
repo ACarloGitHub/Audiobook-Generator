@@ -93,9 +93,17 @@ src-tauri/sidecars/*
 
 # Build output
 src-tauri/target/
+src-tauri/gen/
 dist/
 node_modules/
 *.tsbuildinfo
+
+# Tauri-generated icons (the source PNG is in assets/, see cargo tauri icon)
+src-tauri/icons/android/
+src-tauri/icons/ios/
+src-tauri/icons/Square*.png
+src-tauri/icons/StoreLogo.png
+src-tauri/icons/icon.png
 
 # Prototype workspace (temporary; see AudiobookGenerator-Wiki/wiki/concepts/prototype-workspace.md)
 prototype/**/target/

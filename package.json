@@ -1,0 +1,35 @@
+{
+  "name": "audiobook-generator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "~2.11.1",
+    "@tauri-apps/plugin-dialog": "^2.2.0",
+    "@tauri-apps/plugin-fs": "^2.2.0",
+    "@tauri-apps/plugin-http": "^2.2.0",
+    "@tauri-apps/plugin-shell": "^2.2.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.5.0",
+    "@types/node": "^22.13.10",
+    "eslint": "^9.21.0",
+    "globals": "^15.15.0",
+    "jsdom": "^29.1.1",
+    "prettier": "^3.5.3",
+    "typescript": "^5.9.3",
+    "vite": "^6.2.2",
+    "vitest": "^3.1.1"
+  }
+}
