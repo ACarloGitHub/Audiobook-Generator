@@ -1,0 +1,52 @@
+[package]
+name = "kokoro-cli"
+version = "0.1.0"
+edition = "2021"
+description = "Standalone CLI to validate the no-Python TTS pipeline using Kokoro ONNX. Temporary prototype; will be deleted after validation."
+license = "MIT"
+
+[[bin]]
+name = "kokoro-cli"
+path = "src/main.rs"
+
+[dependencies]
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# EPUB parsing (zip + xml, both MIT)
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+quick-xml = { version = "0.36", features = ["serialize"] }
+
+# Sentence segmentation
+regex = "1.10"
+
+# Kokoro TTS (uses ort 2.0 RC internally)
+# We disable the default `g2p-espeak` feature for now: it requires CMake
+# and a C/C++ toolchain to build bundled espeak-ng, which is overkill for
+# a quick smoke test. Misaki (the default English G2P) is included in
+# the slim build and is good enough for the prototype.
+kokoro-en = { version = "0.1", default-features = false }
+
+# WAV I/O
+hound = "3.5"
+
+# Serialization (failed_chunks.json)
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Async (kokoro-en requires tokio)
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs"] }
+futures = "0.3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

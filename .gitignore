@@ -97,6 +97,16 @@ dist/
 node_modules/
 *.tsbuildinfo
 
+# Prototype workspace (temporary; see AudiobookGenerator-Wiki/wiki/concepts/prototype-workspace.md)
+prototype/**/target/
+prototype/**/Cargo.lock
+prototype/**/out/
+prototype/**/*.wav
+prototype/**/*.mp3
+prototype/**/failed_chunks.json
+prototype/.idea/
+prototype/.vscode/
+
 # OS files
 .DS_Store
 Thumbs.db
