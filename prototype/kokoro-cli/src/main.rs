@@ -62,6 +62,25 @@ struct Cli {
 }
 
 fn main() -> ExitCode {
+    // On Windows, prepend the `bin/` directory next to the executable
+    // to the DLL search path. The CUDA runtime libraries
+    // (cublas64_12.dll, cublasLt64_12.dll, cudart64_12.dll) live
+    // there; without this, ONNX Runtime falls back to CPU and logs
+    // the "cudnn64_9.dll missing" error.
+    if cfg!(windows) {
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(bin_dir) = exe.parent() {
+                let bin = bin_dir.join("bin");
+                if bin.is_dir() {
+                    let path = std::env::var_os("PATH").unwrap_or_default();
+                    let mut parts = std::env::join_paths([bin]).unwrap_or_default();
+                    parts.push(path);
+                    std::env::set_var("PATH", parts);
+                }
+            }
+        }
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),

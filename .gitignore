@@ -111,6 +111,11 @@ prototype/.vscode/
 # failed_chunks.json from prototype is also written in the project root
 # (relative to CWD) by the prototype CLI. Same file, different cwd.
 failed_chunks.json
+# CUDA / cuDNN runtime DLLs downloaded once for the prototype.
+# They live in bin/ and target/release/ next to the binary.
+prototype/**/bin/
+prototype/**/*.whl
+prototype/**/*.zip
 
 # OS files
 .DS_Store
