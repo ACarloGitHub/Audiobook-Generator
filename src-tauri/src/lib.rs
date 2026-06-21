@@ -32,6 +32,8 @@ pub fn run() {
             commands::synthesize,
             commands::stop_generation,
             commands::check_recovery,
+            commands::engine_defaults,
+            commands::load_epub,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

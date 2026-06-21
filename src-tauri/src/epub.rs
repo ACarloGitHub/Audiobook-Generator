@@ -15,6 +15,24 @@ pub struct Chapter {
     pub text: String,
 }
 
+/// Book-level container returned by `parse_epub`. The title defaults
+/// to the EPUB file stem if the OPF metadata has no `dc:title`.
+pub struct Book {
+    pub title: String,
+    pub chapters: Vec<Chapter>,
+}
+
+/// Convenience wrapper for the UI. Equivalent to
+/// `extract_chapters` plus a title.
+pub fn parse_epub(path: &Path) -> Result<Book> {
+    let chapters = extract_chapters(path)?;
+    let title = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "Untitled".to_string());
+    Ok(Book { title, chapters })
+}
+
 /// Open an EPUB, read its Table of Contents (toc.ncx or EPUB 3 NAV), and
 /// return one entry per chapter listed there.
 ///

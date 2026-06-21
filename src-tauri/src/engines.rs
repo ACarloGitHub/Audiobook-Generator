@@ -48,6 +48,156 @@ pub struct EngineInfo {
     pub languages: Vec<String>,
 }
 
+/// Per-engine auto-loaded defaults. Returned by the `engine_defaults`
+/// Tauri command so the frontend can pre-fill Configuration and EPUB
+/// Options when the user picks an engine. See
+/// AudiobookGenerator-Wiki/wiki/concepts/engine-defaults.md.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EngineDefaults {
+    pub engine_id: String,
+    pub chunk_strategy: String,     // "Word Count Approx" | "Character Limit"
+    pub chunk_min_words: Option<u32>,
+    pub chunk_max_words: Option<u32>,
+    pub chunk_max_chars: u32,
+    pub chunk_max_chars_by_lang: std::collections::HashMap<String, u32>,
+    pub separator: String,          // "." | "|" | ";" | "<sil>" | "[PAUSE]" | "_"
+    pub replace_guillemets: bool,
+    pub voices: Vec<VoiceDescriptor>,
+    pub voice_cloning: bool,
+    pub needs_reference_transcript: bool,
+    pub supported_languages: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceDescriptor {
+    pub id: String,
+    pub display_name: String,
+    pub language: String,
+}
+
+pub fn defaults_for(engine_id: &str) -> EngineDefaults {
+    match engine_id {
+        "kokoro" => EngineDefaults {
+            engine_id: "kokoro".into(),
+            chunk_strategy: "Character Limit".into(),
+            chunk_min_words: None,
+            chunk_max_words: None,
+            chunk_max_chars: 2300,
+            chunk_max_chars_by_lang: [
+                ("it".into(), 2300),
+                ("en".into(), 2300),
+                ("fr".into(), 2300),
+                ("ja".into(), 1100),
+                ("zh-cn".into(), 1100),
+            ]
+            .into_iter()
+            .collect(),
+            separator: ".".into(),
+            replace_guillemets: false,
+            voice_cloning: false,
+            needs_reference_transcript: false,
+            supported_languages: vec![
+                "it".into(),
+                "en".into(),
+                "fr".into(),
+                "ja".into(),
+                "zh-cn".into(),
+            ],
+            voices: vec![
+                VoiceDescriptor { id: "if_sara".into(), display_name: "Italian Female (Sara)".into(), language: "it".into() },
+                VoiceDescriptor { id: "im_nicola".into(), display_name: "Italian Male (Nicola)".into(), language: "it".into() },
+                VoiceDescriptor { id: "af_alloy".into(), display_name: "English US Female (Alloy)".into(), language: "en".into() },
+                VoiceDescriptor { id: "am_adam".into(), display_name: "English US Male (Adam)".into(), language: "en".into() },
+                VoiceDescriptor { id: "ff_siwis".into(), display_name: "French Female (Siwis)".into(), language: "fr".into() },
+                VoiceDescriptor { id: "jf_alpha".into(), display_name: "Japanese Female (Alpha)".into(), language: "ja".into() },
+                VoiceDescriptor { id: "zf_xiaobei".into(), display_name: "Chinese Female (Xiaobei)".into(), language: "zh-cn".into() },
+            ],
+        },
+        "qwen3-tts" => EngineDefaults {
+            engine_id: "qwen3-tts".into(),
+            chunk_strategy: "Character Limit".into(),
+            chunk_min_words: None,
+            chunk_max_words: None,
+            chunk_max_chars: 800,
+            chunk_max_chars_by_lang: std::collections::HashMap::new(),
+            separator: ".".into(),
+            replace_guillemets: false,
+            voice_cloning: true,
+            needs_reference_transcript: true,
+            supported_languages: vec![
+                "Auto".into(),
+                "Chinese".into(),
+                "English".into(),
+                "German".into(),
+                "Italian".into(),
+                "Portuguese".into(),
+                "Spanish".into(),
+                "Japanese".into(),
+                "Korean".into(),
+                "French".into(),
+                "Russian".into(),
+            ],
+            voices: vec![
+                VoiceDescriptor { id: "Vivian".into(), display_name: "Vivian".into(), language: "Auto".into() },
+                VoiceDescriptor { id: "Serena".into(), display_name: "Serena".into(), language: "Auto".into() },
+                VoiceDescriptor { id: "Uncle_Fu".into(), display_name: "Uncle Fu".into(), language: "Auto".into() },
+                VoiceDescriptor { id: "Dylan".into(), display_name: "Dylan".into(), language: "Auto".into() },
+                VoiceDescriptor { id: "Eric".into(), display_name: "Eric".into(), language: "Auto".into() },
+                VoiceDescriptor { id: "Ryan".into(), display_name: "Ryan".into(), language: "Auto".into() },
+                VoiceDescriptor { id: "Aiden".into(), display_name: "Aiden".into(), language: "Auto".into() },
+                VoiceDescriptor { id: "Ono_Anna".into(), display_name: "Ono Anna".into(), language: "Auto".into() },
+                VoiceDescriptor { id: "Sohee".into(), display_name: "Sohee".into(), language: "Auto".into() },
+            ],
+        },
+        "outetts" => EngineDefaults {
+            engine_id: "outetts".into(),
+            chunk_strategy: "Character Limit".into(),
+            chunk_min_words: None,
+            chunk_max_words: None,
+            chunk_max_chars: 500,
+            chunk_max_chars_by_lang: std::collections::HashMap::new(),
+            separator: ".".into(),
+            replace_guillemets: false,
+            voice_cloning: true,
+            needs_reference_transcript: true,
+            supported_languages: vec![
+                "en".into(), "ar".into(), "zh".into(), "nl".into(),
+                "fr".into(), "de".into(), "it".into(), "ja".into(),
+                "ko".into(), "lt".into(), "ru".into(), "es".into(),
+            ],
+            voices: vec![],
+        },
+        "neutts-air" => EngineDefaults {
+            engine_id: "neutts-air".into(),
+            chunk_strategy: "Character Limit".into(),
+            chunk_min_words: None,
+            chunk_max_words: None,
+            chunk_max_chars: 250,
+            chunk_max_chars_by_lang: std::collections::HashMap::new(),
+            separator: ".".into(),
+            replace_guillemets: false,
+            voice_cloning: true,
+            needs_reference_transcript: false,
+            supported_languages: vec!["en".into()],
+            voices: vec![],
+        },
+        _ => EngineDefaults {
+            engine_id: engine_id.into(),
+            chunk_strategy: "Character Limit".into(),
+            chunk_min_words: None,
+            chunk_max_words: None,
+            chunk_max_chars: 500,
+            chunk_max_chars_by_lang: std::collections::HashMap::new(),
+            separator: ".".into(),
+            replace_guillemets: false,
+            voice_cloning: false,
+            needs_reference_transcript: false,
+            supported_languages: vec!["en".into()],
+            voices: vec![],
+        },
+    }
+}
+
 /// The trait every engine implements.
 pub trait Engine: Send + Sync {
     fn info(&self) -> &EngineInfo;

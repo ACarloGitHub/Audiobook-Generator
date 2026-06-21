@@ -15,7 +15,7 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::engines::kokoro::synthesize_book;
-use crate::engines::{EngineHandle, EngineInfo, EngineRegistry, SynthesizeRequest};
+use crate::engines::{defaults_for, EngineDefaults, EngineHandle, EngineInfo, EngineRegistry, SynthesizeRequest};
 use crate::merger;
 use crate::recovery::{self, RecoveryState};
 
@@ -121,6 +121,40 @@ pub async fn synthesize(
 #[tauri::command]
 pub fn stop_generation() {
     STOP_FLAG.store(true, Ordering::SeqCst);
+}
+
+#[tauri::command]
+pub fn engine_defaults(engine_id: String) -> EngineDefaults {
+    defaults_for(&engine_id)
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct BookInfo {
+    pub title: String,
+    pub chapters: Vec<ChapterSummary>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct ChapterSummary {
+    pub title: String,
+    pub char_count: usize,
+}
+
+#[tauri::command]
+pub fn load_epub(path: PathBuf) -> Result<BookInfo, String> {
+    let book = crate::epub::parse_epub(&path)
+        .map_err(|e| format!("failed to parse EPUB: {e:#}"))?;
+    Ok(BookInfo {
+        title: book.title,
+        chapters: book
+            .chapters
+            .iter()
+            .map(|c| ChapterSummary {
+                title: c.title.clone(),
+                char_count: c.text.len(),
+            })
+            .collect(),
+    })
 }
 
 #[tauri::command]
