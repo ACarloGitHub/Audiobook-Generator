@@ -132,6 +132,9 @@ Thumbs.db
 # Local-only configuration
 local_config.json
 
+# External backup reference (read-only, lives outside the workspace)
+W:/SviluppoProgetti/Backup Audiobook Generator/
+
 # Knowledge base and agent guidance (LOCAL ONLY — never push to GitHub)
 AGENTS.md
 AudiobookGenerator-Wiki/
