@@ -37,6 +37,8 @@ quick-xml = { version = "0.36", features = ["serialize"] }
 # We disable the default `g2p-espeak` feature for now: it requires CMake
 # and a C/C++ toolchain to build bundled espeak-ng.
 kokoro-en = { version = "0.1", default-features = false }
+async-trait = "0.1"
+dirs = "5"
 # ORT CUDA / cuDNN support is enabled at runtime by placing the
 # vendored DLLs next to the binary. The Kokoro engine searches for
 # them on PATH (which we prepend in the engine's load()).

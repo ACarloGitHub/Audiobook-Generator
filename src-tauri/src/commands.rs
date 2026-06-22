@@ -1,12 +1,3 @@
-//! Tauri commands exposed to the frontend.
-//!
-//! Engine-agnostic surface: the frontend never sees engine-specific
-//! code. Every command works the same way for Kokoro, Qwen3-TTS,
-//! OuteTTS, NeuTTS Air.
-//!
-//! See AudiobookGenerator-Wiki/wiki/concepts/engine-lifecycle.md
-//! for the load / hold / release state machine.
-
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -14,9 +5,9 @@ use std::sync::Arc;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
-use crate::engines::kokoro::{synthesize_book, KokoroEngine};
-use crate::engines::{defaults_for, EngineDefaults, EngineHandle, EngineInfo, EngineRegistry, SynthesizeRequest};
+use crate::base_plugin::{EngineHandle, SynthesizeRequest};
 use crate::merger;
+use crate::plugin_manager::{self, EngineDefaults, EngineInfo, PluginManager};
 use crate::recovery::{self, RecoveryState};
 
 #[derive(Debug, Serialize, Clone)]
@@ -47,85 +38,59 @@ pub struct GpuInfo {
 static STOP_FLAG: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
-pub fn engine_status(registry: State<'_, Arc<EngineRegistry>>) -> EngineStatus {
-    let active = registry.active();
-    let engines = registry.catalogue();
-    let vram = active
-        .as_ref()
-        .and_then(|h| registry.get(&h.engine_id))
-        .and_then(|e| e.current_vram_bytes());
-
+pub fn engine_status(pm: State<'_, Arc<PluginManager>>) -> EngineStatus {
+    let engines = pm.catalogue();
     EngineStatus {
-        active_engine: active.as_ref().map(|h| h.engine_id.clone()),
-        active_model: active.as_ref().map(|h| h.model_id.clone()),
-        vram_bytes: vram,
-        loaded_at: active.as_ref().map(|_| "just now".to_string()),
+        active_engine: None,
+        active_model: None,
+        vram_bytes: None,
+        loaded_at: None,
         engines,
         hardware: detect_hardware_stub(),
     }
 }
 
 #[tauri::command]
-pub fn load_engine(
-    engine_id: String,
-    model_id: String,
-    registry: State<'_, Arc<EngineRegistry>>,
-) -> Result<EngineHandle, String> {
-    // Auto-release: drop any currently loaded engine before loading
-    // the new one. This is the single most important VRAM safety
-    // path. See AudiobookGenerator-Wiki/wiki/concepts/engine-lifecycle.md.
-    if let Some(prev) = registry.active() {
-        if let Some(prev_engine) = registry.get(&prev.engine_id) {
-            let _ = prev_engine.unload(&prev);
-        }
-        registry.set_active(None);
-    }
-
-    let engine = registry
-        .get(&engine_id)
-        .ok_or_else(|| format!("unknown engine '{engine_id}'"))?;
-    let handle = engine
-        .load(&model_id)
-        .map_err(|e| format!("load failed: {e:#}"))?;
-    registry.set_active(Some(handle.clone()));
-    Ok(handle)
+pub fn engine_defaults(engine_id: String) -> EngineDefaults {
+    plugin_manager::defaults_for(&engine_id)
 }
 
 #[tauri::command]
-pub fn unload_engine(registry: State<'_, Arc<EngineRegistry>>) -> Result<(), String> {
-    let active = registry.active();
-    if let Some(h) = active {
-        if let Some(engine) = registry.get(&h.engine_id) {
-            engine.unload(&h).map_err(|e| format!("unload failed: {e:#}"))?;
-        }
-        registry.set_active(None);
+pub fn load_engine(
+    engine_id: String,
+    model_id: String,
+    pm: State<'_, Arc<PluginManager>>,
+) -> Result<EngineHandle, String> {
+    let plugin = pm
+        .get_plugin(&engine_id)
+        .ok_or_else(|| format!("unknown engine '{engine_id}'"))?;
+
+    tauri::async_runtime::block_on(plugin.load_model(&model_id))
+        .map_err(|e| format!("load failed: {e:#}"))
+}
+
+#[tauri::command]
+pub async fn unload_engine(
+    engine_id: String,
+    model_id: String,
+    pm: State<'_, Arc<PluginManager>>,
+) -> Result<(), String> {
+    let handle = EngineHandle {
+        engine_id,
+        model_id,
+    };
+    if let Some(plugin) = pm.get_plugin(&handle.engine_id) {
+        plugin
+            .unload(&handle)
+            .await
+            .map_err(|e| format!("unload failed: {e:#}"))?;
     }
     Ok(())
 }
 
 #[tauri::command]
-pub async fn synthesize(
-    handle: EngineHandle,
-    request: SynthesizeRequest,
-    output_wav: PathBuf,
-    registry: State<'_, Arc<EngineRegistry>>,
-) -> Result<(), String> {
-    let engine = registry
-        .get(&handle.engine_id)
-        .ok_or_else(|| format!("unknown engine '{}'", handle.engine_id))?;
-    engine
-        .synthesize(&handle, &request, &output_wav)
-        .map_err(|e| format!("synthesize failed: {e:#}"))
-}
-
-#[tauri::command]
 pub fn stop_generation() {
     STOP_FLAG.store(true, Ordering::SeqCst);
-}
-
-#[tauri::command]
-pub fn engine_defaults(engine_id: String) -> EngineDefaults {
-    defaults_for(&engine_id)
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -250,107 +215,80 @@ pub fn get_failed_chunks(book_dir: PathBuf, chapter: String) -> Vec<FailedChunkI
         .unwrap_or_default()
 }
 
-/// Synthesize a single chunk of text (Demo & Test panel).
 #[tauri::command]
 pub async fn synthesize_demo(
-    handle: EngineHandle,
     text: String,
     voice: Option<String>,
     output_wav: PathBuf,
-    registry: State<'_, Arc<EngineRegistry>>,
+    pm: State<'_, Arc<PluginManager>>,
 ) -> Result<(), String> {
-    let engine = registry
-        .get(&handle.engine_id)
-        .ok_or_else(|| format!("unknown engine '{}'", handle.engine_id))?;
+    let plugin = pm
+        .get_plugin("kokoro")
+        .ok_or_else(|| "Kokoro engine not available".to_string())?;
+    let handle = plugin
+        .load_model("kokoro-82M-quantized")
+        .await
+        .map_err(|e| format!("load failed: {e:#}"))?;
     let request = SynthesizeRequest {
         text,
+        output_path: output_wav.to_string_lossy().to_string(),
         reference_audio: None,
         language: None,
         voice,
         extra: Default::default(),
     };
-    engine
-        .synthesize(&handle, &request, &output_wav)
-        .map_err(|e| format!("demo synthesis failed: {e:#}"))
+    plugin
+        .synthesize(&handle, &request)
+        .await
+        .map_err(|e| format!("demo synthesis failed: {e:#}"))?;
+    let _ = plugin.unload(&handle).await;
+    Ok(())
 }
-/// This is the only "high-level" command the frontend needs: drop an
-/// EPUB, click Generate, get MP3s.
-///
-/// Other engines (Qwen3-TTS, OuteTTS, NeuTTS Air) will get their own
-/// top-level helpers as they land. The engine-agnostic plumbing
-/// (load / unload / status) is unchanged.
-///
-/// Top-level "Generate Audiobook" command. Mirrors the legacy Gradio
-/// flow: the user has picked an engine on the Configuration panel
-/// and clicked Generate. The command:
-///
-/// 1. Auto-releases whatever engine is currently loaded (single-VRAM
-///    safety per [[concepts/engine-lifecycle]]).
-/// 2. Loads the requested engine model (`loading-model` event).
-/// 3. Verifies assets (`model-ready` event).
-/// 4. Runs `synthesize_book` with a progress callback that emits
-///    `generation-progress` events chapter-by-chapter and
-///    chunk-by-chunk.
-/// 5. Emits `generation-complete` when done.
-///
-/// Only `engine_id = "kokoro"` is supported today. Other engines
-/// (Qwen3-TTS, OuteTTS, NeuTTS Air) will get their own top-level
-/// helpers as they land.
+
 #[tauri::command]
 pub async fn start_kokoro_generation(
-    engine_id: String,
-    model_id: String,
     voice: Option<String>,
     epub_path: PathBuf,
     output_dir: PathBuf,
     max_words: usize,
-    registry: State<'_, Arc<EngineRegistry>>,
+    pm: State<'_, Arc<PluginManager>>,
     app: AppHandle,
 ) -> Result<usize, String> {
-    let _ = app.emit("generation-progress", format!("Loading engine {engine_id}..."));
+    let _ = app.emit("generation-progress", "Loading engine kokoro...");
 
-    let engine = registry
-        .get(&engine_id)
-        .ok_or_else(|| format!("engine '{engine_id}' is not installed"))?;
+    let plugin = pm
+        .get_plugin("kokoro")
+        .ok_or_else(|| "Kokoro engine not installed".to_string())?;
 
-    if engine.as_kokoro().is_none() {
-        return Err(format!("engine '{engine_id}' does not support book-level synthesis yet"));
-    }
-    let kokoro_arc = engine.clone();
-
-    if let Some(prev) = registry.active() {
-        if let Some(prev_engine) = registry.get(&prev.engine_id) {
-            let _ = prev_engine.unload(&prev);
-        }
-        registry.set_active(None);
-    }
-
-    let handle = engine
-        .load(&model_id)
+    let handle = plugin
+        .load_model("kokoro-82M-quantized")
+        .await
         .map_err(|e| format!("load failed: {e:#}"))?;
-    registry.set_active(Some(handle.clone()));
-    let _ = app.emit("generation-progress", format!("Model loaded: {model_id}"));
+
+    let _ = app.emit("generation-progress", "Model loaded: kokoro-82M-quantized");
 
     let ffmpeg = merger::find_ffmpeg().map_err(|e| e.to_string())?;
     let epub = epub_path.clone();
     let out = output_dir.clone();
-    let h = handle.clone();
-    let app_for_task = app.clone();
     let voice_clone = voice.clone();
+    let app_for_task = app.clone();
 
     STOP_FLAG.store(false, Ordering::SeqCst);
 
+    let kokoro_any = plugin.as_any();
+    let kokoro_plugin = kokoro_any
+        .downcast_ref::<crate::plugins::kokoro::KokoroPlugin>()
+        .ok_or_else(|| "internal: kokoro plugin type mismatch".to_string())?;
+
+    let voice_for_task = voice.unwrap_or_else(|| kokoro_plugin.voice.clone());
+    let kokoro_paths = kokoro_plugin.paths.clone();
+
     let result = tokio::task::spawn_blocking(move || {
-        let app = app_for_task;
+        let k = crate::plugins::kokoro::KokoroPlugin::new(kokoro_paths, &voice_for_task);
         let cb: Box<dyn FnMut(&str) + Send> = Box::new(move |msg: &str| {
-            let _ = app.emit("generation-progress", msg.to_string());
+            let _ = app_for_task.emit("generation-progress", msg.to_string());
         });
-        let k = kokoro_arc.as_kokoro().expect("checked above");
-        let k: KokoroEngine = match voice_clone {
-            Some(v) => k.clone_with_voice(&v),
-            None => k.clone_with_voice(&k.voice.clone()),
-        };
-        synthesize_book(&k, &h, &epub, &out, max_words, &ffmpeg, Some(cb))
+        crate::plugins::kokoro::synthesize_book(&k, &epub, &out, max_words, &ffmpeg, Some(cb))
     })
     .await
     .map_err(|e| format!("synthesis task panicked: {e}"))?;
@@ -358,8 +296,6 @@ pub async fn start_kokoro_generation(
     let _ = app.emit("generation-complete", ());
     result.map_err(|e| format!("book synthesis failed: {e:#}"))
 }
-
-// ---- stub hardware detection -----------------------------------------
 
 fn detect_hardware_stub() -> HardwareSummary {
     HardwareSummary {

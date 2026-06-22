@@ -1,0 +1,164 @@
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { escapeHtml, ts, pickOutputDir } from "./helpers";
+import { renderEngineStrip } from "./engine-strip";
+import { state } from "./state";
+import type { BookInfo, EngineStatus } from "./types";
+
+export function renderGenerate(status: EngineStatus, bookInfo: BookInfo | null): string {
+  const chapterRows = bookInfo
+    ? bookInfo.chapters
+        .map((c) => {
+          const checked = state.selectedChapters.has(c.title) ? "checked" : "";
+          return `
+            <label class="chapter-row">
+              <input type="checkbox" class="chapter-cb" data-title="${escapeHtml(c.title)}" ${checked} />
+              <span>${escapeHtml(c.title)} (${c.char_count} chars)</span>
+            </label>`;
+        })
+        .join("")
+    : "";
+  const chapterStatus = bookInfo
+    ? `Book: <strong>${escapeHtml(bookInfo.title)}</strong> · ${bookInfo.chapters.length} chapters`
+    : "Drop an EPUB on the EPUB & Options panel to load chapters.";
+  const canGenerate = bookInfo !== null && state.selectedChapters.size > 0;
+
+  return `
+    ${renderEngineStrip(status)}
+    <div class="card">
+      <div class="btn-row">
+        <button class="btn-secondary" id="select-all-btn" ${bookInfo ? "" : "disabled"}>Select All</button>
+        <button class="btn-secondary" id="invert-btn" ${bookInfo ? "" : "disabled"}>Invert</button>
+      </div>
+      <p class="field-help" id="chapter-status">${chapterStatus}</p>
+      <div class="chapter-list" id="chapter-list">${chapterRows}</div>
+    </div>
+
+    <div class="card">
+      <div class="btn-row btn-row-large">
+        <button class="btn-primary" id="generate-btn" ${canGenerate ? "" : "disabled"}>Generate Audiobook</button>
+        <button class="btn-stop" id="stop-btn" disabled>🛑 Stop</button>
+      </div>
+      <label class="checkbox-row">
+        <input type="checkbox" id="delete-chunks" ${state.deleteIntermediateChunks ? "checked" : ""} />
+        <span>Delete intermediate chunks?</span>
+      </label>
+    </div>
+
+    <div class="card">
+      <h2>Progress</h2>
+      <textarea class="text-input log-area" id="progress-log" rows="12" readonly placeholder="No generation running."></textarea>
+    </div>
+  `;
+}
+
+export function attachGenerateListeners(
+  render: () => void,
+  bookInfo: BookInfo | null,
+  refreshStatus: () => Promise<EngineStatus>,
+): void {
+  const selectAllBtn = document.getElementById("select-all-btn");
+  if (selectAllBtn && bookInfo) {
+    selectAllBtn.addEventListener("click", () => {
+      const allSelected = bookInfo!.chapters.every((c) => state.selectedChapters.has(c.title));
+      if (allSelected) {
+        state.selectedChapters.clear();
+      } else {
+        state.selectedChapters = new Set(bookInfo!.chapters.map((c) => c.title));
+      }
+      render();
+    });
+  }
+
+  const invertBtn = document.getElementById("invert-btn");
+  if (invertBtn && bookInfo) {
+    invertBtn.addEventListener("click", () => {
+      const next = new Set<string>();
+      for (const c of bookInfo!.chapters) {
+        if (!state.selectedChapters.has(c.title)) next.add(c.title);
+      }
+      state.selectedChapters = next;
+      render();
+    });
+  }
+
+  for (const cb of Array.from(document.querySelectorAll<HTMLInputElement>(".chapter-cb"))) {
+    cb.addEventListener("change", () => {
+      const title = cb.dataset.title!;
+      if (cb.checked) state.selectedChapters.add(title);
+      else state.selectedChapters.delete(title);
+      const genBtn = document.getElementById("generate-btn") as HTMLButtonElement | null;
+      if (genBtn) genBtn.disabled = state.selectedChapters.size === 0;
+    });
+  }
+
+  const generateBtn = document.getElementById("generate-btn") as HTMLButtonElement | null;
+  const stopBtn = document.getElementById("stop-btn") as HTMLButtonElement | null;
+  const progressLog = document.getElementById("progress-log") as HTMLTextAreaElement | null;
+
+  if (generateBtn && stopBtn && progressLog && bookInfo) {
+    generateBtn.addEventListener("click", async () => {
+      if (!bookInfo || state.selectedChapters.size === 0) return;
+      const status = await refreshStatus();
+      const engine = status.engines.find((e) => e.id === state.selectedEngineId);
+      if (!engine || !engine.installed) {
+        progressLog.value = `[ERROR] No installed engine selected. Pick one in Configuration.\n`;
+        return;
+      }
+      const outputDir = pickOutputDir(bookInfo.title);
+      generateBtn.disabled = true;
+      stopBtn.disabled = false;
+      const t0 = Date.now();
+      progressLog.value = `[INFO] Book: ${bookInfo.title}\n`;
+      progressLog.value += `[INFO] Selected engine: ${engine.display_name}\n`;
+      progressLog.value += `[INFO] Chapters: ${state.selectedChapters.size}\n`;
+      progressLog.value += `[INFO] Output: ${outputDir}\n`;
+      progressLog.value += `[INFO] --- starting generation ---\n`;
+
+      let unlistenProgress: (() => void) | null = null;
+      let unlistenComplete: (() => void) | null = null;
+      try {
+        unlistenProgress = await listen<string>("generation-progress", (e) => {
+          progressLog.value += `[${ts()}] ${e.payload}\n`;
+          progressLog.scrollTop = progressLog.scrollHeight;
+        });
+        unlistenComplete = await listen("generation-complete", () => {
+          const secs = ((Date.now() - t0) / 1000).toFixed(1);
+          progressLog.value += `[${ts()}] [INFO] Generation finished in ${secs}s\n`;
+          progressLog.scrollTop = progressLog.scrollHeight;
+        });
+        await invoke("start_kokoro_generation", {
+          voice: state.selectedVoiceId || null,
+          epubPath: state.epubPath,
+          outputDir,
+          maxWords: state.chunkMaxWords,
+        });
+      } catch (e) {
+        progressLog.value += `[${ts()}] [ERROR] ${e}\n`;
+      } finally {
+        if (unlistenProgress) unlistenProgress();
+        if (unlistenComplete) unlistenComplete();
+        generateBtn.disabled = state.selectedChapters.size === 0;
+        stopBtn.disabled = true;
+        await refreshStatus();
+      }
+    });
+
+    stopBtn.addEventListener("click", async () => {
+      try {
+        await invoke("stop_generation");
+        if (progressLog) progressLog.value += `[${ts()}] [WARN] Stop requested.\n`;
+        stopBtn.disabled = true;
+      } catch (e) {
+        if (progressLog) progressLog.value += `[${ts()}] [ERROR] stop failed: ${e}\n`;
+      }
+    });
+  }
+
+  const deleteChunks = document.getElementById("delete-chunks") as HTMLInputElement | null;
+  if (deleteChunks) {
+    deleteChunks.addEventListener("change", () => {
+      state.deleteIntermediateChunks = deleteChunks.checked;
+    });
+  }
+}

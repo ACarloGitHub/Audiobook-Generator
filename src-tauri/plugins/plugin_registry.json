@@ -1,0 +1,56 @@
+[
+  {
+    "name": "Kokoro",
+    "type": "in_process",
+    "engine_id": "kokoro",
+    "description": "Kokoro 82M — lightweight multilingual TTS (ONNX, in-process Rust)"
+  },
+  {
+    "name": "Qwen3-TTS-0.6B-Base",
+    "type": "llama_server",
+    "engine_id": "qwen3tts",
+    "description": "Qwen3 TTS 0.6B Base — voice clone via llama-server"
+  },
+  {
+    "name": "Qwen3-TTS-1.7B-Base",
+    "type": "llama_server",
+    "engine_id": "qwen3tts",
+    "description": "Qwen3 TTS 1.7B Base — voice clone via llama-server"
+  },
+  {
+    "name": "Qwen3-TTS-1.7B-CustomVoice",
+    "type": "llama_server",
+    "engine_id": "qwen3tts",
+    "description": "Qwen3 TTS 1.7B Custom Voice — custom voice via llama-server"
+  },
+  {
+    "name": "Qwen3-TTS-1.7B-VoiceDesign",
+    "type": "llama_server",
+    "engine_id": "qwen3tts",
+    "description": "Qwen3 TTS 1.7B Voice Design — voice design via llama-server"
+  },
+  {
+    "name": "VibeVoice-1.5B",
+    "type": "llama_server",
+    "engine_id": "vibevoice",
+    "description": "VibeVoice 1.5B — voice cloning via llama-server"
+  },
+  {
+    "name": "VibeVoice-7B",
+    "type": "llama_server",
+    "engine_id": "vibevoice",
+    "description": "VibeVoice 7B — voice cloning via llama-server"
+  },
+  {
+    "name": "VibeVoice-Realtime-0.5B",
+    "type": "llama_server",
+    "engine_id": "vibevoice",
+    "description": "VibeVoice Realtime 0.5B — fast voice cloning via llama-server"
+  },
+  {
+    "name": "XTTSv2",
+    "type": "llama_server",
+    "engine_id": "xttsv2",
+    "description": "Coqui XTTS v2 — voice cloning via llama-server"
+  }
+]

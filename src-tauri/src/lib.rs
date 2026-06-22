@@ -1,21 +1,20 @@
-//! Audiobook Generator — Tauri application entry point.
-//!
-//! The Tauri commands defined here are intentionally engine-agnostic. Each
-//! engine (Kokoro, Qwen3-TTS, OuteTTS, NeuTTS Air) implements the
-//! `Engine` trait. The frontend talks only to the commands in this module
-//! and to the engine registry.
-//!
-//! See AudiobookGenerator-Wiki/wiki/concepts/plugin-architecture.md
-//! and AudiobookGenerator-Wiki/wiki/concepts/engine-lifecycle.md.
+use tauri::Manager;
 
+mod base_plugin;
+mod base_subprocess_plugin;
 mod chunker;
 mod commands;
-pub mod engines;
-pub mod merger;
-pub mod recovery;
+pub mod config;
+mod epub;
+mod merger;
+mod model_manager;
+pub mod payload_types;
+mod plugin_manager;
+pub mod plugins;
+mod recovery;
+mod utils;
 
-pub use engines::kokoro;
-pub mod epub;
+use std::sync::Arc;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -24,20 +23,55 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
-        .manage(std::sync::Arc::new(engines::EngineRegistry::new()))
+        .setup(|app| {
+            let path_resolver = app.path();
+            let app_data_dir = match path_resolver.app_data_dir() {
+                Ok(p) => {
+                    eprintln!("[setup] app_data_dir (from tauri): {}", p.display());
+                    p
+                }
+                Err(e) => {
+                    eprintln!("[setup] tauri app_data_dir failed: {e}; falling back");
+                    let fallback = std::env::var("LOCALAPPDATA")
+                        .map(|p| std::path::PathBuf::from(p).join("com.patata.audiobookgenerator"))
+                        .or_else(|_| {
+                            std::env::var("HOME").map(|p| {
+                                std::path::PathBuf::from(p)
+                                    .join(".local/share/com.patata.audiobookgenerator")
+                            })
+                        })
+                        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| ".".into()));
+                    eprintln!("[setup] fallback app_data_dir: {}", fallback.display());
+                    fallback
+                }
+            };
+            if let Err(e) = std::fs::create_dir_all(&app_data_dir) {
+                eprintln!(
+                    "[setup] could not create app data dir {}: {e}",
+                    app_data_dir.display()
+                );
+            }
+            config::paths::set_app_data_dir(app_data_dir.clone());
+            let pm = Arc::new(plugin_manager::PluginManager::new(app_data_dir));
+            eprintln!(
+                "[setup] plugin manager ready: {} engine(s) registered",
+                pm.catalogue().len()
+            );
+            app.manage(pm);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::engine_status,
+            commands::engine_defaults,
             commands::load_engine,
             commands::unload_engine,
-            commands::synthesize,
             commands::stop_generation,
-            commands::check_recovery,
-            commands::engine_defaults,
             commands::load_epub,
-            commands::start_kokoro_generation,
+            commands::check_recovery,
             commands::scan_recovery_books,
             commands::get_failed_chunks,
             commands::synthesize_demo,
+            commands::start_kokoro_generation,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
