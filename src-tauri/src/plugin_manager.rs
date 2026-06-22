@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use crate::base_plugin::BaseTTSPlugin;
 use crate::config::models;
+use crate::plugins::kokoro::{KokoroPaths, KokoroPlugin};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginRegistryEntry {
@@ -79,12 +80,19 @@ impl PluginManager {
     }
 
     fn discover_installed_engines(&mut self) {
-        for entry in &self.registry {
-            let models_dir = self.app_data_dir.join("models").join(&entry.engine_id);
-            if models_dir.exists() {
-                eprintln!("[PluginManager] found installed engine: {}", entry.name);
-            }
+        // Kokoro (in-process ONNX) — register when the model files are on disk.
+        let kokoro_paths = KokoroPaths::from_app_data(&self.app_data_dir);
+        let kokoro_plugin = KokoroPlugin::new(kokoro_paths, "af_heart");
+        if kokoro_plugin.is_installed() {
+            eprintln!("[PluginManager] registering Kokoro plugin (model files present)");
+            self.plugins
+                .insert("kokoro".to_string(), Arc::new(kokoro_plugin));
+        } else {
+            eprintln!("[PluginManager] Kokoro not installed yet — download from the Models panel");
         }
+
+        // Other engines (Qwen3-TTS, VibeVoice, XTTSv2) are stubs until
+        // phase 12-13. We only register the Kokoro one for now.
     }
 
     pub fn list_available_models(&self) -> Vec<String> {
@@ -95,18 +103,19 @@ impl PluginManager {
         self.plugins.get(name).cloned()
     }
 
+    /// Re-scan the disk for installed engines and refresh internal registry.
+    /// Call this after a model download or removal.
+    pub fn refresh_installed(&mut self) {
+        self.plugins.clear();
+        self.discover_installed_engines();
+    }
+
     pub fn catalogue(&self) -> Vec<EngineInfo> {
         let mut out = Vec::new();
-        let kokoro_installed = {
-            let kokoro_models = self.app_data_dir.join("models").join("kokoro").join("models");
-            let kokoro_voices = self.app_data_dir.join("models").join("kokoro").join("voices");
-            let model_ok = ["model_quantized.onnx", "model_q8f16.onnx", "model.onnx"]
-                .iter()
-                .any(|n| kokoro_models.join(n).exists());
-            let voices_ok = kokoro_voices.join("af_heart.bin").exists();
-            model_ok && voices_ok
-        };
 
+        // Kokoro (in-process ONNX)
+        let kokoro_paths = KokoroPaths::from_app_data(&self.app_data_dir);
+        let kokoro_installed = KokoroPlugin::new(kokoro_paths, "af_heart").is_installed();
         if kokoro_installed {
             let kokoro_voices = models::available_kokoro_models();
             let mut all_voices: Vec<VoiceDescriptor> = Vec::new();
@@ -134,6 +143,62 @@ impl PluginManager {
                 voices: all_voices,
             });
         }
+
+        // Other engines (planned, not yet installed — shown for the
+        // Models panel so the user knows what is coming). These
+        // do NOT register a plugin until their implementation lands.
+        out.push(EngineInfo {
+            id: "qwen3tts".into(),
+            display_name: "Qwen3-TTS 0.6B Base".into(),
+            format: "Safetensors".into(),
+            voice_cloning: true,
+            hardware: vec!["CPU".into(), "CUDA".into(), "Vulkan".into()],
+            license: "Apache 2.0".into(),
+            languages: vec!["Auto".into(), "Chinese".into(), "English".into(), "German".into(), "Italian".into(), "Portuguese".into(), "Spanish".into(), "Japanese".into(), "Korean".into(), "French".into(), "Russian".into()],
+            installed: false,
+            size_mb: 1300,
+            voices: vec![],
+        });
+        out.push(EngineInfo {
+            id: "qwen3tts".into(),
+            display_name: "Qwen3-TTS 1.7B Custom Voice".into(),
+            format: "Safetensors".into(),
+            voice_cloning: true,
+            hardware: vec!["CPU".into(), "CUDA".into(), "Vulkan".into()],
+            license: "Apache 2.0".into(),
+            languages: vec!["Auto".into(), "Chinese".into(), "English".into(), "German".into(), "Italian".into(), "Portuguese".into(), "Spanish".into(), "Japanese".into(), "Korean".into(), "French".into(), "Russian".into()],
+            installed: false,
+            size_mb: 3600,
+            voices: vec![
+                VoiceDescriptor { id: "Vivian".into(), display_name: "Vivian".into(), language: "Auto".into() },
+                VoiceDescriptor { id: "Serena".into(), display_name: "Serena".into(), language: "Auto".into() },
+                VoiceDescriptor { id: "Uncle_Fu".into(), display_name: "Uncle Fu".into(), language: "Auto".into() },
+            ],
+        });
+        out.push(EngineInfo {
+            id: "vibevoice".into(),
+            display_name: "VibeVoice 1.5B".into(),
+            format: "Safetensors".into(),
+            voice_cloning: true,
+            hardware: vec!["CPU".into(), "CUDA".into(), "Vulkan".into()],
+            license: "MIT".into(),
+            languages: vec!["en".into()],
+            installed: false,
+            size_mb: 3100,
+            voices: vec![],
+        });
+        out.push(EngineInfo {
+            id: "xttsv2".into(),
+            display_name: "XTTSv2".into(),
+            format: "Safetensors".into(),
+            voice_cloning: true,
+            hardware: vec!["CPU".into(), "CUDA".into()],
+            license: "CPML (non-commercial)".into(),
+            languages: vec!["en".into(), "it".into(), "fr".into(), "de".into(), "es".into()],
+            installed: false,
+            size_mb: 2100,
+            voices: vec![],
+        });
 
         out
     }

@@ -309,3 +309,34 @@ fn detect_hardware_stub() -> HardwareSummary {
         }],
     }
 }
+
+#[tauri::command]
+pub fn list_models(app: AppHandle) -> Vec<crate::model_manager::ModelListEntry> {
+    crate::model_manager::list_models(&app)
+}
+
+#[tauri::command]
+pub fn is_model_installed(name: String, app: AppHandle) -> bool {
+    crate::model_manager::is_model_installed(&name, &app)
+}
+
+#[tauri::command]
+pub async fn download_model(
+    name: String,
+    app: AppHandle,
+) -> Result<crate::model_manager::ModelDownloadResult, String> {
+    let result = crate::model_manager::download_model(&name, &app).await?;
+    // Note: the plugin manager holds an Arc<PluginManager> in app state
+    // and cannot be refreshed from inside an async command (would need
+    // a Mutex). The next engine_status call after download will rescan
+    // the disk and re-register the Kokoro plugin automatically.
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn remove_model(
+    name: String,
+    app: AppHandle,
+) -> Result<(), String> {
+    crate::model_manager::remove_model(&name, &app)
+}

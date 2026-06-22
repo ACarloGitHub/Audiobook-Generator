@@ -3,14 +3,14 @@ import { listen } from "@tauri-apps/api/event";
 import "./styles.css";
 import { $, escapeHtml, hardwareLine } from "./frontend/helpers";
 import { state, PANEL_TITLES } from "./frontend/state";
-import type { EngineStatus, BookInfo } from "./frontend/types";
+import type { EngineStatus, BookInfo, ModelListEntry } from "./frontend/types";
 import { renderSidebar, attachSidebarListeners } from "./frontend/sidebar";
 import { applyEngineDefaults, attachConfigurationListeners, renderConfiguration } from "./frontend/configuration";
 import { renderEpub, attachEpubListeners } from "./frontend/epub-options";
 import { renderGenerate, attachGenerateListeners } from "./frontend/generate";
 import { renderRecovery, attachRecoveryListeners } from "./frontend/recovery";
 import { renderDemo, attachDemoListeners } from "./frontend/demo";
-import { renderModels, attachModelsListeners } from "./frontend/models";
+import { renderModels, attachModelsListeners, loadModels } from "./frontend/models";
 import { initWizard, renderWizard, attachWizardListeners } from "./frontend/wizard";
 
 let engineStatus: EngineStatus = {
@@ -22,6 +22,7 @@ let engineStatus: EngineStatus = {
   hardware: { os: "unknown", arch: "unknown", gpus: [] },
 };
 
+let modelList: ModelListEntry[] = [];
 let bookInfo: BookInfo | null = null;
 
 function panelBody(): string {
@@ -31,7 +32,7 @@ function panelBody(): string {
     case "generate": return renderGenerate(engineStatus, bookInfo);
     case "recovery": return renderRecovery();
     case "demo": return renderDemo(engineStatus);
-    case "models": return renderModels(engineStatus);
+    case "models": return renderModels(engineStatus, modelList);
   }
 }
 
@@ -51,7 +52,7 @@ function render(): void {
     app.innerHTML = renderWizard();
     attachWizardListeners(render, async () => {
       showWizard = false;
-      await refreshEngineStatus();
+      await refreshAll();
       render();
     });
     return;
@@ -118,6 +119,21 @@ async function refreshEngineStatus(): Promise<EngineStatus> {
   return engineStatus;
 }
 
+async function refreshModelList(): Promise<ModelListEntry[]> {
+  try {
+    modelList = await loadModels();
+  } catch (e) {
+    console.error("[refreshModelList] failed:", e);
+    modelList = [];
+  }
+  return modelList;
+}
+
+async function refreshAll(): Promise<void> {
+  await refreshEngineStatus();
+  await refreshModelList();
+}
+
 async function main(): Promise<void> {
   console.log("[main] starting Audiobook Generator UI");
 
@@ -128,14 +144,14 @@ async function main(): Promise<void> {
     return;
   }
 
-  await refreshEngineStatus();
+  await refreshAll();
   if (engineStatus.engines.length > 0) {
     state.selectedEngineId = engineStatus.engines[0].id;
   }
   await applyEngineDefaults(state.selectedEngineId);
   render();
   await listen("engine-status-changed", () => {
-    refreshEngineStatus().then(render);
+    refreshAll().then(render);
   });
 }
 

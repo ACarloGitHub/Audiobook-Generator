@@ -9,13 +9,14 @@ export type PanelId =
 export interface EngineInfo {
   id: string;
   display_name: string;
-  format: "ONNX" | "GGUF";
+  format: "ONNX" | "GGUF" | "Safetensors";
   voice_cloning: boolean;
   hardware: string[];
   license: string;
   languages: string[];
   installed: boolean;
   size_mb: number;
+  voices?: VoiceDescriptor[];
 }
 
 export interface EngineStatus {
@@ -88,4 +89,17 @@ export interface FailedChunkInfo {
   chunk_index: number;
   text: string;
   error: string;
+}
+
+export interface ModelListEntry {
+  name: string;
+  engine_id: string;
+  format: string;
+  license: string;
+  size_mb: number;
+  installed: boolean;
+  essential_present: boolean;
+  dest: string;
+  supported: boolean;
+  note: string | null;
 }

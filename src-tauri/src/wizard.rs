@@ -153,7 +153,7 @@ fn arch_string() -> &'static str {
     }
 }
 
-fn resources_dir(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn resources_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let base = app
         .path()
         .app_data_dir()
@@ -165,7 +165,7 @@ fn resources_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn bin_dir(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn bin_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let base = app
         .path()
         .app_data_dir()
@@ -526,7 +526,7 @@ pub fn mark_wizard_done(app: AppHandle) -> Result<(), String> {
 // Download with resume + structured progress (from AuraWrite pattern)
 // =============================================================================
 
-async fn download_to_file_async(
+pub(crate) async fn download_to_file_async(
     app: &AppHandle,
     id: &str,
     name: &str,
@@ -740,7 +740,7 @@ async fn download_stream_to_file(
 // Extraction (from AuraWrite pattern: temp dir + atomic rename + path traversal guard)
 // =============================================================================
 
-fn extract_zip(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {
+pub(crate) fn extract_zip(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {
     let f = File::open(zip_path).map_err(|e| format!("open zip: {}", e))?;
     let mut archive = zip::ZipArchive::new(f).map_err(|e| format!("read zip: {}", e))?;
     // Extract to a temporary subdirectory first, then atomically move into place.
@@ -789,7 +789,7 @@ fn extract_zip(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {
 
 /// Extract a zip archive into dest_dir WITHOUT clearing it first.
 /// Used to merge CUDA runtime DLLs into the same directory as the binary.
-fn extract_zip_into(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {
+pub(crate) fn extract_zip_into(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {
     let f = File::open(zip_path).map_err(|e| format!("open zip: {}", e))?;
     let mut archive = zip::ZipArchive::new(f).map_err(|e| format!("read zip: {}", e))?;
     fs::create_dir_all(dest_dir).map_err(|e| format!("create dir: {}", e))?;
@@ -824,7 +824,7 @@ fn extract_zip_into(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn extract_tar_gz(tar_gz_path: &Path, dest_dir: &Path) -> Result<(), String> {
+pub(crate) fn extract_tar_gz(tar_gz_path: &Path, dest_dir: &Path) -> Result<(), String> {
     let f = File::open(tar_gz_path).map_err(|e| format!("open tar.gz: {}", e))?;
     let gz = flate2::read::GzDecoder::new(f);
     let mut archive = tar::Archive::new(gz);
@@ -843,7 +843,7 @@ fn extract_tar_gz(tar_gz_path: &Path, dest_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn find_binary_in_dir(root: &Path, name: &str) -> Option<PathBuf> {
+pub(crate) fn find_binary_in_dir(root: &Path, name: &str) -> Option<PathBuf> {
     if !root.exists() {
         return None;
     }
