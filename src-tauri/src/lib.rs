@@ -13,6 +13,7 @@ mod plugin_manager;
 pub mod plugins;
 mod recovery;
 mod utils;
+mod wizard;
 
 use std::sync::Arc;
 
@@ -72,6 +73,13 @@ pub fn run() {
             commands::get_failed_chunks,
             commands::synthesize_demo,
             commands::start_kokoro_generation,
+            wizard::detect_hardware,
+            wizard::check_dependencies,
+            wizard::get_wizard_steps,
+            wizard::download_ffmpeg,
+            wizard::download_llama_server,
+            wizard::is_wizard_done,
+            wizard::mark_wizard_done,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

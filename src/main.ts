@@ -5,13 +5,13 @@ import { $, escapeHtml, hardwareLine } from "./frontend/helpers";
 import { state, PANEL_TITLES } from "./frontend/state";
 import type { EngineStatus, BookInfo } from "./frontend/types";
 import { renderSidebar, attachSidebarListeners } from "./frontend/sidebar";
-import { applyEngineDefaults, attachConfigurationListeners } from "./frontend/configuration";
-import { renderConfiguration } from "./frontend/configuration";
+import { applyEngineDefaults, attachConfigurationListeners, renderConfiguration } from "./frontend/configuration";
 import { renderEpub, attachEpubListeners } from "./frontend/epub-options";
 import { renderGenerate, attachGenerateListeners } from "./frontend/generate";
 import { renderRecovery, attachRecoveryListeners } from "./frontend/recovery";
 import { renderDemo, attachDemoListeners } from "./frontend/demo";
 import { renderModels, attachModelsListeners } from "./frontend/models";
+import { initWizard, renderWizard, attachWizardListeners } from "./frontend/wizard";
 
 let engineStatus: EngineStatus = {
   active_engine: null,
@@ -43,7 +43,20 @@ function renderMainPanel(): string {
   </section>`;
 }
 
+let showWizard = false;
+
 function render(): void {
+  if (showWizard) {
+    const app = $("#app");
+    app.innerHTML = renderWizard();
+    attachWizardListeners(render, async () => {
+      showWizard = false;
+      await refreshEngineStatus();
+      render();
+    });
+    return;
+  }
+
   const app = $("#app");
   app.innerHTML = `
     <aside class="sidebar">
@@ -107,6 +120,14 @@ async function refreshEngineStatus(): Promise<EngineStatus> {
 
 async function main(): Promise<void> {
   console.log("[main] starting Audiobook Generator UI");
+
+  const needsWizard = await initWizard();
+  if (needsWizard) {
+    showWizard = true;
+    render();
+    return;
+  }
+
   await refreshEngineStatus();
   if (engineStatus.engines.length > 0) {
     state.selectedEngineId = engineStatus.engines[0].id;

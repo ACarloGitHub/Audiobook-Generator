@@ -356,3 +356,61 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   margin: 8px 0;
   resize: vertical;
 }
+
+/* Wizard overlay */
+.wizard-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.wizard-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.wizard-header h1 {
+  font-size: 20px;
+  margin: 0 0 8px 0;
+}
+
+.wizard-subtitle {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin: 0 0 24px 0;
+}
+
+.wizard-body {
+  margin: 0 0 24px 0;
+}
+
+.wizard-footer {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.wizard-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.wizard-table td {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wizard-table td:first-child {
+  font-weight: 600;
+  width: 40%;
+}
