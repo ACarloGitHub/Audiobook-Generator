@@ -42,6 +42,9 @@ dirs = "5"
 which = "7"
 sysinfo = "0.33"
 num_cpus = "1"
+reqwest = { version = "0.12", features = ["stream"] }
+flate2 = "1"
+tar = "0.4"
 # ORT CUDA / cuDNN support is enabled at runtime by placing the
 # vendored DLLs next to the binary. The Kokoro engine searches for
 # them on PATH (which we prepend in the engine's load()).

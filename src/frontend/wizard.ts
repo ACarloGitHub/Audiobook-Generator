@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { escapeHtml, bytesToGB } from "./helpers";
 
 export interface HardwareInfo {
@@ -30,10 +31,60 @@ export interface WizardStep {
   completed: boolean;
 }
 
+interface DownloadProgress {
+  id: string;
+  name: string;
+  phase: string;
+  bytes: number;
+  total: number;
+  speed_bps: number;
+  eta_seconds: number | null;
+  error?: string;
+}
+
 let currentStep = 0;
 let steps: WizardStep[] = [];
 let hardware: HardwareInfo | null = null;
 let deps: DependencyStatus | null = null;
+let downloadListenerActive = false;
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+}
+
+function formatSpeed(bps: number): string {
+  if (bps === 0) return "...";
+  return `${formatBytes(bps)}/s`;
+}
+
+function formatEta(seconds: number | null): string {
+  if (seconds === null || seconds < 0) return "";
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  return `${mins}m ${secs}s`;
+}
+
+function progressText(p: DownloadProgress): string {
+  switch (p.phase) {
+    case "downloading":
+    case "resuming": {
+      const pct = p.total > 0 ? `(${((p.bytes / p.total) * 100).toFixed(1)}%)` : "";
+      return `Downloading ${p.name}... ${formatBytes(p.bytes)} ${pct} ${formatSpeed(p.speed_bps)} ETA: ${formatEta(p.eta_seconds)}`;
+    }
+    case "extracting":
+      return `Extracting ${p.name}...`;
+    case "done":
+      return `${p.name} installed successfully.`;
+    case "error":
+      return `Error: ${p.error ?? "unknown"}`;
+    default:
+      return `${p.phase} ${p.name}...`;
+  }
+}
 
 export function renderWizard(): string {
   return `
@@ -111,6 +162,9 @@ function renderFfmpeg(): string {
     ${!installed ? `
       <button class="btn-primary" id="wizard-download-ffmpeg">Download FFmpeg</button>
       <p class="field-help" id="ffmpeg-log"></p>
+      <div class="progress-bar-container" id="ffmpeg-progress-container" style="display:none;">
+        <div class="progress-bar" id="ffmpeg-progress-bar" style="width:0%"></div>
+      </div>
     ` : ""}
     <details class="accordion">
       <summary>Manual installation</summary>
@@ -133,11 +187,14 @@ function renderLlamaServer(): string {
     ${!installed ? `
       <button class="btn-primary" id="wizard-download-llama">Download llama-server</button>
       <p class="field-help" id="llama-log"></p>
+      <div class="progress-bar-container" id="llama-progress-container" style="display:none;">
+        <div class="progress-bar" id="llama-progress-bar" style="width:0%"></div>
+      </div>
     ` : ""}
     <details class="accordion">
       <summary>Manual installation</summary>
       <p class="field-help">
-        Download from <code>https://github.com/ggergan/llama.cpp/releases</code>. Place the binary in your PATH or in the app's bin/ directory.
+        Download from <code>https://github.com/ggml-org/llama.cpp/releases</code>. Place the binary in your PATH or in the app's resources directory.
       </p>
     </details>
   `;
@@ -172,6 +229,37 @@ function renderDone(): string {
       <li>Go to <strong>Generate</strong> to create your audiobook</li>
     </ol>
   `;
+}
+
+function setupDownloadProgressListener(logId: string, progressBarId: string, progressContainerId: string, downloadId: string): void {
+  if (downloadListenerActive) return;
+  downloadListenerActive = true;
+
+  listen<DownloadProgress>("download-progress", (event) => {
+    const p = event.payload;
+    if (p.id !== downloadId) return;
+
+    const log = document.getElementById(logId);
+    const container = document.getElementById(progressContainerId);
+    const bar = document.getElementById(progressBarId);
+
+    if (log) log.textContent = progressText(p);
+
+    if (container && bar) {
+      if (p.phase === "downloading" || p.phase === "resuming") {
+        container.style.display = "block";
+        const pct = p.total > 0 ? (p.bytes / p.total) * 100 : 0;
+        bar.style.width = `${pct}%`;
+      } else if (p.phase === "extracting") {
+        if (log) log.textContent = progressText(p);
+        bar.style.width = "100%";
+      } else if (p.phase === "done") {
+        container.style.display = "none";
+      } else if (p.phase === "error") {
+        container.style.display = "none";
+      }
+    }
+  });
 }
 
 export async function initWizard(): Promise<boolean> {
@@ -222,10 +310,15 @@ export function attachWizardListeners(rerender: () => void, closeWizard: () => v
   if (downloadFfmpegBtn) {
     downloadFfmpegBtn.addEventListener("click", async () => {
       const log = document.getElementById("ffmpeg-log");
-      if (log) log.textContent = "Downloading FFmpeg...";
+      const container = document.getElementById("ffmpeg-progress-container");
+      if (container) container.style.display = "block";
+      setupDownloadProgressListener("ffmpeg-log", "ffmpeg-progress-bar", "ffmpeg-progress-container", "ffmpeg");
       try {
         const result = await invoke<string>("download_ffmpeg");
         if (log) log.textContent = result;
+        if (container) container.style.display = "none";
+        deps = await invoke<DependencyStatus>("check_dependencies");
+        rerender();
       } catch (e) {
         if (log) log.textContent = `Error: ${e}`;
       }
@@ -236,10 +329,15 @@ export function attachWizardListeners(rerender: () => void, closeWizard: () => v
   if (downloadLlamaBtn) {
     downloadLlamaBtn.addEventListener("click", async () => {
       const log = document.getElementById("llama-log");
-      if (log) log.textContent = "Downloading llama-server...";
+      const container = document.getElementById("llama-progress-container");
+      if (container) container.style.display = "block";
+      setupDownloadProgressListener("llama-log", "llama-progress-bar", "llama-progress-container", "llama-server");
       try {
         const result = await invoke<string>("download_llama_server");
         if (log) log.textContent = result;
+        if (container) container.style.display = "none";
+        deps = await invoke<DependencyStatus>("check_dependencies");
+        rerender();
       } catch (e) {
         if (log) log.textContent = `Error: ${e}`;
       }
