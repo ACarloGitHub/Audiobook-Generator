@@ -12,7 +12,7 @@ use crate::wizard::download_to_file_async;
 /// download stays under 200 MB.
 const KOKORO_HF_REPO: &str = "onnx-community/Kokoro-82M-v1.0-ONNX";
 const KOKORO_REQUIRED_FILES: &[&str] = &[
-    "model_quantized.onnx",
+    "onnx/model_quantized.onnx",
     "voices/af_heart.bin",
     "voices/am_adam.bin",
     "voices/bf_emma.bin",
