@@ -7,21 +7,22 @@ use crate::config::models::{self, ModelAsset};
 use crate::wizard::download_to_file_async;
 
 /// Files to fetch from `onnx-community/Kokoro-82M-v1.0-ONNX`.
-/// The full repo carries voice packs for all 8 languages; we fetch a
-/// representative subset (the user's defaults + a few extras) so the
-/// download stays under 200 MB.
+/// Each entry is `(remote_path_in_repo, local_path_in_dest_root)`.
+/// The HuggingFace repo stores the ONNX model under `onnx/` but the
+/// `kokoro-en` plugin expects it directly in `<dest>/models/`, so we
+/// remap the path. Voice packs already match.
 const KOKORO_HF_REPO: &str = "onnx-community/Kokoro-82M-v1.0-ONNX";
-const KOKORO_REQUIRED_FILES: &[&str] = &[
-    "onnx/model_quantized.onnx",
-    "voices/af_heart.bin",
-    "voices/am_adam.bin",
-    "voices/bf_emma.bin",
-    "voices/ff_siwis.bin",
-    "voices/jf_alpha.bin",
-    "voices/zf_xiaobei.bin",
-    "voices/ef_dora.bin",
-    "voices/pf_dora.bin",
-    "voices/hf_alpha.bin",
+const KOKORO_REQUIRED_FILES: &[(&str, &str)] = &[
+    ("onnx/model_quantized.onnx", "models/model_quantized.onnx"),
+    ("voices/af_heart.bin", "voices/af_heart.bin"),
+    ("voices/am_adam.bin", "voices/am_adam.bin"),
+    ("voices/bf_emma.bin", "voices/bf_emma.bin"),
+    ("voices/ff_siwis.bin", "voices/ff_siwis.bin"),
+    ("voices/jf_alpha.bin", "voices/jf_alpha.bin"),
+    ("voices/zf_xiaobei.bin", "voices/zf_xiaobei.bin"),
+    ("voices/ef_dora.bin", "voices/ef_dora.bin"),
+    ("voices/pf_dora.bin", "voices/pf_dora.bin"),
+    ("voices/hf_alpha.bin", "voices/hf_alpha.bin"),
 ];
 
 #[derive(Debug, Clone, Serialize)]
@@ -111,24 +112,25 @@ pub async fn download_model(
         .map_err(|e| format!("create dest dir: {e}"))?;
 
     let url_base = format!("https://huggingface.co/{}/resolve/main", asset.url.as_deref().unwrap_or(KOKORO_HF_REPO));
-    let files: Vec<String> = KOKORO_REQUIRED_FILES.iter().map(|s| s.to_string()).collect();
+    let mut files: Vec<String> = Vec::with_capacity(KOKORO_REQUIRED_FILES.len());
 
     let mut total_bytes: u64 = 0;
-    for file in &files {
-        let url = format!("{url_base}/{file}");
-        let dest = dest_root.join(file);
+    for (remote_path, local_path) in KOKORO_REQUIRED_FILES {
+        files.push(local_path.to_string());
+        let url = format!("{url_base}/{remote_path}");
+        let dest = dest_root.join(local_path);
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)
-                .map_err(|e| format!("create dir for {file}: {e}"))?;
+                .map_err(|e| format!("create dir for {local_path}: {e}"))?;
         }
         if dest.exists() {
             let _ = app.emit("model-progress", serde_json::json!({
-                "model": name, "file": file, "phase": "already_present",
+                "model": name, "file": local_path, "phase": "already_present",
                 "bytes": 0, "total": 0, "speed_bps": 0, "eta_seconds": null
             }));
             continue;
         }
-        download_to_file_async(&app, &format!("{name}:{file}"), file, &url, &dest).await?;
+        download_to_file_async(&app, &format!("{name}:{local_path}"), local_path, &url, &dest).await?;
         let size = std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
         total_bytes += size;
     }

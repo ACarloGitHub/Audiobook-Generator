@@ -275,7 +275,7 @@ pub fn model_assets() -> HashMap<&'static str, Vec<ModelAsset>> {
             asset_type: "huggingface".into(),
             url: Some("onnx-community/Kokoro-82M-v1.0-ONNX".into()),
             essential_files: Some(vec![
-                "model_quantized.onnx".into(),
+                "models/model_quantized.onnx".into(),
                 "voices/af_heart.bin".into(),
             ]),
         }],
