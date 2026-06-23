@@ -12,18 +12,85 @@ use crate::wizard::download_to_file_async;
 /// `kokoro-en` plugin expects it directly in `<dest>/models/`, so we
 /// remap the path. Voice packs already match.
 const KOKORO_HF_REPO: &str = "onnx-community/Kokoro-82M-v1.0-ONNX";
-const KOKORO_REQUIRED_FILES: &[(&str, &str)] = &[
-    ("onnx/model_quantized.onnx", "models/model_quantized.onnx"),
+
+/// All Kokoro voice packs available on HuggingFace. The legacy Python
+/// config listed only 7; we download the full set so the user can pick
+/// any voice per language without a second download.
+const KOKORO_VOICE_FILES: &[(&str, &str)] = &[
+    // English (af_* / am_*)
+    ("voices/af.bin", "voices/af.bin"),
+    ("voices/af_alloy.bin", "voices/af_alloy.bin"),
+    ("voices/af_aoede.bin", "voices/af_aoede.bin"),
+    ("voices/af_bella.bin", "voices/af_bella.bin"),
     ("voices/af_heart.bin", "voices/af_heart.bin"),
+    ("voices/af_jessica.bin", "voices/af_jessica.bin"),
+    ("voices/af_kore.bin", "voices/af_kore.bin"),
+    ("voices/af_nicole.bin", "voices/af_nicole.bin"),
+    ("voices/af_nova.bin", "voices/af_nova.bin"),
+    ("voices/af_river.bin", "voices/af_river.bin"),
+    ("voices/af_sarah.bin", "voices/af_sarah.bin"),
+    ("voices/af_sky.bin", "voices/af_sky.bin"),
     ("voices/am_adam.bin", "voices/am_adam.bin"),
+    ("voices/am_echo.bin", "voices/am_echo.bin"),
+    ("voices/am_eric.bin", "voices/am_eric.bin"),
+    ("voices/am_fenrir.bin", "voices/am_fenrir.bin"),
+    ("voices/am_liam.bin", "voices/am_liam.bin"),
+    ("voices/am_michael.bin", "voices/am_michael.bin"),
+    ("voices/am_onyx.bin", "voices/am_onyx.bin"),
+    ("voices/am_puck.bin", "voices/am_puck.bin"),
+    ("voices/am_santa.bin", "voices/am_santa.bin"),
+    // British English (bf_* / bm_*)
+    ("voices/bf_alice.bin", "voices/bf_alice.bin"),
     ("voices/bf_emma.bin", "voices/bf_emma.bin"),
-    ("voices/ff_siwis.bin", "voices/ff_siwis.bin"),
-    ("voices/jf_alpha.bin", "voices/jf_alpha.bin"),
-    ("voices/zf_xiaobei.bin", "voices/zf_xiaobei.bin"),
+    ("voices/bf_isabella.bin", "voices/bf_isabella.bin"),
+    ("voices/bf_lily.bin", "voices/bf_lily.bin"),
+    ("voices/bm_daniel.bin", "voices/bm_daniel.bin"),
+    ("voices/bm_fable.bin", "voices/bm_fable.bin"),
+    ("voices/bm_george.bin", "voices/bm_george.bin"),
+    ("voices/bm_lewis.bin", "voices/bm_lewis.bin"),
+    // Spanish (ef_* / em_*)
     ("voices/ef_dora.bin", "voices/ef_dora.bin"),
-    ("voices/pf_dora.bin", "voices/pf_dora.bin"),
+    ("voices/em_alex.bin", "voices/em_alex.bin"),
+    ("voices/em_santa.bin", "voices/em_santa.bin"),
+    // French (ff_*)
+    ("voices/ff_siwis.bin", "voices/ff_siwis.bin"),
+    // Hindi (hf_* / hm_*)
     ("voices/hf_alpha.bin", "voices/hf_alpha.bin"),
+    ("voices/hf_beta.bin", "voices/hf_beta.bin"),
+    ("voices/hm_omega.bin", "voices/hm_omega.bin"),
+    ("voices/hm_psi.bin", "voices/hm_psi.bin"),
+    // Italian (if_* / im_*)
+    ("voices/if_sara.bin", "voices/if_sara.bin"),
+    ("voices/im_nicola.bin", "voices/im_nicola.bin"),
+    // Japanese (jf_* / jm_*)
+    ("voices/jf_alpha.bin", "voices/jf_alpha.bin"),
+    ("voices/jf_gongitsune.bin", "voices/jf_gongitsune.bin"),
+    ("voices/jf_nezumi.bin", "voices/jf_nezumi.bin"),
+    ("voices/jf_tebukuro.bin", "voices/jf_tebukuro.bin"),
+    ("voices/jm_kumo.bin", "voices/jm_kumo.bin"),
+    // Portuguese (pf_* / pm_*)
+    ("voices/pf_dora.bin", "voices/pf_dora.bin"),
+    ("voices/pm_alex.bin", "voices/pm_alex.bin"),
+    ("voices/pm_santa.bin", "voices/pm_santa.bin"),
+    // Mandarin (zf_* / zm_*)
+    ("voices/zf_xiaobei.bin", "voices/zf_xiaobei.bin"),
+    ("voices/zf_xiaoni.bin", "voices/zf_xiaoni.bin"),
+    ("voices/zf_xiaoxiao.bin", "voices/zf_xiaoxiao.bin"),
+    ("voices/zf_xiaoyi.bin", "voices/zf_xiaoyi.bin"),
+    ("voices/zm_yunjian.bin", "voices/zm_yunjian.bin"),
+    ("voices/zm_yunxi.bin", "voices/zm_yunxi.bin"),
+    ("voices/zm_yunxia.bin", "voices/zm_yunxia.bin"),
+    ("voices/zm_yunyang.bin", "voices/zm_yunyang.bin"),
 ];
+
+/// All files Kokoro needs: the ONNX model (remapped from `onnx/` to
+/// `models/`) plus every voice pack above.
+fn kokoro_required_files() -> Vec<(&'static str, &'static str)> {
+    let mut v = Vec::with_capacity(KOKORO_VOICE_FILES.len() + 1);
+    v.push(("onnx/model_quantized.onnx", "models/model_quantized.onnx"));
+    v.extend_from_slice(KOKORO_VOICE_FILES);
+    v
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ModelDownloadResult {
@@ -87,6 +154,8 @@ pub fn remove_model(name: &str, app: &AppHandle) -> Result<(), String> {
         std::fs::remove_dir_all(&dest_path)
             .map_err(|e| format!("failed to remove {}: {e}", dest_path.display()))?;
     }
+    // Notify the frontend to refresh.
+    let _ = app.emit("engine-status-changed", ());
     Ok(())
 }
 
@@ -112,10 +181,11 @@ pub async fn download_model(
         .map_err(|e| format!("create dest dir: {e}"))?;
 
     let url_base = format!("https://huggingface.co/{}/resolve/main", asset.url.as_deref().unwrap_or(KOKORO_HF_REPO));
-    let mut files: Vec<String> = Vec::with_capacity(KOKORO_REQUIRED_FILES.len());
+    let required = kokoro_required_files();
+    let mut files: Vec<String> = Vec::with_capacity(required.len());
 
     let mut total_bytes: u64 = 0;
-    for (remote_path, local_path) in KOKORO_REQUIRED_FILES {
+    for (remote_path, local_path) in &required {
         files.push(local_path.to_string());
         let url = format!("{url_base}/{remote_path}");
         let dest = dest_root.join(local_path);
@@ -148,6 +218,12 @@ pub async fn download_model(
         "model": name, "file": "(done)", "phase": "done",
         "bytes": total_bytes, "total": total_bytes, "speed_bps": 0, "eta_seconds": null
     }));
+
+    // Notify the frontend so it can refresh engine_status + model_list
+    // without requiring a restart. The Arc<PluginManager> in app state
+    // is not refreshed here; the next engine_status call rescans disk
+    // and re-registers the Kokoro plugin automatically.
+    let _ = app.emit("engine-status-changed", ());
 
     Ok(ModelDownloadResult {
         model_name: name.to_string(),
@@ -213,7 +289,7 @@ fn asset_license(name: &str) -> String {
 
 fn asset_size_mb(name: &str) -> u32 {
     match name {
-        "Kokoro" => 180,
+        "Kokoro" => 120,
         n if n.starts_with("Qwen3-TTS-0.6B") => 1300,
         n if n.starts_with("Qwen3-TTS-1.7B") => 3600,
         n if n.starts_with("VibeVoice-1.5B") => 3100,
