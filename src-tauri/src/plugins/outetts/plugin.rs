@@ -14,9 +14,13 @@ use crate::recovery;
 
 const OUTE_SERVER_PORT: u16 = 8765;
 const DAC_SAMPLE_RATE: u32 = 24000;
-const DAC_HOP_LENGTH: usize = 512;
 const DAC_DECODE_CHUNK: usize = 2048;
 const FADE_SAMPLES: usize = 360;
+
+const C1_TOKEN_BASE: i64 = 151669;
+const C1_TOKEN_MAX: i64 = 152693;
+const C2_TOKEN_BASE: i64 = 152694;
+const C2_TOKEN_MAX: i64 = 153718;
 
 pub struct OuteTTSPlugin {
     pub variant_name: String,
@@ -144,7 +148,7 @@ impl OuteTTSPlugin {
         false
     }
 
-    fn send_completion(prompt: &str, extra: &std::collections::HashMap<String, String>) -> Result<String> {
+    fn send_completion_streaming(prompt: &str, extra: &std::collections::HashMap<String, String>) -> Result<(Vec<i64>, Vec<i64>)> {
         let url = format!("http://127.0.0.1:{}/completion", OUTE_SERVER_PORT);
 
         let temperature: f64 = extra.get("temperature")
@@ -176,7 +180,7 @@ impl OuteTTSPlugin {
             "repeat_last_n": 64,
             "n_predict": max_tokens,
             "stop": ["<|im_end|>"],
-            "stream": false,
+            "stream": true,
         });
 
         let agent: ureq::Agent = ureq::Agent::config_builder()
@@ -186,7 +190,7 @@ impl OuteTTSPlugin {
             .into();
 
         let body_str = serde_json::to_string(&body)?;
-        let mut resp = agent
+        let resp = agent
             .post(&url)
             .header("Content-Type", "application/json")
             .send(&body_str)
@@ -194,36 +198,50 @@ impl OuteTTSPlugin {
 
         let status = resp.status();
         if !status.is_success() {
-            let text = resp.body_mut().read_to_string().unwrap_or_default();
+            let text = resp.into_body().read_to_string().unwrap_or_default();
             anyhow::bail!("llama-server returned {}: {}", status, text);
         }
 
-        let text = resp.body_mut().read_to_string()
-            .context("failed to read completion response")?;
-        let json: serde_json::Value = serde_json::from_str(&text)
-            .with_context(|| format!("failed to parse completion response as JSON: {}", text.chars().take(200).collect::<String>()))?;
+        let reader = resp.into_body().into_reader();
+        let buf_reader = std::io::BufReader::new(reader);
 
-        let content = json.get("content")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("missing 'content' in completion response"))?;
+        let mut c1 = Vec::new();
+        let mut c2 = Vec::new();
+        let mut token_count = 0u64;
 
-        Ok(content.to_string())
-    }
+        use std::io::BufRead;
+        for line in buf_reader.lines() {
+            let line = line?;
+            let line = line.strip_prefix("data: ").unwrap_or(&line);
+            if line.is_empty() || line == "[DONE]" {
+                continue;
+            }
+            let json: serde_json::Value = match serde_json::from_str(line) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
 
-    fn extract_codec_tokens(text: &str) -> (Vec<i64>, Vec<i64>) {
-        let re_c1 = regex::Regex::new(r"<\|c1_(\d+)\|>").unwrap();
-        let re_c2 = regex::Regex::new(r"<\|c2_(\d+)\|>").unwrap();
+            if json.get("stop").and_then(|v| v.as_bool()).unwrap_or(false) {
+                break;
+            }
 
-        let c1: Vec<i64> = re_c1
-            .captures_iter(text)
-            .filter_map(|c| c[1].parse().ok())
-            .collect();
-        let c2: Vec<i64> = re_c2
-            .captures_iter(text)
-            .filter_map(|c| c[1].parse().ok())
-            .collect();
+            if let Some(tokens) = json.get("tokens").and_then(|v| v.as_array()) {
+                for tok in tokens {
+                    let tid = tok.as_i64().unwrap_or(-1);
+                    if tid >= C1_TOKEN_BASE && tid <= C1_TOKEN_MAX {
+                        c1.push(tid - C1_TOKEN_BASE);
+                    } else if tid >= C2_TOKEN_BASE && tid <= C2_TOKEN_MAX {
+                        c2.push(tid - C2_TOKEN_BASE);
+                    }
+                    token_count += 1;
+                }
+            }
+        }
 
-        (c1, c2)
+        info!("[outetts] streamed {} tokens, extracted {} c1 + {} c2 codec tokens",
+              token_count, c1.len(), c2.len());
+
+        Ok((c1, c2))
     }
 
     fn dac_decode(c1: &[i64], c2: &[i64], onnx_path: &Path) -> Result<Vec<f32>> {
@@ -324,11 +342,7 @@ impl OuteTTSPlugin {
         let prompt = Self::build_prompt(text);
         info!("[outetts] prompt length: {} chars", prompt.len());
 
-        let response = Self::send_completion(&prompt, extra)?;
-        info!("[outetts] response length: {} chars", response.len());
-
-        let (c1, c2) = Self::extract_codec_tokens(&response);
-        info!("[outetts] extracted {} c1 tokens, {} c2 tokens", c1.len(), c2.len());
+        let (c1, c2) = Self::send_completion_streaming(&prompt, extra)?;
 
         if c1.is_empty() || c2.is_empty() {
             anyhow::bail!("no codec tokens extracted from LLM response");
