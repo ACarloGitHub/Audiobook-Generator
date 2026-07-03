@@ -69,17 +69,20 @@ export function attachDemoListeners(): void {
       const out = `${outDir}/demo_${Date.now()}.wav`;
       if (status) status.value = `[INFO] Synthesizing with ${state.selectedEngineId}...\n`;
 
-      // Build extra params for Qwen3-TTS
+      // Build extra params for Qwen3-TTS — read from state (persists across panels)
+      // with DOM element as fallback for live edits
       const extra: Record<string, string> = {};
-      const instructEl = document.getElementById("qwen-instruct-input") as HTMLInputElement | null;
-      if (instructEl && instructEl.value.trim()) {
-        extra["instruct"] = instructEl.value;
+      const instructEl = document.getElementById("qwen-instruct-input") as HTMLInputElement | HTMLTextAreaElement | null;
+      const instructVal = instructEl?.value?.trim() || state.qwenInstruct?.trim();
+      if (instructVal) {
+        extra["instruct"] = instructVal;
       }
       const refTextEl = document.getElementById("qwen-ref-text") as HTMLTextAreaElement | null;
-      if (refTextEl && refTextEl.value.trim()) {
-        extra["ref_text"] = refTextEl.value;
+      const refTextVal = refTextEl?.value?.trim() || state.referenceTranscript?.trim();
+      if (refTextVal) {
+        extra["ref_text"] = refTextVal;
       }
-      // Advanced params
+      // Advanced params (DOM fallback to state defaults via configuration values)
       const tempEl = document.getElementById("qwen-temp") as HTMLInputElement | null;
       if (tempEl && tempEl.value) extra["temp"] = tempEl.value;
       const topKEl = document.getElementById("qwen-top-k") as HTMLInputElement | null;
@@ -167,12 +170,14 @@ export function attachDemoListeners(): void {
 
         const extra: Record<string, string> = {};
         const instructEl = document.getElementById("qwen-instruct-input") as HTMLInputElement | HTMLTextAreaElement | null;
-        if (instructEl && instructEl.value.trim()) {
-          extra["instruct"] = instructEl.value;
+        const instructVal = instructEl?.value?.trim() || state.qwenInstruct?.trim();
+        if (instructVal) {
+          extra["instruct"] = instructVal;
         }
         const refTextEl = document.getElementById("qwen-ref-text") as HTMLTextAreaElement | null;
-        if (refTextEl && refTextEl.value.trim()) {
-          extra["ref_text"] = refTextEl.value;
+        const refTextVal = refTextEl?.value?.trim() || state.referenceTranscript?.trim();
+        if (refTextVal) {
+          extra["ref_text"] = refTextVal;
         }
         const tempEl = document.getElementById("qwen-temp") as HTMLInputElement | null;
         if (tempEl && tempEl.value) extra["temp"] = tempEl.value;

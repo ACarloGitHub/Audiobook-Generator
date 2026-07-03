@@ -154,15 +154,18 @@ export function attachGenerateListeners(
         const maxCharsForLang =
           state.chunkMaxCharsByLang[state.selectedLanguage] ?? state.chunkMaxChars;
 
-        // Build extra params from Configuration panel
+        // Build extra params from Configuration panel — use state as fallback
+        // because Configuration panel DOM elements don't exist when on Generate tab
         const extra: Record<string, string> = {};
         const instructEl = document.getElementById("qwen-instruct-input") as HTMLInputElement | HTMLTextAreaElement | null;
-        if (instructEl && instructEl.value.trim()) {
-          extra["instruct"] = instructEl.value;
+        const instructVal = instructEl?.value?.trim() || state.qwenInstruct?.trim();
+        if (instructVal) {
+          extra["instruct"] = instructVal;
         }
         const refTextEl = document.getElementById("qwen-ref-text") as HTMLTextAreaElement | null;
-        if (refTextEl && refTextEl.value.trim()) {
-          extra["ref_text"] = refTextEl.value;
+        const refTextVal = refTextEl?.value?.trim() || state.referenceTranscript?.trim();
+        if (refTextVal) {
+          extra["ref_text"] = refTextVal;
         }
         const tempEl = document.getElementById("qwen-temp") as HTMLInputElement | null;
         if (tempEl && tempEl.value) extra["temp"] = tempEl.value;
