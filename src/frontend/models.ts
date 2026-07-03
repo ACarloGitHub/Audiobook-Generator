@@ -17,16 +17,17 @@ export function renderModels(status: EngineStatus, models: ModelListEntry[]): st
       const statusBadge = m.installed
         ? `<span class="status-dot status-installed"></span> installed`
         : m.supported
-        ? `<span class="status-dot status-missing"></span> missing`
+        ? `<span class="status-dot status-missing"></span> not installed`
         : `<span class="status-dot status-planned"></span> planned`;
       const actionBtn = m.installed
         ? `<button class="btn-secondary btn-small" data-action="remove" data-model="${escapeHtml(m.name)}">Remove</button>`
         : m.supported
         ? `<button class="btn-primary btn-small" data-action="download" data-model="${escapeHtml(m.name)}">Download</button>`
         : `<span class="field-help">not yet implemented</span>`;
+      const noteHtml = m.note ? `<br/><span class="field-help">${escapeHtml(m.note)}</span>` : "";
       return `
         <tr>
-          <td><strong>${escapeHtml(m.name)}</strong><br/><span class="field-help">${escapeHtml(m.format)} · ${escapeHtml(m.license)}</span></td>
+          <td><strong>${escapeHtml(m.name)}</strong><br/><span class="field-help">${escapeHtml(m.format)} · ${escapeHtml(m.license)}</span>${noteHtml}</td>
           <td>${m.size_mb} MB</td>
           <td>${statusBadge}</td>
           <td>${actionBtn}</td>
@@ -36,32 +37,14 @@ export function renderModels(status: EngineStatus, models: ModelListEntry[]): st
 
   return `
     ${renderEngineStrip(status)}
-    <div class="card">
-      <h2>📦 TTS Engines Status</h2>
-      <ul class="engine-list">
-        ${status.engines
-          .map(
-            (e) => `
-            <li>
-              <span class="status-dot"></span>
-              <strong>${escapeHtml(e.display_name)}</strong>
-              · ${escapeHtml(e.format)} · ${escapeHtml(e.license)}
-              · ${e.hardware.join(", ")}
-              · languages: ${e.languages.length}
-              · voice cloning: ${e.voice_cloning ? "yes" : "no"}
-            </li>`,
-          )
-          .join("")}
-      </ul>
-    </div>
 
     <div class="card">
       <div class="row">
         <div class="col">
           <label class="field-label">Summary</label>
-          <textarea class="text-input" rows="3" readonly>Total engines: ${models.length}
+          <textarea class="text-input" rows="3" readonly>Total models: ${models.length}
 Installed: ${installedCount}
-Missing: ${missingCount}</textarea>
+Not installed: ${missingCount}</textarea>
         </div>
         <div class="col-auto">
           <button class="btn-secondary btn-large" id="models-update-btn">🔄 Update Status</button>
@@ -70,7 +53,7 @@ Missing: ${missingCount}</textarea>
     </div>
 
     <div class="card">
-      <h2>🛒 Models</h2>
+      <h2>Models</h2>
       <table class="models-table">
         <thead>
           <tr>
@@ -87,7 +70,7 @@ Missing: ${missingCount}</textarea>
     </div>
 
     <div class="card">
-      <h2>🛠 Runtime Binaries</h2>
+      <h2>Runtime Binaries</h2>
       <p class="field-help" id="models-runtime-status">
         Checking...
       </p>
@@ -95,16 +78,16 @@ Missing: ${missingCount}</textarea>
         <button class="btn-secondary" id="models-runtime-refresh">🔄 Refresh</button>
       </div>
       <details class="accordion">
-        <summary>📖 Manual Instructions</summary>
+        <summary>Manual Instructions</summary>
         <p class="field-help">
           FFmpeg and llama-server are installed by the first-run wizard.
-          See Settings → Maintenance or re-run the wizard to install missing components.
+          Re-run the wizard to install missing components.
         </p>
       </details>
     </div>
 
     <div class="card">
-      <h2>💻 Hardware</h2>
+      <h2>Hardware</h2>
       <p class="field-help">${escapeHtml(hardwareLine(status))}</p>
     </div>
   `;
@@ -132,11 +115,11 @@ async function refreshRuntimeStatus(): Promise<void> {
   }
 }
 
-export function attachModelsListeners(refresh: () => void): void {
+export function attachModelsListeners(refresh: () => Promise<void>): void {
   const updateBtn = document.getElementById("models-update-btn");
   if (updateBtn) {
-    updateBtn.addEventListener("click", () => {
-      refresh();
+    updateBtn.addEventListener("click", async () => {
+      await refresh();
     });
   }
 
@@ -167,7 +150,7 @@ export function attachModelsListeners(refresh: () => void): void {
           await invoke("remove_model", { name: model });
           appendLog(`[${new Date().toLocaleTimeString()}] ${model} removed.`);
         }
-        refresh();
+        await refresh();
       } catch (e) {
         appendLog(`[${new Date().toLocaleTimeString()}] ERROR: ${e}`);
         target.disabled = false;

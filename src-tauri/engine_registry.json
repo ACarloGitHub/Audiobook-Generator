@@ -1,0 +1,628 @@
+{
+  "version": "1.1.0",
+  "last_verified": "2026-07-03",
+  "engines": {
+    "qwen3tts": {
+      "display_name": "Qwen3-TTS",
+      "license": "Apache-2.0",
+      "languages": ["Chinese", "English", "Japanese", "Korean", "German", "French", "Russian", "Portuguese", "Spanish", "Italian"],
+      "voice_cloning": true,
+      "runtime": "qwentts.cpp (sidecar binary, compiled from source)",
+      "runtime_repo": "https://github.com/ServeurpersoCom/qwentts.cpp",
+      "runtime_build_commands": {
+        "windows_cuda": "buildcuda.cmd",
+        "windows_vulkan": "buildvulkan.cmd",
+        "windows_all": "buildall.cmd",
+        "linux_cpu": "./buildcpu.sh"
+      },
+      "runtime_binary": "qwen-tts",
+      "runtime_help": "Usage: qwen-tts --model <talker.gguf> --codec <tokenizer.gguf> [options] -o <out.wav> < text.txt",
+      "runtime_download": {
+        "windows_cuda": {
+          "url": "file:///C:/Users/carlo/AppData/Local/Temp/opencode/qwen-tts-cuda-windows-x64.zip",
+          "dest_dir": "resources/qwentts",
+          "size_mb": 20
+        }
+      },
+      "runtime_args": {
+        "--model": "Talker LM GGUF (required)",
+        "--codec": "Codec GGUF (required)",
+        "-o": "Output WAV path, '-' for stdout (required)",
+        "--lang": "Language label (default: auto)",
+        "--speaker": "Speaker name (CustomVoice only): serena, vivian, uncle_fu, ryan, aiden, ono_anna, sohee, eric, dylan",
+        "--instruct": "Style instruction (VoiceDesign required, CustomVoice optional)",
+        "--ref-wav": "Reference WAV for cloning (Base only)",
+        "--ref-text": "Transcript file for reference (Base clone mode)",
+        "--temp": "Talker temperature (default: 0.9)",
+        "--top-k": "Talker top-k (default: 50, 0 disables)",
+        "--top-p": "Talker top-p (default: 1.0)",
+        "--rep-pen": "Talker repetition penalty (default: 1.05)",
+        "--seed": "Random seed (default: -1 random)",
+        "--greedy": "Disable stochastic sampling",
+        "--max-new": "Max new audio frames (default: 2048)",
+        "--format": "WAV format: wav16, wav24, wav32 (default: wav16)",
+        "--no-fa": "Disable flash attention",
+        "--stream-by-line": "Flush per newline"
+      },
+      "codec": {
+        "name": "Qwen3-TTS-Tokenizer-12Hz",
+        "type": "SEANet + ConvNeXt + DAC v2 + RVQ",
+        "frame_rate_hz": 12.5,
+        "codebooks": 16,
+        "vocoder_onnx": false,
+        "vocoder_gguf": true
+      },
+      "variants": [
+        {
+          "name": "Qwen3-TTS-12Hz-0.6B-Base",
+          "size": "0.6B",
+          "mode": "base",
+          "mode_label": "Voice Clone",
+          "description": "Zero-shot voice cloning from 3-20s reference audio",
+          "supported_modes": ["Voice Clone"],
+          "char_limit_recommended": 800,
+          "char_limit_max": 1000,
+          "requires_speaker_encoder": true,
+          "speaker_encoder_repo": "Qwen/Qwen3-TTS-12Hz-Speaker-Encoder",
+          "gguf_repo": "Serveurperso/Qwen3-TTS-GGUF",
+          "files": [
+            {
+              "name": "talker",
+              "filename_template": "qwen-talker-0.6b-base-{quant}.gguf",
+              "quants": {
+                "Q4_K_M": { "size_mb": 629, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-base-Q4_K_M.gguf" },
+                "Q8_0": { "size_mb": 993, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-base-Q8_0.gguf" },
+                "BF16": { "size_mb": 1840, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-base-BF16.gguf" },
+                "F32": { "size_mb": 3660, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-base-F32.gguf" }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Qwen3-TTS-12Hz-0.6B-CustomVoice",
+          "size": "0.6B",
+          "mode": "customvoice",
+          "mode_label": "Custom Voice",
+          "description": "9 preset voices with instruct control",
+          "supported_modes": ["Custom Voice"],
+          "char_limit_recommended": 800,
+          "char_limit_max": 1000,
+          "requires_speaker_encoder": false,
+          "preset_voices": ["Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric", "Ryan", "Aiden", "Ono_Anna", "Sohee"],
+          "gguf_repo": "Serveurperso/Qwen3-TTS-GGUF",
+          "files": [
+            {
+              "name": "talker",
+              "filename_template": "qwen-talker-0.6b-customvoice-{quant}.gguf",
+              "quants": {
+                "Q4_K_M": { "size_mb": 629, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-customvoice-Q4_K_M.gguf" },
+                "Q8_0": { "size_mb": 993, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-customvoice-Q8_0.gguf" },
+                "BF16": { "size_mb": 1840, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-customvoice-BF16.gguf" },
+                "F32": { "size_mb": 3660, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-customvoice-F32.gguf" }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Qwen3-TTS-12Hz-1.7B-Base",
+          "size": "1.7B",
+          "mode": "base",
+          "mode_label": "Voice Clone",
+          "description": "Zero-shot voice cloning, higher quality than 0.6B",
+          "supported_modes": ["Voice Clone"],
+          "char_limit_recommended": 800,
+          "char_limit_max": 1000,
+          "requires_speaker_encoder": true,
+          "speaker_encoder_repo": "Qwen/Qwen3-TTS-12Hz-Speaker-Encoder",
+          "gguf_repo": "Serveurperso/Qwen3-TTS-GGUF",
+          "files": [
+            {
+              "name": "talker",
+              "filename_template": "qwen-talker-1.7b-base-{quant}.gguf",
+              "quants": {
+                "Q4_K_M": { "size_mb": 1220, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-base-Q4_K_M.gguf" },
+                "Q8_0": { "size_mb": 2080, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-base-Q8_0.gguf" },
+                "BF16": { "size_mb": 3880, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-base-BF16.gguf" },
+                "F32": { "size_mb": 7720, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-base-F32.gguf" }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+          "size": "1.7B",
+          "mode": "customvoice",
+          "mode_label": "Custom Voice",
+          "description": "9 preset voices with instruct control, higher quality",
+          "supported_modes": ["Custom Voice"],
+          "char_limit_recommended": 800,
+          "char_limit_max": 1000,
+          "requires_speaker_encoder": false,
+          "preset_voices": ["Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric", "Ryan", "Aiden", "Ono_Anna", "Sohee"],
+          "gguf_repo": "Serveurperso/Qwen3-TTS-GGUF",
+          "files": [
+            {
+              "name": "talker",
+              "filename_template": "qwen-talker-1.7b-customvoice-{quant}.gguf",
+              "quants": {
+                "Q4_K_M": { "size_mb": 1220, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-customvoice-Q4_K_M.gguf" },
+                "Q8_0": { "size_mb": 2080, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-customvoice-Q8_0.gguf" },
+                "BF16": { "size_mb": 3880, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-customvoice-BF16.gguf" },
+                "F32": { "size_mb": 7720, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-customvoice-F32.gguf" }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+          "size": "1.7B",
+          "mode": "voicedesign",
+          "mode_label": "Voice Design",
+          "description": "Generate voice from natural-language description",
+          "supported_modes": ["Voice Design"],
+          "char_limit_recommended": 800,
+          "char_limit_max": 1000,
+          "requires_speaker_encoder": false,
+          "gguf_repo": "Serveurperso/Qwen3-TTS-GGUF",
+          "files": [
+            {
+              "name": "talker",
+              "filename_template": "qwen-talker-1.7b-voicedesign-{quant}.gguf",
+              "quants": {
+                "Q4_K_M": { "size_mb": 1220, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-voicedesign-Q4_K_M.gguf" },
+                "Q8_0": { "size_mb": 2080, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-voicedesign-Q8_0.gguf" },
+                "BF16": { "size_mb": 3880, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-voicedesign-BF16.gguf" },
+                "F32": { "size_mb": 7720, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-voicedesign-F32.gguf" }
+              }
+            }
+          ]
+        }
+      ],
+      "shared_files": [
+        {
+          "name": "tokenizer",
+          "description": "Qwen3-TTS-Tokenizer-12Hz codec (shared by all variants)",
+          "filename_template": "qwen-tokenizer-12hz-{quant}.gguf",
+          "quants": {
+            "Q4_K_M": { "size_mb": 255, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-tokenizer-12hz-Q4_K_M.gguf" },
+            "Q8_0": { "size_mb": 291, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-tokenizer-12hz-Q8_0.gguf" },
+            "BF16": { "size_mb": 359, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-tokenizer-12hz-BF16.gguf" },
+            "F32": { "size_mb": 647, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-tokenizer-12hz-F32.gguf" }
+          }
+        }
+      ],
+      "parameters": {
+        "speed": { "type": "float", "default": 1.0, "min": 0.5, "max": 2.0, "step": 0.1, "description": "Speech speed multiplier (not yet in qwentts.cpp CLI — controlled via text pacing)" },
+        "temp": { "type": "float", "default": 0.9, "min": 0.0, "max": 2.0, "step": 0.05, "description": "Talker temperature (qwentts.cpp --temp). Official checkpoint default: 0.9", "cli_flag": "--temp" },
+        "top_k": { "type": "int", "default": 50, "min": 0, "max": 100, "step": 1, "description": "Talker top-k sampling (qwentts.cpp --top-k). Official checkpoint default: 50", "cli_flag": "--top-k" },
+        "top_p": { "type": "float", "default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05, "description": "Talker top-p sampling (qwentts.cpp --top-p). Official checkpoint default: 1.0", "cli_flag": "--top-p" },
+        "rep_pen": { "type": "float", "default": 1.05, "min": 1.0, "max": 2.0, "step": 0.01, "description": "Repetition penalty (qwentts.cpp --rep-pen). Official checkpoint default: 1.05", "cli_flag": "--rep-pen" },
+        "seed": { "type": "int", "default": null, "description": "Random seed, -1 = random (qwentts.cpp --seed)", "cli_flag": "--seed" },
+        "max_new": { "type": "int", "default": 8192, "description": "Max new audio tokens (qwentts.cpp --max-new). Official checkpoint default: 8192", "cli_flag": "--max-new" }
+      },
+      "mode_specific_params": {
+        "base": {
+          "language": { "type": "string", "default": "Italian", "options": ["Auto", "Chinese", "English", "German", "Italian", "Portuguese", "Spanish", "Japanese", "Korean", "French", "Russian"] },
+          "ref_audio": { "type": "file", "required": true, "description": "Reference audio (3-20s WAV)" },
+          "ref_text": { "type": "string", "required": false, "description": "Exact transcription of ref audio (required unless x_vector_only_mode)" },
+          "x_vector_only_mode": { "type": "bool", "default": false, "description": "Fast mode: no ref_text needed, lower quality" }
+        },
+        "customvoice": {
+          "speaker": { "type": "string", "default": "Serena", "options": ["Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric", "Ryan", "Aiden", "Ono_Anna", "Sohee"], "description": "Preset voice name" },
+          "language": { "type": "string", "default": "Italian", "options": ["Auto", "Chinese", "English", "German", "Italian", "Portuguese", "Spanish", "Japanese", "Korean", "French", "Russian"] },
+          "instruct": { "type": "string", "default": "", "description": "Additional instructions (e.g. 'Speak slowly. With excitement.')" }
+        },
+        "voicedesign": {
+          "instruct": { "type": "string", "required": true, "description": "Voice description in English (e.g. 'A calm middle-aged male announcer')" },
+          "language": { "type": "string", "default": "Italian", "options": ["Chinese", "English", "German", "Italian", "Portuguese", "Spanish", "Japanese", "Korean", "French", "Russian"] }
+        }
+      },
+      "sources": [
+        "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base (official model card, Italian verified)",
+        "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF (GGUF repo, 28.9k downloads/month)",
+        "https://github.com/ServeurpersoCom/qwentts.cpp (runtime, MIT)",
+        "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-Base/resolve/main/generation_config.json (parameter source of truth)"
+      ]
+    },
+    "outetts": {
+      "display_name": "OuteTTS 0.6B",
+      "license": "Apache-2.0",
+      "languages": ["English", "Chinese", "Dutch", "French", "Georgian", "German", "Hungarian", "Italian", "Japanese", "Korean", "Latvian", "Polish", "Russian", "Spanish"],
+      "voice_cloning": true,
+      "voice_clone_min_seconds": 10,
+      "runtime": "llama-server (stock, already in wizard) + DAC codec ONNX (ort)",
+      "runtime_repo": "https://github.com/ggerganov/llama.cpp",
+      "runtime_help": "llama-server -m OuteTTS-1.0-0.6B-Q4_K_M.gguf -ngl 999 --port 8080; then POST /completion with OuteTTS prompt; tokens decoded by DAC ONNX",
+      "architecture": "Qwen3 0.6B backbone + ibm-research/DAC.speech.v1.0 codec (2 codebooks @ 75 Hz, 150 tok/sec)",
+      "max_input_tokens": 8192,
+      "recommended_max_audio_seconds": 42,
+      "context_window": 8192,
+      "variants": [
+        {
+          "name": "OuteTTS-1.0-0.6B",
+          "size": "0.6B",
+          "mode": "voice_clone",
+          "description": "One-shot voice cloning from ~10s reference audio",
+          "supported_modes": ["Voice Clone"],
+          "char_limit_recommended": 500,
+          "char_limit_max": 800,
+          "requires_speaker_reference": true,
+          "gguf_repo": "OuteAI/OuteTTS-1.0-0.6B-GGUF",
+          "files": [
+            {
+              "name": "backbone",
+              "filename_template": "OuteTTS-1.0-0.6B-{quant}.gguf",
+              "quants": {
+                "Q4_K_M": { "size_mb": 402, "url": "https://huggingface.co/OuteAI/OuteTTS-1.0-0.6B-GGUF/resolve/main/OuteTTS-1.0-0.6B-Q4_K_M.gguf" },
+                "Q5_K_M": { "size_mb": 449, "url": "https://huggingface.co/OuteAI/OuteTTS-1.0-0.6B-GGUF/resolve/main/OuteTTS-1.0-0.6B-Q5_K_M.gguf" },
+                "Q6_K": { "size_mb": 500, "url": "https://huggingface.co/OuteAI/OuteTTS-1.0-0.6B-GGUF/resolve/main/OuteTTS-1.0-0.6B-Q6_K.gguf" },
+                "Q8_0": { "size_mb": 646, "url": "https://huggingface.co/OuteAI/OuteTTS-1.0-0.6B-GGUF/resolve/main/OuteTTS-1.0-0.6B-Q8_0.gguf" }
+              }
+            }
+          ]
+        }
+      ],
+      "shared_files": [
+        {
+          "name": "dac_codec",
+          "description": "DAC speech codec decoder (ONNX) for OuteTTS audio token decoding",
+          "gguf_repo": "OuteAI/DAC-speech-v1.0-ONNX",
+          "license": "CDLA-Permissive-2.0",
+          "files": [
+            {
+              "name": "dac_decoder",
+              "filename": "decoder.onnx",
+              "url": "https://huggingface.co/OuteAI/DAC-speech-v1.0-ONNX/resolve/main/decoder.onnx",
+              "size_mb": 100
+            }
+          ]
+        }
+      ],
+      "parameters": {
+        "temperature": { "type": "float", "default": 0.4, "min": 0.0, "max": 2.0, "step": 0.05, "description": "Sampling temperature (official recommendation: 0.4)" },
+        "top_k": { "type": "int", "default": 40, "min": 1, "max": 100, "step": 1, "description": "Top-k sampling (official default: 40)" },
+        "top_p": { "type": "float", "default": 0.9, "min": 0.0, "max": 1.0, "step": 0.05, "description": "Top-p sampling (official default: 0.9)" },
+        "min_p": { "type": "float", "default": 0.05, "min": 0.0, "max": 1.0, "step": 0.01, "description": "Min-p sampling (official default: 0.05)" },
+        "repetition_penalty": { "type": "float", "default": 1.1, "min": 1.0, "max": 2.0, "step": 0.01, "description": "Repetition penalty (official default: 1.1)" },
+        "repetition_window": { "type": "int", "default": 64, "description": "Repetition penalty applied to last N tokens (CRITICAL: must be 64, not whole context)" },
+        "seed": { "type": "int", "default": -1, "description": "Random seed (-1 = random)" }
+      },
+      "mode_specific_params": {
+        "voice_clone": {
+          "ref_audio": { "type": "file", "required": true, "description": "Reference audio (10s WAV, mono, 16-44kHz)" },
+          "speaker_name": { "type": "string", "required": false, "description": "Save speaker profile as JSON for reuse" },
+          "language": { "type": "string", "default": "Italian", "options": ["Auto", "English", "Chinese", "Dutch", "French", "Georgian", "German", "Hungarian", "Italian", "Japanese", "Korean", "Latvian", "Polish", "Russian", "Spanish"] }
+        }
+      },
+      "install_requirements": {
+        "llama_server": "already bundled by first-run wizard (used also by Qwen3-TTS)",
+        "ort_runtime": "already included for Kokoro (ONNX Runtime via Rust)",
+        "additional_dlls": []
+      },
+      "sources": [
+        "https://huggingface.co/OuteAI/OuteTTS-1.0-0.6B-GGUF (official GGUF repo, 1.4k downloads/month, Apache-2.0)",
+        "https://huggingface.co/OuteAI/DAC-speech-v1.0-ONNX (DAC codec decoder ONNX, CDLA-Permissive-2.0)",
+        "https://github.com/edwko/OuteTTS (Python reference implementation)",
+        "https://huggingface.co/OuteAI/Llama-OuteTTS-1.0-1B-GGUF (1B sister model, CC-BY-NC-SA-4.0 NON-COMMERCIAL — NOT compatible with our distribution)"
+      ],
+      "notes": "Italian is officially in the high-training-data list. CRITICAL: repetition_penalty must use rep_window=64, not whole context, otherwise broken output. Optimal audio length ~42s (8192 tokens), best results up to 7000 tokens."
+    },
+    "chatterbox": {
+      "display_name": "Chatterbox Multilingual",
+      "license": "MIT",
+      "languages": ["Arabic", "Danish", "German", "Greek", "English", "Spanish", "Finnish", "French", "Hebrew", "Hindi", "Italian", "Japanese", "Korean", "Malay", "Dutch", "Norwegian", "Polish", "Portuguese", "Russian", "Swedish", "Swahili", "Turkish", "Chinese"],
+      "voice_cloning": true,
+      "voice_clone_min_seconds": 10,
+      "runtime": "llama-server (backbone) + codec.cpp (codec_lm + S3T tokenizer)",
+      "runtime_repo": "https://github.com/mybigday/codec.cpp",
+      "runtime_help": "Backbone via stock llama.cpp (embeddings=true); codec via codec.cpp's codec_lm parallel_heads_delay; S3T for voice clone",
+      "architecture": "Llama-520M backbone (30 layers, hidden 1024, 16 heads, head_dim 64, MLP 4096, llama3 RoPE) + S3G codec (flow-matching + HiFi-GAN) + S3T speech tokenizer",
+      "max_input_tokens": null,
+      "sample_rate": 24000,
+      "variants": [
+        {
+          "name": "Chatterbox-Multilingual-T3",
+          "size": "0.2B",
+          "mode": "voice_clone",
+          "description": "ResembleAI Chatterbox multilingual T3 (t3_mtl23ls_v3, 23-language coverage)",
+          "supported_modes": ["Voice Clone"],
+          "char_limit_recommended": 500,
+          "char_limit_max": 800,
+          "requires_speaker_reference": true,
+          "gguf_repo": "hans00/Chatterbox-Multilingual-TTS-GGUF",
+          "files": [
+            {
+              "name": "backbone",
+              "filename_template": "chatterbox-mtl-t3-{quant}.gguf",
+              "quants": {
+                "Q4_K_M": { "size_mb": 289, "url": "https://huggingface.co/hans00/Chatterbox-Multilingual-TTS-GGUF/resolve/main/chatterbox-mtl-t3-Q4_K_M.gguf" },
+                "Q5_K_M": { "size_mb": 340, "url": "https://huggingface.co/hans00/Chatterbox-Multilingual-TTS-GGUF/resolve/main/chatterbox-mtl-t3-Q5_K_M.gguf" },
+                "Q6_K": { "size_mb": 395, "url": "https://huggingface.co/hans00/Chatterbox-Multilingual-TTS-GGUF/resolve/main/chatterbox-mtl-t3-Q6_K.gguf" },
+                "Q8_0": { "size_mb": 511, "url": "https://huggingface.co/hans00/Chatterbox-Multilingual-TTS-GGUF/resolve/main/chatterbox-mtl-t3-Q8_0.gguf" }
+              }
+            }
+          ]
+        }
+      ],
+      "shared_files": [
+        {
+          "name": "codec",
+          "description": "Chatterbox S3G codec + codec_lm LM-adaptor (flow-matching + HiFi-GAN vocoder)",
+          "gguf_repo": "hans00/Chatterbox-Multilingual-TTS-GGUF",
+          "files": [
+            {
+              "name": "codec_lm",
+              "filename_template": "chatterbox-mtl-codec-{quant}.gguf",
+              "quants": {
+                "Q4_K_M": { "size_mb": 178, "url": "https://huggingface.co/hans00/Chatterbox-Multilingual-TTS-GGUF/resolve/main/chatterbox-mtl-codec-Q4_K_M.gguf" },
+                "Q5_K_M": { "size_mb": 190, "url": "https://huggingface.co/hans00/Chatterbox-Multilingual-TTS-GGUF/resolve/main/chatterbox-mtl-codec-Q5_K_M.gguf" }
+              }
+            },
+            {
+              "name": "s3t_tokenizer",
+              "filename": "chatterbox-mtl-s3t.gguf",
+              "url": "https://huggingface.co/hans00/Chatterbox-Multilingual-TTS-GGUF/resolve/main/chatterbox-mtl-s3t.gguf",
+              "size_mb": 237,
+              "required_for": "voice_cloning"
+            }
+          ]
+        }
+      ],
+      "parameters": {
+        "temperature": { "type": "float", "default": 0.8, "min": 0.0, "max": 2.0, "step": 0.05, "description": "Sampling temperature" },
+        "top_p": { "type": "float", "default": 0.95, "min": 0.0, "max": 1.0, "step": 0.05, "description": "Top-p sampling" },
+        "top_k": { "type": "int", "default": 50, "min": 1, "max": 100, "step": 1, "description": "Top-k sampling" },
+        "cfg_weight": { "type": "float", "default": 0.5, "min": 0.0, "max": 2.0, "step": 0.05, "description": "Classifier-Free Guidance weight" },
+        "exaggeration": { "type": "float", "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05, "description": "Speech exaggeration" },
+        "seed": { "type": "int", "default": -1, "description": "Random seed (-1 = random)" }
+      },
+      "mode_specific_params": {
+        "voice_clone": {
+          "ref_audio": { "type": "file", "required": true, "description": "Reference audio for voice clone (10s+ WAV)" },
+          "language": { "type": "string", "default": "Italian", "options": ["Arabic", "Danish", "German", "Greek", "English", "Spanish", "Finnish", "French", "Hebrew", "Hindi", "Italian", "Japanese", "Korean", "Malay", "Dutch", "Norwegian", "Polish", "Portuguese", "Russian", "Swedish", "Swahili", "Turkish", "Chinese"] }
+        }
+      },
+      "install_requirements": {
+        "llama_server": "already bundled by first-run wizard",
+        "codec_cpp": "REQUIRED — needs to be compiled from source (like qwentts.cpp). No releases published. MIT license. Build script needed.",
+        "additional_dlls": []
+      },
+      "sources": [
+        "https://huggingface.co/hans00/Chatterbox-Multilingual-TTS-GGUF (1.3k downloads/month, MIT)",
+        "https://github.com/mybigday/codec.cpp (runtime, MIT)",
+        "https://github.com/mybigday/llama.rn (mobile inference runtime reference)",
+        "https://huggingface.co/ResembleAI/chatterbox (upstream PyTorch model)"
+      ],
+      "notes": "Three GGUF files required per voice clone: backbone + codec_lm + s3t. Backbone runs in stock llama.cpp with embeddings=true. codec_lm runs in codec.cpp as parallel_heads_delay with n_cb=1. codec.cpp has no prebuilt releases — must be compiled."
+    },
+    "neuttsair": {
+      "display_name": "NeuTTS Air",
+      "license": "Apache-2.0",
+      "languages": ["English"],
+      "voice_cloning": true,
+      "voice_clone_min_seconds": 3,
+      "runtime": "llama-server (backbone) + NeuCodec ONNX (audio decoder) + espeak-ng (phonemizer)",
+      "runtime_repo": "https://github.com/neuphonic/neutts",
+      "runtime_help": "Phonemize text with espeak-ng, send to llama-server with backbone GGUF, decode audio tokens with NeuCodec ONNX",
+      "architecture": "Qwen 0.5B backbone + NeuCodec (FSQ, single codebook, 0.8 kbps, 50 Hz)",
+      "max_input_tokens": null,
+      "watermarked": true,
+      "watermark_type": "Perth (Perceptual Threshold Watermarker)",
+      "variants": [
+        {
+          "name": "NeuTTS-Air-q4",
+          "size": "0.5B",
+          "mode": "voice_clone",
+          "description": "On-device voice cloning from 3-second reference audio. English only.",
+          "supported_modes": ["Voice Clone"],
+          "char_limit_recommended": 400,
+          "char_limit_max": 800,
+          "requires_speaker_reference": true,
+          "gguf_repo": "neuphonic/neutts-air-q4-gguf",
+          "files": [
+            {
+              "name": "backbone",
+              "filename_template": "neutts-air-q4-{quant}.gguf",
+              "quants": {
+                "Q4_0": { "size_mb": 365, "url": "https://huggingface.co/neuphonic/neutts-air-q4-gguf/resolve/main/neutts-air-q4-Q4_0.gguf" }
+              }
+            }
+          ]
+        },
+        {
+          "name": "NeuTTS-Air-q8",
+          "size": "0.5B",
+          "mode": "voice_clone",
+          "description": "Higher quality Q8 quantization of NeuTTS Air",
+          "supported_modes": ["Voice Clone"],
+          "char_limit_recommended": 400,
+          "char_limit_max": 800,
+          "requires_speaker_reference": true,
+          "gguf_repo": "neuphonic/neutts-air-q8-gguf",
+          "files": [
+            {
+              "name": "backbone",
+              "filename_template": "neutts-air-q8-{quant}.gguf",
+              "quants": {
+                "Q8_0": { "size_mb": 547, "url": "https://huggingface.co/neuphonic/neutts-air-q8-gguf/resolve/main/neutts-air-q8-Q8_0.gguf" }
+              }
+            }
+          ]
+        }
+      ],
+      "shared_files": [
+        {
+          "name": "neucodec",
+          "description": "NeuCodec ONNX decoder for audio token-to-waveform conversion",
+          "gguf_repo": "neuphonic/neucodec-onnx-decoder",
+          "license": "Apache-2.0",
+          "files": [
+            {
+              "name": "neucodec_decoder",
+              "filename": "decoder.onnx",
+              "url": "https://huggingface.co/neuphonic/neucodec-onnx-decoder/resolve/main/decoder.onnx",
+              "size_mb": 50
+            }
+          ]
+        }
+      ],
+      "parameters": {
+        "temperature": { "type": "float", "default": 0.8, "min": 0.0, "max": 2.0, "step": 0.05, "description": "Sampling temperature" },
+        "top_k": { "type": "int", "default": 50, "min": 1, "max": 100, "step": 1, "description": "Top-k sampling" },
+        "top_p": { "type": "float", "default": 0.95, "min": 0.0, "max": 1.0, "step": 0.05, "description": "Top-p sampling" },
+        "seed": { "type": "int", "default": -1, "description": "Random seed (-1 = random)" }
+      },
+      "mode_specific_params": {
+        "voice_clone": {
+          "ref_audio": { "type": "file", "required": true, "description": "Reference audio (3-15s WAV, mono, 16-44kHz, clean)" },
+          "ref_text": { "type": "string", "required": true, "description": "Exact transcription of reference audio" }
+        }
+      },
+      "install_requirements": {
+        "llama_server": "already bundled by first-run wizard",
+        "ort_runtime": "already included for Kokoro (ONNX Runtime via Rust)",
+        "espeak_ng": "REQUIRED external dependency — must be on PATH or bundled. Windows: install via winget/choco/MSI; Linux: apt; macOS: brew",
+        "additional_dlls": []
+      },
+      "sources": [
+        "https://huggingface.co/neuphonic/neutts-air (upstream model card, 24k downloads/month, Apache-2.0)",
+        "https://huggingface.co/neuphonic/neutts-air-q4-gguf (Q4 GGUF, 527 MB)",
+        "https://huggingface.co/neuphonic/neutts-air-q8-gguf (Q8 GGUF)",
+        "https://huggingface.co/neuphonic/neucodec-onnx-decoder (NeuCodec ONNX)",
+        "https://github.com/neuphonic/neutts (reference Python implementation)"
+      ],
+      "notes": "English-only at integration time. Every output watermarked with Perth. Smallest voice-clone requirement (3s). Must install espeak-ng."
+    },
+    "voxtral": {
+      "display_name": "Voxtral TTS 4B",
+      "license": "Apache-2.0",
+      "languages": ["English", "French", "German", "Spanish", "Italian", "Portuguese", "Dutch", "Hindi", "Arabic"],
+      "voice_cloning": false,
+      "voice_cloning_type": "preset_only",
+      "preset_voices": ["casual_female", "casual_male", "neutral_female", "neutral_male", "cheerful_female", "fr_female", "fr_male", "de_female", "de_male", "es_female", "es_male", "it_female", "it_male", "pt_female", "pt_male", "nl_female", "nl_male", "hi_female", "hi_male", "ar_male"],
+      "runtime": "voxtral-mini-realtime-rs (custom Rust binary, ggml-based)",
+      "runtime_repo": "https://github.com/TrevorS/voxtral-mini-realtime-rs",
+      "runtime_help": "Single voxtral CLI binary: ./voxtral speak --text '...' --voice it_female --gguf model.gguf",
+      "architecture": "Ministral 3B backbone (26 layers) + flow-matching DiT head (3 layers) + codec decoder (8 transformer + 5 conv layers)",
+      "sample_rate": null,
+      "max_input_tokens": null,
+      "variants": [
+        {
+          "name": "Voxtral-TTS-4B-q4",
+          "size": "4B",
+          "mode": "preset_voice",
+          "description": "Mistral Voxtral 4B TTS with 20 preset voices across 9 languages (Italian: it_female, it_male)",
+          "supported_modes": ["Preset Voice"],
+          "char_limit_recommended": 500,
+          "char_limit_max": 1000,
+          "requires_speaker_reference": false,
+          "gguf_repo": "TrevorJS/voxtral-tts-q4-gguf",
+          "files": [
+            {
+              "name": "model",
+              "filename": "voxtral-tts-q4.gguf",
+              "quants": {
+                "Q4_0": { "size_mb": 2670, "url": "https://huggingface.co/TrevorJS/voxtral-tts-q4-gguf/resolve/main/voxtral-tts-q4.gguf" }
+              }
+            }
+          ]
+        }
+      ],
+      "shared_files": [
+        {
+          "name": "tokenizer",
+          "description": "Tekken BPE tokenizer for Voxtral TTS",
+          "filename": "tekken.json",
+          "url": "https://huggingface.co/TrevorJS/voxtral-tts-q4-gguf/resolve/main/tekken.json",
+          "size_mb": 15
+        },
+        {
+          "name": "voice_embeddings",
+          "description": "20 voice preset embeddings",
+          "filename_pattern": "voice_embedding/*.safetensors",
+          "url": "https://huggingface.co/TrevorJS/voxtral-tts-q4-gguf/tree/main/voice_embedding",
+          "size_kb_each": "50-200"
+        }
+      ],
+      "parameters": {
+        "euler_steps": { "type": "int", "default": 8, "min": 3, "max": 16, "step": 1, "description": "Flow-matching Euler steps. 8=high quality, 3=real-time" },
+        "voice": { "type": "string", "default": "it_female", "options": ["casual_female", "casual_male", "neutral_female", "neutral_male", "cheerful_female", "fr_female", "fr_male", "de_female", "de_male", "es_female", "es_male", "it_female", "it_male", "pt_female", "pt_male", "nl_female", "nl_male", "hi_female", "hi_male", "ar_male"], "description": "Preset voice name" },
+        "seed": { "type": "int", "default": -1, "description": "Random seed (-1 = random)" }
+      },
+      "mode_specific_params": {},
+      "install_requirements": {
+        "voxtral_cli": "REQUIRED — custom Rust binary, no prebuilt releases. Must compile from source.",
+        "additional_dlls": []
+      },
+      "sources": [
+        "https://huggingface.co/TrevorJS/voxtral-tts-q4-gguf (270 downloads/month, Apache-2.0)",
+        "https://huggingface.co/mistralai/Voxtral-4B-TTS-2603 (upstream Mistral model)",
+        "https://github.com/TrevorS/voxtral-mini-realtime-rs (custom Rust runtime, ggml-based)"
+      ],
+      "notes": "Italian supported (it_female, it_male voices). No voice cloning — preset voices only. Custom Rust runtime (not llama.cpp). Larger model (4B, 2.7GB Q4). 9 languages including Italian. High quality but requires custom runtime compilation."
+    }
+  },
+  "retired_engines": {
+    "kokoro": {
+      "display_name": "Kokoro-82M",
+      "reason": "kokoro-en Rust crate is English-only G2P. Cannot pronounce Italian.",
+      "retired_date": "2026-06-30"
+    },
+    "vibevoice": {
+      "display_name": "VibeVoice",
+      "reason": "Official card says 'English and Chinese only; other languages may be unintelligible'. Microsoft removed official TTS code 2025-09-05.",
+      "retired_date": "2026-06-30"
+    },
+    "xttsv2": {
+      "display_name": "XTTSv2",
+      "reason": "PyTorch only, no GGUF, non-commercial license",
+      "retired_date": "2026-06-21"
+    },
+    "spark-tts": {
+      "display_name": "Spark-TTS-0.5B",
+      "reason": "English + Chinese only, no multilingual coverage including Italian. CC-BY-NC-SA-4.0 (non-commercial). GGUF available at mradermacher/Spark-TTS-0.5B-GGUF but no value for our product.",
+      "retired_date": "2026-07-03"
+    },
+    "f5-tts-official": {
+      "display_name": "F5-TTS (official)",
+      "reason": "CC-BY-NC-4.0 license (non-commercial). Only English + Chinese in upstream model. Multilingual variants require community finetunes with unclear licensing.",
+      "retired_date": "2026-07-03"
+    },
+    "f5-tts-gguf": {
+      "display_name": "F5-TTS GGUF (cstr)",
+      "reason": "English + Chinese only. Requires CrispASR runtime (no prebuilt releases, needs compilation). MIT license but no multilingual value.",
+      "retired_date": "2026-07-03"
+    },
+    "dots-tts-soar": {
+      "display_name": "dots.tts-soar",
+      "reason": "English + Chinese only (no Italian). Requires CrispASR runtime (no prebuilt releases). Apache-2.0 but no multilingual value.",
+      "retired_date": "2026-07-03"
+    },
+    "outetts-1b": {
+      "display_name": "Llama-OuteTTS-1.0-1B",
+      "reason": "CC-BY-NC-SA-4.0 (non-commercial). Cannot be included in our distribution. 0.6B Apache-2.0 variant covers same multilingual use case.",
+      "retired_date": "2026-07-03"
+    },
+    "neutts-nano-italian": {
+      "display_name": "NeuTTS-Nano-Italian (Steveeeeeeen)",
+      "reason": "Model card empty, 2 downloads/month, single-author fine-tune with no documentation. Unverified quality. Upstream NeuTTS Air is English-only; multilingual coverage not confirmed.",
+      "retired_date": "2026-07-03"
+    },
+    "f5-tts-italian": {
+      "display_name": "F5-TTS-italian (alien79)",
+      "reason": "Italian-only fine-tune, CC-BY-4.0 but PyTorch-only, no GGUF. Catastrophic failure on English. Quality unverified.",
+      "retired_date": "2026-07-03"
+    }
+  },
+  "notes": {
+    "update_instructions": "To update download URLs: edit this file, verify each URL with a web fetch, bump version and last_verified date. Future: a small UI tool to verify all URLs automatically.",
+    "repo_choice_rationale": "Serveurperso/Qwen3-TTS-GGUF chosen because it is the single repo covering all 5 variants with consistent quantization naming. It has the highest download count (28.9k/month). Official Qwen repos host the safetensors originals; the GGUF conversions are community-maintained but well-adopted.",
+    "active_engines_2026-07-03": {
+      "qwen3tts": "verified, working end-to-end with 0.6B-Base. 4 more variants registered.",
+      "outetts": "ready for integration — needs Rust plugin that uses llama-server + DAC ONNX",
+      "chatterbox": "ready for integration — needs codec.cpp compilation (same effort as qwentts.cpp)",
+      "neuttsair": "ready for integration — needs espeak-ng as bundled dependency (Windows) or system package (Linux/macOS)",
+      "voxtral": "lowest priority — needs custom Rust runtime compilation, larger 4B model, no voice cloning"
+    }
+  }
+}

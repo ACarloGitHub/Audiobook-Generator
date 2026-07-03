@@ -1,56 +1,77 @@
 [
   {
-    "name": "Kokoro",
-    "type": "in_process",
-    "engine_id": "kokoro",
-    "description": "Kokoro 82M — lightweight multilingual TTS (ONNX, in-process Rust)"
-  },
-  {
-    "name": "Qwen3-TTS-0.6B-Base",
-    "type": "llama_server",
+    "name": "Qwen3-TTS-12Hz-0.6B-Base",
+    "type": "external_process",
     "engine_id": "qwen3tts",
-    "description": "Qwen3 TTS 0.6B Base — voice clone via llama-server"
+    "description": "Qwen3-TTS 0.6B Base — voice clone via qwentts.cpp (compiled sidecar)",
+    "license": "Apache-2.0"
   },
   {
-    "name": "Qwen3-TTS-1.7B-Base",
-    "type": "llama_server",
+    "name": "Qwen3-TTS-12Hz-0.6B-CustomVoice",
+    "type": "external_process",
     "engine_id": "qwen3tts",
-    "description": "Qwen3 TTS 1.7B Base — voice clone via llama-server"
+    "description": "Qwen3-TTS 0.6B Custom Voice — 9 preset voices via qwentts.cpp",
+    "license": "Apache-2.0"
   },
   {
-    "name": "Qwen3-TTS-1.7B-CustomVoice",
-    "type": "llama_server",
+    "name": "Qwen3-TTS-12Hz-1.7B-Base",
+    "type": "external_process",
     "engine_id": "qwen3tts",
-    "description": "Qwen3 TTS 1.7B Custom Voice — custom voice via llama-server"
+    "description": "Qwen3-TTS 1.7B Base — voice clone, higher quality",
+    "license": "Apache-2.0"
   },
   {
-    "name": "Qwen3-TTS-1.7B-VoiceDesign",
-    "type": "llama_server",
+    "name": "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+    "type": "external_process",
     "engine_id": "qwen3tts",
-    "description": "Qwen3 TTS 1.7B Voice Design — voice design via llama-server"
+    "description": "Qwen3-TTS 1.7B Custom Voice — 9 preset voices, higher quality",
+    "license": "Apache-2.0"
   },
   {
-    "name": "VibeVoice-1.5B",
-    "type": "llama_server",
-    "engine_id": "vibevoice",
-    "description": "VibeVoice 1.5B — voice cloning via llama-server"
+    "name": "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+    "type": "external_process",
+    "engine_id": "qwen3tts",
+    "description": "Qwen3-TTS 1.7B Voice Design — voice from text description",
+    "license": "Apache-2.0"
   },
   {
-    "name": "VibeVoice-7B",
-    "type": "llama_server",
-    "engine_id": "vibevoice",
-    "description": "VibeVoice 7B — voice cloning via llama-server"
+    "name": "OuteTTS-1.0-0.6B",
+    "type": "external_process",
+    "engine_id": "outetts",
+    "description": "OuteTTS 0.6B — multilingual voice cloning via stock llama-server + DAC codec ONNX",
+    "license": "Apache-2.0",
+    "planned_status": "ready_for_integration"
   },
   {
-    "name": "VibeVoice-Realtime-0.5B",
-    "type": "llama_server",
-    "engine_id": "vibevoice",
-    "description": "VibeVoice Realtime 0.5B — fast voice cloning via llama-server"
+    "name": "Chatterbox-Multilingual-T3",
+    "type": "external_process",
+    "engine_id": "chatterbox",
+    "description": "ResembleAI Chatterbox multilingual T3 — 23 languages, MIT. Needs codec.cpp compilation.",
+    "license": "MIT",
+    "planned_status": "ready_for_integration"
   },
   {
-    "name": "XTTSv2",
-    "type": "llama_server",
-    "engine_id": "xttsv2",
-    "description": "Coqui XTTS v2 — voice cloning via llama-server"
+    "name": "NeuTTS-Air-q4",
+    "type": "external_process",
+    "engine_id": "neuttsair",
+    "description": "NeuTTS Air Q4 — on-device voice clone, English only. Needs espeak-ng.",
+    "license": "Apache-2.0",
+    "planned_status": "ready_for_integration"
+  },
+  {
+    "name": "NeuTTS-Air-q8",
+    "type": "external_process",
+    "engine_id": "neuttsair",
+    "description": "NeuTTS Air Q8 — higher quality quantization, English only",
+    "license": "Apache-2.0",
+    "planned_status": "ready_for_integration"
+  },
+  {
+    "name": "Voxtral-TTS-4B-q4",
+    "type": "external_process",
+    "engine_id": "voxtral",
+    "description": "Mistral Voxtral 4B TTS — 20 preset voices across 9 languages (Italian: it_female, it_male)",
+    "license": "Apache-2.0",
+    "planned_status": "ready_for_integration"
   }
 ]

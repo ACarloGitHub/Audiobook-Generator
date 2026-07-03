@@ -97,7 +97,10 @@ function attachAllListeners(): void {
   attachGenerateListeners(render, bookInfo, refreshEngineStatus);
   attachRecoveryListeners(render);
   attachDemoListeners();
-  attachModelsListeners(render);
+  attachModelsListeners(async () => {
+    await refreshAll();
+    render();
+  });
 }
 
 async function refreshEngineStatus(): Promise<EngineStatus> {
@@ -145,13 +148,28 @@ async function main(): Promise<void> {
   }
 
   await refreshAll();
-  if (engineStatus.engines.length > 0) {
-    state.selectedEngineId = engineStatus.engines[0].id;
+  // Re-apply engine defaults in case the user just downloaded a model
+  // and the engine list changed (e.g. Kokoro became installed).
+  const installedEngine = engineStatus.engines.find((e) => e.installed);
+  if (installedEngine) {
+    state.selectedEngineId = installedEngine.id;
+    await applyEngineDefaults(state.selectedEngineId);
   }
-  await applyEngineDefaults(state.selectedEngineId);
   render();
   await listen("engine-status-changed", () => {
-    refreshAll().then(render);
+    refreshAll().then(async () => {
+      const currentInstalled = engineStatus.engines.find(
+        (e) => e.id === state.selectedEngineId && e.installed
+      );
+      if (!currentInstalled) {
+        const inst = engineStatus.engines.find((e) => e.installed);
+        if (inst) {
+          state.selectedEngineId = inst.id;
+          await applyEngineDefaults(state.selectedEngineId);
+        }
+      }
+      render();
+    });
   });
 }
 

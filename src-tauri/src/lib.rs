@@ -1,15 +1,13 @@
 use tauri::Manager;
 
 mod base_plugin;
-mod base_subprocess_plugin;
 mod chunker;
 mod commands;
 pub mod config;
 mod epub;
 mod merger;
 mod model_manager;
-pub mod payload_types;
-mod plugin_manager;
+pub mod plugin_manager;
 pub mod plugins;
 mod recovery;
 mod utils;
@@ -72,7 +70,10 @@ pub fn run() {
             commands::scan_recovery_books,
             commands::get_failed_chunks,
             commands::synthesize_demo,
-            commands::start_kokoro_generation,
+            commands::start_generation,
+            commands::get_test_epub,
+            commands::list_mp3s_in_dir,
+            commands::get_default_output_dir,
             commands::list_models,
             commands::is_model_installed,
             commands::download_model,

@@ -24,6 +24,42 @@ pub struct HardwareInfo {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct GpuEntry {
+    pub vendor: String,
+    pub model: String,
+    pub vram_bytes: u64,
+    pub backend: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct HardwareSummary {
+    pub os: String,
+    pub arch: String,
+    pub gpus: Vec<GpuEntry>,
+}
+
+pub fn detect_hardware_blocking() -> HardwareSummary {
+    let hw = detect_hardware_impl();
+    let gpus = if let (Some(vendor), Some(model), Some(vram)) =
+        (hw.gpu_vendor.clone(), hw.gpu_model.clone(), hw.gpu_vram_bytes)
+    {
+        vec![GpuEntry {
+            vendor,
+            model,
+            vram_bytes: vram,
+            backend: hw.recommended_backend.clone(),
+        }]
+    } else {
+        Vec::new()
+    };
+    HardwareSummary {
+        os: hw.os,
+        arch: hw.arch,
+        gpus,
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct DependencyStatus {
     pub ffmpeg_installed: bool,
     pub ffmpeg_path: Option<String>,
@@ -226,6 +262,10 @@ fn is_zip_url(url: &str) -> bool {
 
 #[tauri::command]
 pub fn detect_hardware() -> HardwareInfo {
+    detect_hardware_impl()
+}
+
+fn detect_hardware_impl() -> HardwareInfo {
     let os = std::env::consts::OS.to_string();
     let arch = std::env::consts::ARCH.to_string();
     let cpu_cores = num_cpus::get();

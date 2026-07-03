@@ -6,8 +6,10 @@
   "permissions": [
     "core:default",
     "core:event:default",
+    "core:webview:default",
     "dialog:default",
     "fs:default",
+    "fs:allow-read",
     "http:default",
     "shell:default"
   ]

@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { escapeHtml } from "./helpers";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { escapeHtml, ts } from "./helpers";
 import { state } from "./state";
 import type { EngineStatus } from "./types";
 
@@ -23,9 +25,14 @@ export function renderDemo(_status: EngineStatus): string {
     <div class="card">
       <h2>Test file generation</h2>
       <p class="field-help">Runs bundled mini-EPUBs end-to-end through the same pipeline as a real book.</p>
+      <div class="btn-row">
+        <button class="btn-secondary" id="test-pick-output-btn">Choose output path...</button>
+        <span class="field-help" id="test-output-path">${state.testOutputPath ? escapeHtml(state.testOutputPath) : "Default: app data folder"}</span>
+      </div>
       <button class="btn-secondary btn-large" id="test-file-btn">Run Test File Generation</button>
       <label class="field-label">Test Status</label>
       <textarea class="text-input log-area" id="test-status" rows="8" readonly placeholder="No test run yet."></textarea>
+      <audio id="test-audio" controls style="display:none; width:100%; margin-top:8px;"></audio>
     </div>
   `;
 }
@@ -58,22 +65,181 @@ export function attachDemoListeners(): void {
       }
       const status = document.getElementById("demo-status") as HTMLTextAreaElement | null;
       const audio = document.getElementById("demo-audio") as HTMLAudioElement | null;
-      const outDir = state.demoOutputPath ?? "Generated_Audiobooks/demo";
+      const outDir = state.demoOutputPath ?? "Demo_Outputs";
       const out = `${outDir}/demo_${Date.now()}.wav`;
-      if (status) status.value = `[INFO] Synthesizing...\n`;
+      if (status) status.value = `[INFO] Synthesizing with ${state.selectedEngineId}...\n`;
+
+      // Build extra params for Qwen3-TTS
+      const extra: Record<string, string> = {};
+      const instructEl = document.getElementById("qwen-instruct-input") as HTMLInputElement | null;
+      if (instructEl && instructEl.value.trim()) {
+        extra["instruct"] = instructEl.value;
+      }
+      const refTextEl = document.getElementById("qwen-ref-text") as HTMLTextAreaElement | null;
+      if (refTextEl && refTextEl.value.trim()) {
+        extra["ref_text"] = refTextEl.value;
+      }
+      // Advanced params
+      const tempEl = document.getElementById("qwen-temp") as HTMLInputElement | null;
+      if (tempEl && tempEl.value) extra["temp"] = tempEl.value;
+      const topKEl = document.getElementById("qwen-top-k") as HTMLInputElement | null;
+      if (topKEl && topKEl.value) extra["top_k"] = topKEl.value;
+      const topPEl = document.getElementById("qwen-top-p") as HTMLInputElement | null;
+      if (topPEl && topPEl.value) extra["top_p"] = topPEl.value;
+      const repPenEl = document.getElementById("qwen-rep-pen") as HTMLInputElement | null;
+      if (repPenEl && repPenEl.value) extra["rep_pen"] = repPenEl.value;
+      const maxNewEl = document.getElementById("qwen-max-new") as HTMLInputElement | null;
+      if (maxNewEl && maxNewEl.value) extra["max_new"] = maxNewEl.value;
+      const seedEl = document.getElementById("qwen-seed") as HTMLInputElement | null;
+      if (seedEl && seedEl.value) extra["seed"] = seedEl.value;
+
       try {
-        await invoke("synthesize_demo", {
+        const resultPath = await invoke<string>("synthesize_demo", {
+          engineId: state.selectedEngineId,
           text,
           voice: state.selectedVoiceId || null,
+          language: state.selectedLanguage || null,
+          speed: state.speed,
           outputWav: out,
+          extra,
+          referenceAudio: state.referenceWavPath,
         });
-        if (status) status.value = `[INFO] Saved to ${out}\n`;
+        if (status) status.value = `[INFO] Saved to ${resultPath}\n`;
         if (audio) {
-          audio.src = `file:///${out.replace(/\\/g, "/")}`;
+          audio.src = convertFileSrc(resultPath);
           audio.style.display = "block";
+          audio.load();
         }
       } catch (e) {
         if (status) status.value = `[ERROR] ${e}\n`;
+      }
+    });
+  }
+
+  const testPickBtn = document.getElementById("test-pick-output-btn");
+  if (testPickBtn) {
+    testPickBtn.addEventListener("click", async () => {
+      try {
+        const path = await open({ multiple: false, directory: true });
+        if (typeof path === "string") {
+          state.testOutputPath = path;
+          const pathEl = document.getElementById("test-output-path");
+          if (pathEl) pathEl.textContent = path;
+        }
+      } catch (e) {
+        console.warn("dialog open failed:", e);
+      }
+    });
+  }
+
+  const testBtn = document.getElementById("test-file-btn") as HTMLButtonElement | null;
+  const testStatus = document.getElementById("test-status") as HTMLTextAreaElement | null;
+  const testAudio = document.getElementById("test-audio") as HTMLAudioElement | null;
+
+  if (testBtn && testStatus) {
+    testBtn.addEventListener("click", async () => {
+      testBtn.disabled = true;
+      if (testAudio) { testAudio.style.display = "none"; testAudio.src = ""; }
+      testStatus.value = `[${ts()}] [INFO] Resolving test EPUB...\n`;
+
+      try {
+        const langForTest = state.selectedLanguage || "en";
+        const testEpubPath = await invoke<string>("get_test_epub", {
+          language: langForTest,
+        });
+
+        const langMap: Record<string, string> = {
+          italian: "it", english: "en", spanish: "es", french: "fr",
+          german: "de", portuguese: "pt", japanese: "ja", russian: "ru",
+          chinese: "cn", korean: "ko", auto: "en",
+        };
+        const langSuffix = langMap[langForTest.toLowerCase()] ?? langForTest.slice(0, 2).toLowerCase();
+        const title = `TEST_${langSuffix}_${state.selectedEngineId}`;
+        const safeTitle = title.replace(/[^a-zA-Z0-9-_ ]/g, "_");
+        const outputDir = state.testOutputPath
+          ? `${state.testOutputPath}/${safeTitle}`
+          : `Generated_Audiobooks/${safeTitle}`;
+
+        testStatus.value += `[${ts()}] [INFO] Test EPUB: ${testEpubPath}\n`;
+        testStatus.value += `[${ts()}] [INFO] Output dir: ${outputDir}\n`;
+        testStatus.value += `[${ts()}] [INFO] Engine: ${state.selectedEngineId}\n`;
+        testStatus.value += `[${ts()}] [INFO] --- starting test generation ---\n`;
+
+        const extra: Record<string, string> = {};
+        const instructEl = document.getElementById("qwen-instruct-input") as HTMLInputElement | HTMLTextAreaElement | null;
+        if (instructEl && instructEl.value.trim()) {
+          extra["instruct"] = instructEl.value;
+        }
+        const refTextEl = document.getElementById("qwen-ref-text") as HTMLTextAreaElement | null;
+        if (refTextEl && refTextEl.value.trim()) {
+          extra["ref_text"] = refTextEl.value;
+        }
+        const tempEl = document.getElementById("qwen-temp") as HTMLInputElement | null;
+        if (tempEl && tempEl.value) extra["temp"] = tempEl.value;
+        const topKEl = document.getElementById("qwen-top-k") as HTMLInputElement | null;
+        if (topKEl && topKEl.value) extra["top_k"] = topKEl.value;
+        const topPEl = document.getElementById("qwen-top-p") as HTMLInputElement | null;
+        if (topPEl && topPEl.value) extra["top_p"] = topPEl.value;
+        const repPenEl = document.getElementById("qwen-rep-pen") as HTMLInputElement | null;
+        if (repPenEl && repPenEl.value) extra["rep_pen"] = repPenEl.value;
+        const maxNewEl = document.getElementById("qwen-max-new") as HTMLInputElement | null;
+        if (maxNewEl && maxNewEl.value) extra["max_new"] = maxNewEl.value;
+        const seedEl = document.getElementById("qwen-seed") as HTMLInputElement | null;
+        if (seedEl && seedEl.value) extra["seed"] = seedEl.value;
+
+        const maxCharsForLang =
+          state.chunkMaxCharsByLang[state.selectedLanguage] ?? state.chunkMaxChars;
+        const effectiveMaxWords =
+          state.chunkStrategy === "Character Limit" ? 999999 : state.chunkMaxWords;
+
+        const t0 = Date.now();
+
+        let unlistenProgress: (() => void) | null = null;
+        let unlistenComplete: (() => void) | null = null;
+
+        try {
+          unlistenProgress = await listen<string>("generation-progress", (e) => {
+            testStatus.value += `[${ts()}] ${e.payload}\n`;
+            testStatus.scrollTop = testStatus.scrollHeight;
+          });
+          unlistenComplete = await listen("generation-complete", () => {
+            const secs = ((Date.now() - t0) / 1000).toFixed(1);
+            testStatus.value += `[${ts()}] [INFO] Test generation finished in ${secs}s\n`;
+            testStatus.scrollTop = testStatus.scrollHeight;
+          });
+
+          await invoke("start_generation", {
+            engineId: state.selectedEngineId,
+            voice: state.selectedVoiceId || null,
+            language: state.selectedLanguage || null,
+            speed: state.speed,
+            epubPath: testEpubPath,
+            outputDir,
+            maxWords: effectiveMaxWords,
+            maxChars: maxCharsForLang,
+            extra,
+            referenceAudio: state.referenceWavPath,
+          });
+
+          try {
+            const mp3s = await invoke<string[]>("list_mp3s_in_dir", { dir: outputDir });
+            if (mp3s.length > 0 && testAudio) {
+              testAudio.src = convertFileSrc(mp3s[0]);
+              testAudio.style.display = "block";
+              testAudio.load();
+              testStatus.value += `[${ts()}] [INFO] Playing: ${mp3s[0]}\n`;
+            }
+          } catch (e) {
+            testStatus.value += `[${ts()}] [WARN] Could not load audio player: ${e}\n`;
+          }
+        } finally {
+          if (unlistenProgress) unlistenProgress();
+          if (unlistenComplete) unlistenComplete();
+        }
+      } catch (e) {
+        testStatus.value += `[${ts()}] [ERROR] ${e}\n`;
+      } finally {
+        testBtn.disabled = false;
       }
     });
   }

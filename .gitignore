@@ -22,6 +22,9 @@ audiobook_generator/tts_models/xttsv2/*
 !audiobook_generator/tts_models/xttsv2/.gitkeep
 tts_models/
 
+# Old per-user model path from the early Tauri shell (pre app_data_dir refactor).
+src-tauri/models/
+
 # HuggingFace / llama.cpp download caches
 .cache/
 huggingface/

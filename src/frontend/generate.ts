@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/plugin-dialog";
 import { escapeHtml, ts, pickOutputDir } from "./helpers";
 import { renderEngineStrip } from "./engine-strip";
 import { state } from "./state";
@@ -35,6 +36,10 @@ export function renderGenerate(status: EngineStatus, bookInfo: BookInfo | null):
     </div>
 
     <div class="card">
+      <div class="btn-row">
+        <button class="btn-secondary" id="gen-pick-output-btn">Choose output path...</button>
+        <span class="field-help" id="gen-output-path">${state.generateOutputPath ? escapeHtml(state.generateOutputPath) : "Default: app data folder / Generated_Audiobooks"}</span>
+      </div>
       <div class="btn-row btn-row-large">
         <button class="btn-primary" id="generate-btn" ${canGenerate ? "" : "disabled"}>Generate Audiobook</button>
         <button class="btn-stop" id="stop-btn" disabled>🛑 Stop</button>
@@ -57,6 +62,22 @@ export function attachGenerateListeners(
   bookInfo: BookInfo | null,
   refreshStatus: () => Promise<EngineStatus>,
 ): void {
+  const genPickBtn = document.getElementById("gen-pick-output-btn");
+  if (genPickBtn) {
+    genPickBtn.addEventListener("click", async () => {
+      try {
+        const path = await open({ multiple: false, directory: true });
+        if (typeof path === "string") {
+          state.generateOutputPath = path;
+          const pathEl = document.getElementById("gen-output-path");
+          if (pathEl) pathEl.textContent = path;
+        }
+      } catch (e) {
+        console.warn("dialog open failed:", e);
+      }
+    });
+  }
+
   const selectAllBtn = document.getElementById("select-all-btn");
   if (selectAllBtn && bookInfo) {
     selectAllBtn.addEventListener("click", () => {
@@ -105,7 +126,10 @@ export function attachGenerateListeners(
         progressLog.value = `[ERROR] No installed engine selected. Pick one in Configuration.\n`;
         return;
       }
-      const outputDir = pickOutputDir(bookInfo.title);
+      const safeTitle = bookInfo.title.replace(/[^a-zA-Z0-9-_ ]/g, "_").trim() || "audiobook";
+      const outputDir = state.generateOutputPath
+        ? `${state.generateOutputPath}/${safeTitle}`
+        : pickOutputDir(bookInfo.title);
       generateBtn.disabled = true;
       stopBtn.disabled = false;
       const t0 = Date.now();
@@ -127,11 +151,47 @@ export function attachGenerateListeners(
           progressLog.value += `[${ts()}] [INFO] Generation finished in ${secs}s\n`;
           progressLog.scrollTop = progressLog.scrollHeight;
         });
-        await invoke("start_kokoro_generation", {
+        const maxCharsForLang =
+          state.chunkMaxCharsByLang[state.selectedLanguage] ?? state.chunkMaxChars;
+
+        // Build extra params from Configuration panel
+        const extra: Record<string, string> = {};
+        const instructEl = document.getElementById("qwen-instruct-input") as HTMLInputElement | HTMLTextAreaElement | null;
+        if (instructEl && instructEl.value.trim()) {
+          extra["instruct"] = instructEl.value;
+        }
+        const refTextEl = document.getElementById("qwen-ref-text") as HTMLTextAreaElement | null;
+        if (refTextEl && refTextEl.value.trim()) {
+          extra["ref_text"] = refTextEl.value;
+        }
+        const tempEl = document.getElementById("qwen-temp") as HTMLInputElement | null;
+        if (tempEl && tempEl.value) extra["temp"] = tempEl.value;
+        const topKEl = document.getElementById("qwen-top-k") as HTMLInputElement | null;
+        if (topKEl && topKEl.value) extra["top_k"] = topKEl.value;
+        const topPEl = document.getElementById("qwen-top-p") as HTMLInputElement | null;
+        if (topPEl && topPEl.value) extra["top_p"] = topPEl.value;
+        const repPenEl = document.getElementById("qwen-rep-pen") as HTMLInputElement | null;
+        if (repPenEl && repPenEl.value) extra["rep_pen"] = repPenEl.value;
+        const maxNewEl = document.getElementById("qwen-max-new") as HTMLInputElement | null;
+        if (maxNewEl && maxNewEl.value) extra["max_new"] = maxNewEl.value;
+        const seedEl = document.getElementById("qwen-seed") as HTMLInputElement | null;
+        if (seedEl && seedEl.value) extra["seed"] = seedEl.value;
+
+        // When using Character Limit strategy, disable word count limit
+        const effectiveMaxWords =
+          state.chunkStrategy === "Character Limit" ? 999999 : state.chunkMaxWords;
+
+        await invoke("start_generation", {
+          engineId: state.selectedEngineId,
           voice: state.selectedVoiceId || null,
+          language: state.selectedLanguage || null,
+          speed: state.speed,
           epubPath: state.epubPath,
           outputDir,
-          maxWords: state.chunkMaxWords,
+          maxWords: effectiveMaxWords,
+          maxChars: maxCharsForLang,
+          extra,
+          referenceAudio: state.referenceWavPath,
         });
       } catch (e) {
         progressLog.value += `[${ts()}] [ERROR] ${e}\n`;

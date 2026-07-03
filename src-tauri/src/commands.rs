@@ -5,7 +5,7 @@ use std::sync::Arc;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
-use crate::base_plugin::{EngineHandle, SynthesizeRequest};
+use crate::base_plugin::{EngineHandle, SynthesizeRequest, BaseTTSPlugin};
 use crate::merger;
 use crate::plugin_manager::{self, EngineDefaults, EngineInfo, PluginManager};
 use crate::recovery::{self, RecoveryState};
@@ -37,6 +37,10 @@ pub struct GpuInfo {
 
 static STOP_FLAG: AtomicBool = AtomicBool::new(false);
 
+pub fn is_stop_requested() -> bool {
+    STOP_FLAG.load(Ordering::SeqCst)
+}
+
 #[tauri::command]
 pub fn engine_status(pm: State<'_, Arc<PluginManager>>) -> EngineStatus {
     let engines = pm.catalogue();
@@ -46,7 +50,7 @@ pub fn engine_status(pm: State<'_, Arc<PluginManager>>) -> EngineStatus {
         vram_bytes: None,
         loaded_at: None,
         engines,
-        hardware: detect_hardware_stub(),
+        hardware: detect_hardware_real(),
     }
 }
 
@@ -215,98 +219,315 @@ pub fn get_failed_chunks(book_dir: PathBuf, chapter: String) -> Vec<FailedChunkI
         .unwrap_or_default()
 }
 
-#[tauri::command]
-pub async fn synthesize_demo(
-    text: String,
-    voice: Option<String>,
-    output_wav: PathBuf,
-    pm: State<'_, Arc<PluginManager>>,
-) -> Result<(), String> {
-    let plugin = pm
-        .get_plugin("kokoro")
-        .ok_or_else(|| "Kokoro engine not available".to_string())?;
-    let handle = plugin
-        .load_model("kokoro-82M-quantized")
-        .await
-        .map_err(|e| format!("load failed: {e:#}"))?;
-    let request = SynthesizeRequest {
-        text,
-        output_path: output_wav.to_string_lossy().to_string(),
-        reference_audio: None,
-        language: None,
-        voice,
-        extra: Default::default(),
-    };
-    plugin
-        .synthesize(&handle, &request)
-        .await
-        .map_err(|e| format!("demo synthesis failed: {e:#}"))?;
-    let _ = plugin.unload(&handle).await;
-    Ok(())
+/// Get a plugin from the registry, or create one on-the-fly if the model
+/// files are on disk but the plugin wasn't registered at startup
+/// (e.g. after a model download without app restart).
+fn get_or_create_plugin(
+    engine_id: &str,
+    pm: &PluginManager,
+) -> Option<Arc<dyn BaseTTSPlugin>> {
+    if let Some(p) = pm.get_plugin(engine_id) {
+        return Some(p);
+    }
+    // Try to create a QwenPlugin on-the-fly
+    let qwen_paths = plugin_manager::QwenPaths::from_app_data(pm.app_data_dir());
+    let plugin = crate::plugins::qwen3tts::QwenPlugin::new(qwen_paths, engine_id);
+    if plugin.is_installed() {
+        eprintln!("[commands] creating plugin on-the-fly for {}", engine_id);
+        return Some(Arc::new(plugin));
+    }
+    None
 }
 
 #[tauri::command]
-pub async fn start_kokoro_generation(
+pub async fn synthesize_demo(
+    engine_id: String,
+    text: String,
     voice: Option<String>,
-    epub_path: PathBuf,
-    output_dir: PathBuf,
-    max_words: usize,
+    language: Option<String>,
+    speed: Option<f32>,
+    output_wav: PathBuf,
+    extra: Option<std::collections::HashMap<String, String>>,
+    reference_audio: Option<String>,
     pm: State<'_, Arc<PluginManager>>,
-    app: AppHandle,
-) -> Result<usize, String> {
-    let _ = app.emit("generation-progress", "Loading engine kokoro...");
-
-    let plugin = pm
-        .get_plugin("kokoro")
-        .ok_or_else(|| "Kokoro engine not installed".to_string())?;
-
+) -> Result<String, String> {
+    let output_wav = resolve_output_path(&output_wav);
+    let plugin = get_or_create_plugin(&engine_id, &pm)
+        .ok_or_else(|| format!("engine '{}' is not installed or model files missing", engine_id))?;
     let handle = plugin
-        .load_model("kokoro-82M-quantized")
+        .load_model(&engine_id)
         .await
         .map_err(|e| format!("load failed: {e:#}"))?;
 
-    let _ = app.emit("generation-progress", "Model loaded: kokoro-82M-quantized");
+    let max_chars = 800; // Qwen3-TTS recommended limit
+    let chunks = crate::chunker::chunk_text(&text, 1000, max_chars);
+    if chunks.is_empty() {
+        return Err("empty text after chunking".to_string());
+    }
+
+    let temp_dir = output_wav
+        .parent()
+        .map(|p| p.join("_demo_chunks"))
+        .unwrap_or_else(|| PathBuf::from("_demo_chunks"));
+    std::fs::create_dir_all(&temp_dir)
+        .map_err(|e| format!("create temp dir: {e}"))?;
+
+    let mut chunk_wavs: Vec<PathBuf> = Vec::new();
+    for (i, chunk_text) in chunks.iter().enumerate() {
+        let chunk_path = temp_dir.join(format!("demo_chunk_{:04}.wav", i + 1));
+        let mut req_extra = extra.clone().unwrap_or_default();
+        if let Some(s) = speed {
+            req_extra.insert("speed".to_string(), s.to_string());
+        }
+        let request = SynthesizeRequest {
+            text: chunk_text.clone(),
+            output_path: chunk_path.to_string_lossy().to_string(),
+            reference_audio: reference_audio.clone(),
+            language: language.clone(),
+            voice: voice.clone(),
+            extra: req_extra,
+        };
+        plugin
+            .synthesize(&handle, &request)
+            .await
+            .map_err(|e| format!("demo synthesis failed on chunk {}: {e:#}", i + 1))?;
+        chunk_wavs.push(chunk_path);
+    }
+
+    let _ = plugin.unload(&handle).await;
+
+    if chunk_wavs.len() == 1 {
+        std::fs::rename(&chunk_wavs[0], &output_wav)
+            .map_err(|e| format!("rename demo wav: {e}"))?;
+    } else {
+        let ffmpeg = merger::find_ffmpeg().map_err(|e| format!("find ffmpeg: {e}"))?;
+        merger::merge_wavs_to_wav(&chunk_wavs, &output_wav, &ffmpeg)
+            .map_err(|e| format!("merge demo chunks: {e}"))?;
+    }
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    let abs = output_wav.canonicalize().unwrap_or(output_wav);
+    Ok(abs.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub async fn start_generation(
+    engine_id: String,
+    voice: Option<String>,
+    language: Option<String>,
+    speed: Option<f32>,
+    epub_path: PathBuf,
+    output_dir: PathBuf,
+    max_words: usize,
+    max_chars: Option<usize>,
+    extra: Option<std::collections::HashMap<String, String>>,
+    reference_audio: Option<String>,
+    pm: State<'_, Arc<PluginManager>>,
+    app: AppHandle,
+) -> Result<usize, String> {
+    let output_dir = resolve_output_path(&output_dir);
+    let _ = app.emit("generation-progress", format!("Loading engine {}...", engine_id));
+
+    let plugin = get_or_create_plugin(&engine_id, &pm)
+        .ok_or_else(|| format!("engine '{}' is not installed or model files missing", engine_id))?;
+
+    let _handle = plugin
+        .load_model(&engine_id)
+        .await
+        .map_err(|e| format!("load failed: {e:#}"))?;
+
+    let _ = app.emit("generation-progress", format!("Model loaded: {}", engine_id));
 
     let ffmpeg = merger::find_ffmpeg().map_err(|e| e.to_string())?;
     let epub = epub_path.clone();
     let out = output_dir.clone();
-    let voice_clone = voice.clone();
     let app_for_task = app.clone();
+    let extra_map = extra.unwrap_or_default();
 
     STOP_FLAG.store(false, Ordering::SeqCst);
 
-    let kokoro_any = plugin.as_any();
-    let kokoro_plugin = kokoro_any
-        .downcast_ref::<crate::plugins::kokoro::KokoroPlugin>()
-        .ok_or_else(|| "internal: kokoro plugin type mismatch".to_string())?;
+    let max_chars_resolved = max_chars.unwrap_or(800);
 
-    let voice_for_task = voice.unwrap_or_else(|| kokoro_plugin.voice.clone());
-    let kokoro_paths = kokoro_plugin.paths.clone();
+    // Qwen3-TTS path
+    let qwen_any = plugin.as_any();
+    if let Some(qwen_plugin) = qwen_any.downcast_ref::<crate::plugins::qwen3tts::QwenPlugin>() {
+        let variant_name = qwen_plugin.variant_name.clone();
+        let qwen_paths = qwen_plugin.paths.clone();
+        let voice_task = voice.clone();
+        let lang_task = language.clone();
+        let ref_audio_task = reference_audio.clone();
+        let extra_task = extra_map.clone();
 
-    let result = tokio::task::spawn_blocking(move || {
-        let k = crate::plugins::kokoro::KokoroPlugin::new(kokoro_paths, &voice_for_task);
-        let cb: Box<dyn FnMut(&str) + Send> = Box::new(move |msg: &str| {
-            let _ = app_for_task.emit("generation-progress", msg.to_string());
-        });
-        crate::plugins::kokoro::synthesize_book(&k, &epub, &out, max_words, &ffmpeg, Some(cb))
-    })
-    .await
-    .map_err(|e| format!("synthesis task panicked: {e}"))?;
+        let result = tokio::task::spawn_blocking(move || {
+            let q = crate::plugins::qwen3tts::QwenPlugin::new(qwen_paths, &variant_name);
+            let cb: Box<dyn FnMut(&str) + Send> = Box::new(move |msg: &str| {
+                let _ = app_for_task.emit("generation-progress", msg.to_string());
+            });
+            crate::plugins::qwen3tts::synthesize_book(
+                &q, &epub, &out, max_words, max_chars_resolved, &ffmpeg,
+                voice_task.as_deref(),
+                lang_task.as_deref(),
+                ref_audio_task.as_deref(),
+                &extra_task,
+                Some(cb),
+            )
+        })
+        .await
+        .map_err(|e| format!("synthesis task panicked: {e}"))?;
 
-    let _ = app.emit("generation-complete", ());
-    result.map_err(|e| format!("book synthesis failed: {e:#}"))
+        let _ = app.emit("generation-complete", ());
+        return result.map_err(|e| format!("book synthesis failed: {e:#}"));
+    }
+
+    Err(format!("engine '{}' synthesis not yet implemented", engine_id))
 }
 
-fn detect_hardware_stub() -> HardwareSummary {
+fn resolve_output_path(path: &std::path::Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        crate::config::paths::app_data_dir().join(path)
+    }
+}
+
+#[tauri::command]
+pub fn get_default_output_dir(kind: String) -> String {
+    match kind.as_str() {
+        "demo" => crate::config::paths::demo_output_dir(),
+        _ => crate::config::paths::output_base_dir(),
+    }
+    .to_string_lossy()
+    .to_string()
+}
+
+fn map_language_to_test_suffix(lang: Option<&str>) -> String {
+    let l = match lang {
+        Some(l) => l.trim(),
+        None => return "en".to_string(),
+    };
+    if l.is_empty() {
+        return "en".to_string();
+    }
+    let mapping: &[(&str, &str)] = &[
+        ("zh-cn", "cn"), ("zh-CN", "cn"), ("chinese", "cn"),
+        ("english", "en"), ("german", "de"), ("italian", "it"),
+        ("portuguese", "pt"), ("spanish", "es"), ("japanese", "ja"),
+        ("korean", "ko"), ("french", "fr"), ("russian", "ru"),
+        ("auto", "en"),
+        ("it", "it"), ("en", "en"), ("es", "es"), ("fr", "fr"),
+        ("de", "de"), ("pt", "pt"), ("pl", "pl"), ("ru", "ru"),
+        ("ja", "ja"), ("hu", "hu"), ("ko", "ko"), ("hi", "hi"),
+        ("ar", "ar"), ("nl", "nl"), ("cs", "cs"), ("tr", "tr"),
+    ];
+    let lower = l.to_lowercase();
+    for &(key, val) in mapping {
+        if lower == key.to_lowercase() {
+            return val.to_string();
+        }
+    }
+    if l.contains('-') {
+        let parts: Vec<&str> = l.splitn(2, '-').collect();
+        for &p in &parts {
+            for &(key, val) in mapping {
+                if p.eq_ignore_ascii_case(key) {
+                    return val.to_string();
+                }
+            }
+        }
+    }
+    if lower.len() >= 2 {
+        let prefix = &lower[..2];
+        let prefix_map: &[(&str, &str)] = &[
+            ("zh", "cn"), ("cn", "cn"), ("en", "en"), ("it", "it"),
+            ("es", "es"), ("fr", "fr"), ("de", "de"), ("pt", "pt"),
+            ("pl", "pl"), ("ru", "ru"), ("ja", "ja"), ("ko", "ko"),
+        ];
+        for &(key, val) in prefix_map {
+            if prefix == key {
+                return val.to_string();
+            }
+        }
+    }
+    "en".to_string()
+}
+
+fn find_test_files_dir() -> Option<PathBuf> {
+    let candidates = [
+        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("test_files"))),
+        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("..").join("test_files"))),
+        std::env::current_dir().ok().map(|d| d.join("test_files")),
+        std::env::current_dir().ok().map(|d| d.join("..").join("test_files")),
+    ];
+    for c in &candidates {
+        if let Some(ref p) = c {
+            if p.is_dir() {
+                return Some(p.clone());
+            }
+        }
+    }
+    None
+}
+
+#[tauri::command]
+pub fn get_test_epub(language: Option<String>) -> Result<PathBuf, String> {
+    let suffix = map_language_to_test_suffix(language.as_deref());
+    let dir = find_test_files_dir()
+        .ok_or_else(|| "test_files directory not found".to_string())?;
+
+    let primary = dir.join(format!("test_ebook_{}.epub", suffix));
+    if primary.exists() {
+        return Ok(primary);
+    }
+
+    let fallback = dir.join("test_ebook_en.epub");
+    if fallback.exists() {
+        return Ok(fallback);
+    }
+
+    Err(format!(
+        "No test EPUB found in {} for lang suffix '{}' or fallback 'en'",
+        dir.display(), suffix
+    ))
+}
+
+#[tauri::command]
+pub fn list_mp3s_in_dir(dir: String) -> Result<Vec<String>, String> {
+    let abs = std::path::Path::new(&dir)
+        .canonicalize()
+        .map_err(|e| format!("cannot resolve '{}': {}", dir, e))?;
+    if !abs.is_dir() {
+        return Err(format!("'{}' is not a directory", abs.display()));
+    }
+    let mut mp3s: Vec<String> = std::fs::read_dir(&abs)
+        .map_err(|e| format!("cannot read '{}': {}", abs.display(), e))?
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .map(|ext| ext.eq_ignore_ascii_case("mp3"))
+                .unwrap_or(false)
+        })
+        .map(|e| e.path().to_string_lossy().to_string())
+        .collect();
+    mp3s.sort();
+    Ok(mp3s)
+}
+
+fn detect_hardware_real() -> HardwareSummary {
+    let hw = crate::wizard::detect_hardware_blocking();
     HardwareSummary {
-        os: std::env::consts::OS.to_string(),
-        arch: std::env::consts::ARCH.to_string(),
-        gpus: vec![GpuInfo {
-            vendor: "NVIDIA".into(),
-            model: "GeForce RTX 3090".into(),
-            vram_bytes: 24 * 1024 * 1024 * 1024,
-            backend: "CUDA".into(),
-        }],
+        os: hw.os,
+        arch: hw.arch,
+        gpus: hw
+            .gpus
+            .into_iter()
+            .map(|g| GpuInfo {
+                vendor: g.vendor,
+                model: g.model,
+                vram_bytes: g.vram_bytes,
+                backend: g.backend,
+            })
+            .collect(),
     }
 }
 

@@ -1,3 +1,2 @@
 pub mod plugin;
-
-pub use plugin::Qwen3TTSPlugin;
+pub use plugin::{QwenPlugin, synthesize_book};

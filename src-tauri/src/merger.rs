@@ -66,6 +66,54 @@ pub fn merge_wavs_to_mp3(wavs: &[PathBuf], out_mp3: &Path, ffmpeg: &Path) -> Res
     Ok(())
 }
 
+/// Concatenate the given WAV files into a single WAV at `out_wav`,
+/// using the ffmpeg binary at `ffmpeg`. Used by the demo which outputs
+/// WAV (not MP3).
+pub fn merge_wavs_to_wav(wavs: &[PathBuf], out_wav: &Path, ffmpeg: &Path) -> Result<()> {
+    if wavs.is_empty() {
+        anyhow::bail!("cannot merge zero WAV files");
+    }
+
+    let list_path = out_wav
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .join("_concat_demo.txt");
+
+    let mut list_body = String::new();
+    for w in wavs {
+        let abs = std::fs::canonicalize(w)
+            .unwrap_or_else(|_| w.to_path_buf())
+            .to_string_lossy()
+            .replace('\\', "/");
+        list_body.push_str(&format!("file '{}'\n", abs.replace('\'', "'\\''")));
+    }
+    std::fs::write(&list_path, list_body)
+        .with_context(|| format!("failed to write concat list {}", list_path.display()))?;
+
+    let status = Command::new(ffmpeg)
+        .arg("-y")
+        .arg("-f")
+        .arg("concat")
+        .arg("-safe")
+        .arg("0")
+        .arg("-i")
+        .arg(&list_path)
+        .arg("-c")
+        .arg("copy")
+        .arg(out_wav)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .status()
+        .with_context(|| format!("failed to spawn ffmpeg at {}", ffmpeg.display()))?;
+
+    if !status.success() {
+        anyhow::bail!("ffmpeg exited with status {status}");
+    }
+
+    let _ = std::fs::remove_file(&list_path);
+    Ok(())
+}
+
 /// Locate the ffmpeg binary. Order of preference:
 /// 1. `FFMPEG` env var
 /// 2. `./ffmpeg/bin/ffmpeg` next to the project root

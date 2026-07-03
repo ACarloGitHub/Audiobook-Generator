@@ -1,95 +1,71 @@
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::config::models::{self, ModelAsset};
-use crate::wizard::download_to_file_async;
+use crate::wizard::{download_to_file_async, extract_zip, resources_dir};
 
-/// Files to fetch from `onnx-community/Kokoro-82M-v1.0-ONNX`.
-/// Each entry is `(remote_path_in_repo, local_path_in_dest_root)`.
-/// The HuggingFace repo stores the ONNX model under `onnx/` but the
-/// `kokoro-en` plugin expects it directly in `<dest>/models/`, so we
-/// remap the path. Voice packs already match.
-const KOKORO_HF_REPO: &str = "onnx-community/Kokoro-82M-v1.0-ONNX";
+/// Default quantization for downloads.
+const DEFAULT_QUANT: &str = "Q4_K_M";
 
-/// All Kokoro voice packs available on HuggingFace. The legacy Python
-/// config listed only 7; we download the full set so the user can pick
-/// any voice per language without a second download.
-const KOKORO_VOICE_FILES: &[(&str, &str)] = &[
-    // English (af_* / am_*)
-    ("voices/af.bin", "voices/af.bin"),
-    ("voices/af_alloy.bin", "voices/af_alloy.bin"),
-    ("voices/af_aoede.bin", "voices/af_aoede.bin"),
-    ("voices/af_bella.bin", "voices/af_bella.bin"),
-    ("voices/af_heart.bin", "voices/af_heart.bin"),
-    ("voices/af_jessica.bin", "voices/af_jessica.bin"),
-    ("voices/af_kore.bin", "voices/af_kore.bin"),
-    ("voices/af_nicole.bin", "voices/af_nicole.bin"),
-    ("voices/af_nova.bin", "voices/af_nova.bin"),
-    ("voices/af_river.bin", "voices/af_river.bin"),
-    ("voices/af_sarah.bin", "voices/af_sarah.bin"),
-    ("voices/af_sky.bin", "voices/af_sky.bin"),
-    ("voices/am_adam.bin", "voices/am_adam.bin"),
-    ("voices/am_echo.bin", "voices/am_echo.bin"),
-    ("voices/am_eric.bin", "voices/am_eric.bin"),
-    ("voices/am_fenrir.bin", "voices/am_fenrir.bin"),
-    ("voices/am_liam.bin", "voices/am_liam.bin"),
-    ("voices/am_michael.bin", "voices/am_michael.bin"),
-    ("voices/am_onyx.bin", "voices/am_onyx.bin"),
-    ("voices/am_puck.bin", "voices/am_puck.bin"),
-    ("voices/am_santa.bin", "voices/am_santa.bin"),
-    // British English (bf_* / bm_*)
-    ("voices/bf_alice.bin", "voices/bf_alice.bin"),
-    ("voices/bf_emma.bin", "voices/bf_emma.bin"),
-    ("voices/bf_isabella.bin", "voices/bf_isabella.bin"),
-    ("voices/bf_lily.bin", "voices/bf_lily.bin"),
-    ("voices/bm_daniel.bin", "voices/bm_daniel.bin"),
-    ("voices/bm_fable.bin", "voices/bm_fable.bin"),
-    ("voices/bm_george.bin", "voices/bm_george.bin"),
-    ("voices/bm_lewis.bin", "voices/bm_lewis.bin"),
-    // Spanish (ef_* / em_*)
-    ("voices/ef_dora.bin", "voices/ef_dora.bin"),
-    ("voices/em_alex.bin", "voices/em_alex.bin"),
-    ("voices/em_santa.bin", "voices/em_santa.bin"),
-    // French (ff_*)
-    ("voices/ff_siwis.bin", "voices/ff_siwis.bin"),
-    // Hindi (hf_* / hm_*)
-    ("voices/hf_alpha.bin", "voices/hf_alpha.bin"),
-    ("voices/hf_beta.bin", "voices/hf_beta.bin"),
-    ("voices/hm_omega.bin", "voices/hm_omega.bin"),
-    ("voices/hm_psi.bin", "voices/hm_psi.bin"),
-    // Italian (if_* / im_*)
-    ("voices/if_sara.bin", "voices/if_sara.bin"),
-    ("voices/im_nicola.bin", "voices/im_nicola.bin"),
-    // Japanese (jf_* / jm_*)
-    ("voices/jf_alpha.bin", "voices/jf_alpha.bin"),
-    ("voices/jf_gongitsune.bin", "voices/jf_gongitsune.bin"),
-    ("voices/jf_nezumi.bin", "voices/jf_nezumi.bin"),
-    ("voices/jf_tebukuro.bin", "voices/jf_tebukuro.bin"),
-    ("voices/jm_kumo.bin", "voices/jm_kumo.bin"),
-    // Portuguese (pf_* / pm_*)
-    ("voices/pf_dora.bin", "voices/pf_dora.bin"),
-    ("voices/pm_alex.bin", "voices/pm_alex.bin"),
-    ("voices/pm_santa.bin", "voices/pm_santa.bin"),
-    // Mandarin (zf_* / zm_*)
-    ("voices/zf_xiaobei.bin", "voices/zf_xiaobei.bin"),
-    ("voices/zf_xiaoni.bin", "voices/zf_xiaoni.bin"),
-    ("voices/zf_xiaoxiao.bin", "voices/zf_xiaoxiao.bin"),
-    ("voices/zf_xiaoyi.bin", "voices/zf_xiaoyi.bin"),
-    ("voices/zm_yunjian.bin", "voices/zm_yunjian.bin"),
-    ("voices/zm_yunxi.bin", "voices/zm_yunxi.bin"),
-    ("voices/zm_yunxia.bin", "voices/zm_yunxia.bin"),
-    ("voices/zm_yunyang.bin", "voices/zm_yunyang.bin"),
-];
+/// The engine registry JSON (verified download links + parameters).
+/// Loaded at compile time so it is always in sync with the binary.
+const ENGINE_REGISTRY: &str = include_str!("../engine_registry.json");
 
-/// All files Kokoro needs: the ONNX model (remapped from `onnx/` to
-/// `models/`) plus every voice pack above.
-fn kokoro_required_files() -> Vec<(&'static str, &'static str)> {
-    let mut v = Vec::with_capacity(KOKORO_VOICE_FILES.len() + 1);
-    v.push(("onnx/model_quantized.onnx", "models/model_quantized.onnx"));
-    v.extend_from_slice(KOKORO_VOICE_FILES);
-    v
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct EngineRegistry {
+    engines: std::collections::HashMap<String, EngineDef>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct EngineDef {
+    variants: Vec<VariantDef>,
+    shared_files: Vec<SharedFileDef>,
+    #[serde(flatten)]
+    _extra: std::collections::HashMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct VariantDef {
+    name: String,
+    gguf_repo: String,
+    files: Vec<FileDef>,
+    #[serde(flatten)]
+    _extra: std::collections::HashMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SharedFileDef {
+    name: String,
+    filename_template: String,
+    quants: std::collections::HashMap<String, QuantInfo>,
+    #[serde(flatten)]
+    _extra: std::collections::HashMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct FileDef {
+    name: String,
+    filename_template: String,
+    quants: std::collections::HashMap<String, QuantInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct QuantInfo {
+    size_mb: u32,
+    url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RuntimeDownload {
+    dest_dir: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RuntimeVariant {
+    url: String,
+    dest_dir: String,
+    size_mb: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -115,114 +91,292 @@ pub struct ModelListEntry {
     pub note: Option<String>,
 }
 
+/// Short filename for a talker GGUF in a given quantization.
+/// E.g. quant="Q4_K_M" → "talker-Q4_K_M.gguf"
+fn talker_filename(quant: &str) -> String {
+    format!("talker-{}.gguf", quant)
+}
+
+/// Short filename for the tokenizer GGUF in a given quantization.
+fn tokenizer_filename(quant: &str) -> String {
+    format!("tokenizer-{}.gguf", quant)
+}
+
+/// Directory where a specific variant's talker GGUF lives.
+fn variant_dir(app: &AppHandle, variant_name: &str) -> PathBuf {
+    app_models_root(app)
+        .join("qwen3tts")
+        .join(variant_name)
+}
+
+/// Directory where the shared tokenizer GGUF lives.
+fn tokenizer_dir(app: &AppHandle) -> PathBuf {
+    app_models_root(app)
+        .join("qwen3tts")
+        .join("tokenizer")
+}
+
+/// Check if the qwen-tts binary is installed in resources/qwentts/.
+pub fn is_runtime_installed(app: &AppHandle) -> bool {
+    if let Ok(res) = resources_dir(app) {
+        let exe_name = if cfg!(windows) {
+            "qwen-tts.exe"
+        } else {
+            "qwen-tts"
+        };
+        return res.join("qwentts").join(exe_name).exists();
+    }
+    false
+}
+
+/// Download and extract the qwen-tts binary if not already present.
+async fn ensure_runtime(app: &AppHandle) -> Result<(), String> {
+    if is_runtime_installed(app) {
+        return Ok(());
+    }
+
+    let registry: EngineRegistry = serde_json::from_str(ENGINE_REGISTRY)
+        .map_err(|e| format!("parse registry: {e}"))?;
+
+    let qwen = registry
+        .engines
+        .get("qwen3tts")
+        .ok_or_else(|| "qwen3tts not in registry".to_string())?;
+
+    // Find the right runtime download for this platform
+    let runtime_key = if cfg!(target_os = "windows") {
+        "windows_cuda"
+    } else if cfg!(target_os = "linux") {
+        "linux_cuda"
+    } else if cfg!(target_os = "macos") {
+        "macos_metal"
+    } else {
+        return Err("unsupported platform for qwen-tts runtime".into());
+    };
+
+    let runtime = qwen
+        ._extra
+        .get("runtime_download")
+        .and_then(|rd| rd.get(runtime_key))
+        .ok_or_else(|| format!("no runtime download configured for {}", runtime_key))?;
+
+    let url = runtime
+        .get("url")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "runtime URL missing".to_string())?;
+
+    let _ = app.emit("model-progress", serde_json::json!({
+        "model": "qwen-tts-runtime", "file": "qwen-tts-runtime.zip",
+        "phase": "downloading", "bytes": 0, "total": 0,
+        "speed_bps": 0, "eta_seconds": null
+    }));
+
+    let res = resources_dir(app)?;
+    let dest = res.join("qwentts");
+    std::fs::create_dir_all(&dest)
+        .map_err(|e| format!("create qwentts dir: {e}"))?;
+
+    let zip_dest = res.join("qwen-tts-runtime.zip");
+
+    // Handle file:// URLs (local testing) vs HTTP URLs
+    if url.starts_with("file://") {
+        let local_path = url.strip_prefix("file:///").unwrap_or(&url[7..]);
+        let local_path = if local_path.starts_with('/') {
+            local_path.to_string()
+        } else {
+            local_path.replace('/', "\\")
+        };
+        std::fs::copy(&local_path, &zip_dest)
+            .map_err(|e| format!("copy local runtime: {e}"))?;
+        let _ = app.emit("model-progress", serde_json::json!({
+            "model": "qwen-tts-runtime", "file": "qwen-tts-runtime.zip",
+            "phase": "done", "bytes": 0, "total": 0,
+            "speed_bps": 0, "eta_seconds": null
+        }));
+    } else {
+        download_to_file_async(
+            app,
+            "qwen-tts-runtime",
+            "qwen-tts-runtime.zip",
+            url,
+            &zip_dest,
+        )
+        .await?;
+    }
+
+    let _ = app.emit("model-progress", serde_json::json!({
+        "model": "qwen-tts-runtime", "file": "qwen-tts-runtime.zip",
+        "phase": "extracting", "bytes": 0, "total": 0,
+        "speed_bps": 0, "eta_seconds": null
+    }));
+
+    extract_zip(&zip_dest, &dest)?;
+    let _ = std::fs::remove_file(&zip_dest);
+
+    let _ = app.emit("model-progress", serde_json::json!({
+        "model": "qwen-tts-runtime", "file": "qwen-tts-runtime.zip",
+        "phase": "done", "bytes": 0, "total": 0,
+        "speed_bps": 0, "eta_seconds": null
+    }));
+
+    Ok(())
+}
+
 pub fn list_models(app: &AppHandle) -> Vec<ModelListEntry> {
-    let assets_map = models::model_assets();
+    let registry: EngineRegistry = serde_json::from_str(ENGINE_REGISTRY).unwrap_or_else(|e| {
+        eprintln!("[model_manager] failed to parse engine_registry.json: {e}");
+        EngineRegistry {
+            engines: std::collections::HashMap::new(),
+        }
+    });
+
     let mut out = Vec::new();
-    for (name, assets) in assets_map.iter() {
-        let Some(asset) = assets.first() else { continue; };
-        let dest_path = app_models_root(app).join(&asset.dest);
-        let essential_present = check_essential(asset, &dest_path);
-        let installed = dest_path.exists() && essential_present;
-        out.push(ModelListEntry {
-            name: name.to_string(),
-            engine_id: asset_to_engine_id(name),
-            format: asset_format(name),
-            license: asset_license(name),
-            size_mb: asset_size_mb(name),
-            installed,
-            essential_present,
-            dest: dest_path.to_string_lossy().to_string(),
-            supported: is_supported(name),
-            note: asset_note(name),
-        });
+    if let Some(qwen) = registry.engines.get("qwen3tts") {
+        for variant in &qwen.variants {
+            let vdir = variant_dir(app, &variant.name);
+            let tdir = tokenizer_dir(app);
+
+            let talker_name = talker_filename(DEFAULT_QUANT);
+            let tok_name = tokenizer_filename(DEFAULT_QUANT);
+
+            let essential_present =
+                vdir.join(&talker_name).exists() && tdir.join(&tok_name).exists();
+            let installed = essential_present;
+
+            let size_mb = variant
+                .files
+                .first()
+                .and_then(|f| f.quants.get(DEFAULT_QUANT))
+                .map(|q| q.size_mb)
+                .unwrap_or(0)
+                + qwen
+                    .shared_files
+                    .first()
+                    .and_then(|f| f.quants.get(DEFAULT_QUANT))
+                    .map(|q| q.size_mb)
+                    .unwrap_or(0);
+
+            out.push(ModelListEntry {
+                name: variant.name.clone(),
+                engine_id: "qwen3tts".into(),
+                format: "GGUF".into(),
+                license: "Apache 2.0".into(),
+                size_mb,
+                installed,
+                essential_present,
+                dest: vdir.to_string_lossy().to_string(),
+                supported: true,
+                note: None,
+            });
+        }
     }
     out
 }
 
 pub fn is_model_installed(name: &str, app: &AppHandle) -> bool {
-    let Some(asset) = model_asset(name) else { return false; };
-    let dest_path = app_models_root(app).join(&asset.dest);
-    check_essential(&asset, &dest_path)
+    list_models(app)
+        .iter()
+        .any(|m| m.name == name && m.installed)
 }
 
 pub fn remove_model(name: &str, app: &AppHandle) -> Result<(), String> {
-    let Some(asset) = model_asset(name) else {
-        return Err(format!("unknown model '{name}'"));
-    };
-    let dest_path = app_models_root(app).join(&asset.dest);
+    let dest_path = variant_dir(app, name);
     if dest_path.exists() {
         std::fs::remove_dir_all(&dest_path)
             .map_err(|e| format!("failed to remove {}: {e}", dest_path.display()))?;
     }
-    // Notify the frontend to refresh.
     let _ = app.emit("engine-status-changed", ());
     Ok(())
 }
 
-/// Download a model by name. Currently only Kokoro is supported;
-/// llama-server engines (Qwen3-TTS, VibeVoice, XTTSv2) return an
-/// explicit error since their plugins are stubs until phase 12-13.
 pub async fn download_model(
     name: &str,
     app: &AppHandle,
 ) -> Result<ModelDownloadResult, String> {
-    let asset = model_asset(name)
-        .ok_or_else(|| format!("unknown model '{name}'"))?;
+    let registry: EngineRegistry = serde_json::from_str(ENGINE_REGISTRY)
+        .map_err(|e| format!("parse registry: {e}"))?;
 
-    if !is_supported(name) {
-        return Err(format!(
-            "model '{name}' is not downloadable yet — its plugin is a stub. \
-             Use llama-server engines will be wired in phase 12-13."
-        ));
-    }
+    let qwen = registry
+        .engines
+        .get("qwen3tts")
+        .ok_or_else(|| "qwen3tts not in registry".to_string())?;
 
-    let dest_root = app_models_root(app).join(&asset.dest);
+    let variant = qwen
+        .variants
+        .iter()
+        .find(|v| v.name == name)
+        .ok_or_else(|| format!("variant '{}' not found in registry", name))?;
+
+    // Step 1: ensure the qwen-tts binary is installed
+    ensure_runtime(app).await?;
+
+    // Step 2: download model files
+    let dest_root = variant_dir(app, &variant.name);
     std::fs::create_dir_all(&dest_root)
         .map_err(|e| format!("create dest dir: {e}"))?;
 
-    let url_base = format!("https://huggingface.co/{}/resolve/main", asset.url.as_deref().unwrap_or(KOKORO_HF_REPO));
-    let required = kokoro_required_files();
-    let mut files: Vec<String> = Vec::with_capacity(required.len());
-
     let mut total_bytes: u64 = 0;
-    for (remote_path, local_path) in &required {
-        files.push(local_path.to_string());
-        let url = format!("{url_base}/{remote_path}");
-        let dest = dest_root.join(local_path);
-        if let Some(parent) = dest.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("create dir for {local_path}: {e}"))?;
+    let mut files: Vec<String> = Vec::new();
+
+    // Download talker GGUF
+    if let Some(talker_file) = variant.files.first() {
+        if let Some(quant) = talker_file.quants.get(DEFAULT_QUANT) {
+            let local_name = talker_filename(DEFAULT_QUANT);
+            let dest = dest_root.join(&local_name);
+            if dest.exists() {
+                let _ = app.emit("model-progress", serde_json::json!({
+                    "model": name, "file": local_name, "phase": "already_present",
+                    "bytes": 0, "total": 0, "speed_bps": 0, "eta_seconds": null
+                }));
+            } else {
+                download_to_file_async(
+                    app,
+                    &format!("{}:{}", name, local_name),
+                    &local_name,
+                    &quant.url,
+                    &dest,
+                )
+                .await?;
+            }
+            let size = std::fs::metadata(&dest)
+                .map(|m| m.len())
+                .unwrap_or(0);
+            total_bytes += size;
+            files.push(local_name);
         }
-        if dest.exists() {
-            let _ = app.emit("model-progress", serde_json::json!({
-                "model": name, "file": local_path, "phase": "already_present",
-                "bytes": 0, "total": 0, "speed_bps": 0, "eta_seconds": null
-            }));
-            continue;
-        }
-        download_to_file_async(&app, &format!("{name}:{local_path}"), local_path, &url, &dest).await?;
-        let size = std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
-        total_bytes += size;
     }
 
-    // Verify essential files are now present
-    if !check_essential(&asset, &dest_root) {
-        return Err(format!(
-            "download completed but essential files are missing in {}. \
-             Check network and retry.",
-            dest_root.display()
-        ));
+    // Download shared tokenizer
+    if let Some(tokenizer_file) = qwen.shared_files.first() {
+        if let Some(quant) = tokenizer_file.quants.get(DEFAULT_QUANT) {
+            let tdir = tokenizer_dir(app);
+            std::fs::create_dir_all(&tdir)
+                .map_err(|e| format!("create tokenizer dir: {e}"))?;
+            let local_name = tokenizer_filename(DEFAULT_QUANT);
+            let dest = tdir.join(&local_name);
+            if dest.exists() {
+                let _ = app.emit("model-progress", serde_json::json!({
+                    "model": name, "file": local_name, "phase": "already_present",
+                    "bytes": 0, "total": 0, "speed_bps": 0, "eta_seconds": null
+                }));
+            } else {
+                download_to_file_async(
+                    app,
+                    &format!("{}:tokenizer", name),
+                    &local_name,
+                    &quant.url,
+                    &dest,
+                )
+                .await?;
+            }
+            let size = std::fs::metadata(&dest)
+                .map(|m| m.len())
+                .unwrap_or(0);
+            total_bytes += size;
+            files.push(local_name);
+        }
     }
 
-    let _ = app.emit("model-progress", serde_json::json!({
-        "model": name, "file": "(done)", "phase": "done",
-        "bytes": total_bytes, "total": total_bytes, "speed_bps": 0, "eta_seconds": null
-    }));
-
-    // Notify the frontend so it can refresh engine_status + model_list
-    // without requiring a restart. The Arc<PluginManager> in app state
-    // is not refreshed here; the next engine_status call rescans disk
-    // and re-registers the Kokoro plugin automatically.
     let _ = app.emit("engine-status-changed", ());
 
     Ok(ModelDownloadResult {
@@ -239,77 +393,4 @@ fn app_models_root(app: &AppHandle) -> PathBuf {
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
         .join("models")
-}
-
-fn model_asset(name: &str) -> Option<ModelAsset> {
-    models::model_assets()
-        .get(name)
-        .and_then(|v| v.first())
-        .cloned()
-}
-
-fn check_essential(asset: &ModelAsset, dest_path: &Path) -> bool {
-    if !dest_path.exists() {
-        return false;
-    }
-    if let Some(essential) = &asset.essential_files {
-        essential.iter().all(|f| dest_path.join(f).exists())
-    } else {
-        dest_path.exists()
-    }
-}
-
-fn asset_to_engine_id(name: &str) -> String {
-    match name {
-        "Kokoro" => "kokoro".into(),
-        n if n.starts_with("Qwen3-TTS") => "qwen3tts".into(),
-        n if n.starts_with("VibeVoice") => "vibevoice".into(),
-        "XTTSv2" => "xttsv2".into(),
-        _ => name.to_lowercase(),
-    }
-}
-
-fn asset_format(name: &str) -> String {
-    if name == "Kokoro" {
-        "ONNX".into()
-    } else {
-        "Safetensors".into()
-    }
-}
-
-fn asset_license(name: &str) -> String {
-    match name {
-        "Kokoro" => "Apache 2.0".into(),
-        n if n.starts_with("Qwen3-TTS") => "Apache 2.0".into(),
-        n if n.starts_with("VibeVoice") => "MIT".into(),
-        "XTTSv2" => "CPML (non-commercial)".into(),
-        _ => "Unknown".into(),
-    }
-}
-
-fn asset_size_mb(name: &str) -> u32 {
-    match name {
-        "Kokoro" => 120,
-        n if n.starts_with("Qwen3-TTS-0.6B") => 1300,
-        n if n.starts_with("Qwen3-TTS-1.7B") => 3600,
-        n if n.starts_with("VibeVoice-1.5B") => 3100,
-        n if n.starts_with("VibeVoice-7B") => 14500,
-        n if n.starts_with("VibeVoice-Realtime") => 1100,
-        "XTTSv2" => 2100,
-        _ => 1000,
-    }
-}
-
-fn is_supported(name: &str) -> bool {
-    name == "Kokoro"
-}
-
-fn asset_note(name: &str) -> Option<String> {
-    if is_supported(name) {
-        None
-    } else {
-        Some(format!(
-            "'{name}' runs via llama-server and its plugin is a stub until phase 12-13."
-        ))
-    }
 }

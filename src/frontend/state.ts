@@ -11,6 +11,8 @@ export interface AppState {
   chunkMinWords: number;
   chunkMaxWords: number;
   chunkMaxChars: number;
+  chunkMaxCharsByLang: Record<string, number>;
+  speed: number;
   referenceWavPath: string | null;
   referenceTranscript: string;
   epubPath: string | null;
@@ -18,19 +20,27 @@ export interface AppState {
   deleteIntermediateChunks: boolean;
   selectedChapters: Set<string>;
   demoOutputPath: string | null;
+  testOutputPath: string | null;
+  generateOutputPath: string | null;
+  engineVoices: import("./types").VoiceDescriptor[];
+  engineSupportedLanguages: string[];
+  engineVoiceCloning: boolean;
+  qwenInstruct: string;
 }
 
 export const state: AppState = {
   currentPanel: "generate",
-  selectedEngineId: "kokoro",
-  selectedLanguage: "it",
-  selectedVoiceId: "if_sara",
+  selectedEngineId: "Qwen3-TTS-12Hz-0.6B-CustomVoice",
+  selectedLanguage: "Italian",
+  selectedVoiceId: "Serena",
   selectedSeparator: ".",
   replaceGuillemets: false,
   chunkStrategy: "Character Limit",
   chunkMinWords: 100,
   chunkMaxWords: 500,
-  chunkMaxChars: 2300,
+  chunkMaxChars: 800,
+  chunkMaxCharsByLang: {},
+  speed: 1.0,
   referenceWavPath: null,
   referenceTranscript: "",
   epubPath: null,
@@ -38,6 +48,12 @@ export const state: AppState = {
   deleteIntermediateChunks: false,
   selectedChapters: new Set(),
   demoOutputPath: null,
+  testOutputPath: null,
+  generateOutputPath: null,
+  engineVoices: [],
+  engineSupportedLanguages: [],
+  engineVoiceCloning: false,
+  qwenInstruct: "",
 };
 
 export const SEPARATOR_OPTIONS = [
