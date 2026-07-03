@@ -26,7 +26,9 @@ export function renderConfiguration(status: EngineStatus): string {
         .join("");
 
     const isQwen = state.selectedEngineId.startsWith("Qwen3-TTS");
+    const isOute = state.selectedEngineId.startsWith("OuteTTS");
     const qwenControls = isQwen ? renderQwenControls() : "";
+    const outeControls = isOute ? renderOuteControls() : "";
 
     return `
     ${renderEngineStrip(status)}
@@ -40,6 +42,7 @@ export function renderConfiguration(status: EngineStatus): string {
       </p>
 
       ${qwenControls}
+      ${outeControls}
     </div>
   `;
 }
@@ -137,6 +140,51 @@ function renderQwenControls(): string {
     `;
 }
 
+function renderOuteControls(): string {
+    const langOptions = ["Auto", "English", "Chinese", "Dutch", "French", "Georgian", "German", "Hungarian", "Italian", "Japanese", "Korean", "Latvian", "Polish", "Russian", "Spanish"]
+        .map((l) => `<option value="${l}" ${state.selectedLanguage === l ? "selected" : ""}>${l}</option>`)
+        .join("");
+
+    return `
+      <p class="field-help">Mode: <strong>Voice Clone</strong></p>
+      <div class="field-row">
+        <label class="field-label">Reference Audio (~10s, .wav mono)</label>
+        <button class="btn-secondary" id="pick-reference-wav-btn">${state.referenceWavPath ? escapeHtml(state.referenceWavPath) : "Click to select a WAV file"}</button>
+      </div>
+      <div class="field-row">
+        <label class="field-label">Language</label>
+        <select class="select" id="qwen-language-select">${langOptions}</select>
+      </div>
+      <details class="accordion">
+        <summary>Advanced Settings</summary>
+        <div class="field-row">
+          <label class="field-label">Temperature</label>
+          <input type="number" class="num-input" id="oute-temperature" min="0" max="2" step="0.05" value="0.4" />
+        </div>
+        <div class="field-row">
+          <label class="field-label">Top-K</label>
+          <input type="number" class="num-input" id="oute-top-k" min="1" max="100" step="1" value="40" />
+        </div>
+        <div class="field-row">
+          <label class="field-label">Top-P</label>
+          <input type="number" class="num-input" id="oute-top-p" min="0" max="1" step="0.05" value="0.9" />
+        </div>
+        <div class="field-row">
+          <label class="field-label">Min-P</label>
+          <input type="number" class="num-input" id="oute-min-p" min="0" max="1" step="0.01" value="0.05" />
+        </div>
+        <div class="field-row">
+          <label class="field-label">Repetition Penalty</label>
+          <input type="number" class="num-input" id="oute-rep-pen" min="1" max="2" step="0.01" value="1.1" />
+        </div>
+        <div class="field-row">
+          <label class="field-label">Max Tokens</label>
+          <input type="number" class="num-input" id="oute-max-tokens" min="256" max="16384" step="256" value="8192" />
+        </div>
+      </details>
+    `;
+}
+
 export async function applyEngineDefaults(engineId: string): Promise<void> {
     try {
         const d = await invoke<EngineDefaults>("engine_defaults", { engineId });
@@ -221,7 +269,8 @@ export function attachConfigurationListeners(render: () => void): void {
         });
     }
 
-    const advIds = ["qwen-temp", "qwen-top-k", "qwen-top-p", "qwen-rep-pen", "qwen-max-new", "qwen-seed"];
+    const advIds = ["qwen-temp", "qwen-top-k", "qwen-top-p", "qwen-rep-pen", "qwen-max-new", "qwen-seed",
+        "oute-temperature", "oute-top-k", "oute-top-p", "oute-min-p", "oute-rep-pen", "oute-max-tokens"];
     for (const id of advIds) {
         const el = document.getElementById(id) as HTMLInputElement | null;
         if (el) {

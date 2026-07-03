@@ -96,6 +96,20 @@ export function attachDemoListeners(): void {
       const seedEl = document.getElementById("qwen-seed") as HTMLInputElement | null;
       if (seedEl && seedEl.value) extra["seed"] = seedEl.value;
 
+      // OuteTTS params (different param names than Qwen)
+      const outeTemp = document.getElementById("oute-temperature") as HTMLInputElement | null;
+      if (outeTemp && outeTemp.value) extra["temperature"] = outeTemp.value;
+      const outeTopK = document.getElementById("oute-top-k") as HTMLInputElement | null;
+      if (outeTopK && outeTopK.value) extra["top_k"] = outeTopK.value;
+      const outeTopP = document.getElementById("oute-top-p") as HTMLInputElement | null;
+      if (outeTopP && outeTopP.value) extra["top_p"] = outeTopP.value;
+      const outeMinP = document.getElementById("oute-min-p") as HTMLInputElement | null;
+      if (outeMinP && outeMinP.value) extra["min_p"] = outeMinP.value;
+      const outeRepPen = document.getElementById("oute-rep-pen") as HTMLInputElement | null;
+      if (outeRepPen && outeRepPen.value) extra["repetition_penalty"] = outeRepPen.value;
+      const outeMaxTokens = document.getElementById("oute-max-tokens") as HTMLInputElement | null;
+      if (outeMaxTokens && outeMaxTokens.value) extra["max_tokens"] = outeMaxTokens.value;
+
       try {
         const resultPath = await invoke<string>("synthesize_demo", {
           engineId: state.selectedEngineId,
@@ -191,6 +205,19 @@ export function attachDemoListeners(): void {
         if (maxNewEl && maxNewEl.value) extra["max_new"] = maxNewEl.value;
         const seedEl = document.getElementById("qwen-seed") as HTMLInputElement | null;
         if (seedEl && seedEl.value) extra["seed"] = seedEl.value;
+
+        const outeTemp = document.getElementById("oute-temperature") as HTMLInputElement | null;
+        if (outeTemp && outeTemp.value) extra["temperature"] = outeTemp.value;
+        const outeTopK = document.getElementById("oute-top-k") as HTMLInputElement | null;
+        if (outeTopK && outeTopK.value) extra["top_k"] = outeTopK.value;
+        const outeTopP = document.getElementById("oute-top-p") as HTMLInputElement | null;
+        if (outeTopP && outeTopP.value) extra["top_p"] = outeTopP.value;
+        const outeMinP = document.getElementById("oute-min-p") as HTMLInputElement | null;
+        if (outeMinP && outeMinP.value) extra["min_p"] = outeMinP.value;
+        const outeRepPen = document.getElementById("oute-rep-pen") as HTMLInputElement | null;
+        if (outeRepPen && outeRepPen.value) extra["repetition_penalty"] = outeRepPen.value;
+        const outeMaxTokens = document.getElementById("oute-max-tokens") as HTMLInputElement | null;
+        if (outeMaxTokens && outeMaxTokens.value) extra["max_tokens"] = outeMaxTokens.value;
 
         const maxCharsForLang =
           state.chunkMaxCharsByLang[state.selectedLanguage] ?? state.chunkMaxChars;
