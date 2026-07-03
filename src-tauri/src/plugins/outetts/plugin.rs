@@ -266,10 +266,8 @@ impl OuteTTSPlugin {
             let chunk_len = end - start;
 
             let mut flat = Vec::with_capacity(2 * chunk_len);
-            for i in 0..chunk_len {
-                flat.push(c1[start + i]);
-                flat.push(c2[start + i]);
-            }
+            flat.extend_from_slice(&c1[start..end]);
+            flat.extend_from_slice(&c2[start..end]);
 
             let input_tensor = Tensor::from_array(([1, 2, chunk_len], flat))?;
             let outputs = session.run(ort::inputs![input_tensor])?;
