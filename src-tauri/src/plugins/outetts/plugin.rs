@@ -138,11 +138,21 @@ impl OuteTTSPlugin {
 
     fn wait_for_server(timeout: Duration) -> bool {
         let start = Instant::now();
-        let addr = format!("127.0.0.1:{}", OUTE_SERVER_PORT);
+        let url = format!("http://127.0.0.1:{}/health", OUTE_SERVER_PORT);
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_global(Some(Duration::from_secs(5)))
+            .build()
+            .into();
         while start.elapsed() < timeout {
             std::thread::sleep(Duration::from_millis(500));
-            if std::net::TcpStream::connect(&addr).is_ok() {
-                return true;
+            if let Ok(resp) = agent.get(&url).call() {
+                if resp.status().is_success() {
+                    if let Ok(text) = resp.into_body().read_to_string() {
+                        if text.contains("\"ok\"") {
+                            return true;
+                        }
+                    }
+                }
             }
         }
         false
