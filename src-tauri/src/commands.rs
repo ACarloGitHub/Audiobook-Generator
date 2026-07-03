@@ -229,12 +229,19 @@ fn get_or_create_plugin(
     if let Some(p) = pm.get_plugin(engine_id) {
         return Some(p);
     }
-    // Try to create a QwenPlugin on-the-fly
     let qwen_paths = plugin_manager::QwenPaths::from_app_data(pm.app_data_dir());
-    let plugin = crate::plugins::qwen3tts::QwenPlugin::new(qwen_paths, engine_id);
-    if plugin.is_installed() {
-        eprintln!("[commands] creating plugin on-the-fly for {}", engine_id);
-        return Some(Arc::new(plugin));
+    let qwen_plugin = crate::plugins::qwen3tts::QwenPlugin::new(qwen_paths, engine_id);
+    if qwen_plugin.is_installed() {
+        eprintln!("[commands] creating qwen plugin on-the-fly for {}", engine_id);
+        return Some(Arc::new(qwen_plugin));
+    }
+    if engine_id.starts_with("OuteTTS") {
+        let oute_dir = pm.app_data_dir().join("models").join("outetts");
+        let oute_plugin = crate::plugins::outetts::OuteTTSPlugin::new(oute_dir, engine_id);
+        if oute_plugin.is_installed() {
+            eprintln!("[commands] creating outetts plugin on-the-fly for {}", engine_id);
+            return Some(Arc::new(oute_plugin));
+        }
     }
     None
 }
@@ -368,6 +375,31 @@ pub async fn start_generation(
                 voice_task.as_deref(),
                 lang_task.as_deref(),
                 ref_audio_task.as_deref(),
+                &extra_task,
+                Some(cb),
+            )
+        })
+        .await
+        .map_err(|e| format!("synthesis task panicked: {e}"))?;
+
+        let _ = app.emit("generation-complete", ());
+        return result.map_err(|e| format!("book synthesis failed: {e:#}"));
+    }
+
+    // OuteTTS path
+    let oute_any = plugin.as_any();
+    if let Some(oute_plugin) = oute_any.downcast_ref::<crate::plugins::outetts::OuteTTSPlugin>() {
+        let models_dir = oute_plugin.models_dir.clone();
+        let variant_name = oute_plugin.variant_name.clone();
+        let extra_task = extra_map.clone();
+
+        let result = tokio::task::spawn_blocking(move || {
+            let p = crate::plugins::outetts::OuteTTSPlugin::new(models_dir, &variant_name);
+            let cb: Box<dyn FnMut(&str) + Send> = Box::new(move |msg: &str| {
+                let _ = app_for_task.emit("generation-progress", msg.to_string());
+            });
+            crate::plugins::outetts::synthesize_book(
+                &p, &epub, &out, max_words, max_chars_resolved, &ffmpeg,
                 &extra_task,
                 Some(cb),
             )

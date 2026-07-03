@@ -107,7 +107,9 @@ dependencies = [
  "futures",
  "hound",
  "kokoro-en",
+ "ndarray 0.16.1",
  "num_cpus",
+ "ort",
  "quick-xml 0.36.2",
  "regex",
  "reqwest 0.12.28",
@@ -2012,7 +2014,7 @@ dependencies = [
  "futures",
  "log",
  "misaki-rs",
- "ndarray",
+ "ndarray 0.17.2",
  "ort",
  "pin-project",
  "regex",
@@ -2268,6 +2270,21 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "tempfile",
+]
+
+[[package]]
+name = "ndarray"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "882ed72dce9365842bf196bdeedf5055305f11fc8c03dee7bb0194a6cad34841"
+dependencies = [
+ "matrixmultiply",
+ "num-complex",
+ "num-integer",
+ "num-traits",
+ "portable-atomic",
+ "portable-atomic-util",
+ "rawpointer",
 ]
 
 [[package]]
@@ -2673,7 +2690,7 @@ version = "2.0.0-rc.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7de3af33d24a745ffb8fab904b13478438d1cd52868e6f17735ef6e1f8bf133"
 dependencies = [
- "ndarray",
+ "ndarray 0.17.2",
  "ort-sys",
  "smallvec",
  "tracing",
@@ -3264,6 +3281,7 @@ dependencies = [
  "cookie",
  "cookie_store",
  "encoding_rs",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "h2",

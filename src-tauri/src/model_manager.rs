@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
@@ -26,6 +26,51 @@ fn parse_qwen_engine() -> Result<EngineDef, String> {
         .ok_or_else(|| "qwen3tts not found in engine_registry.json".to_string())?;
     serde_json::from_value(qwen_val.clone())
         .map_err(|e| format!("parse qwen3tts engine definition: {e}"))
+}
+
+/// Parse the outetts engine from the registry JSON.
+/// OuteTTS has a different shared_files structure (DAC ONNX, not GGUF quants).
+fn parse_oute_engine() -> Result<OuteEngineDef, String> {
+    let raw: serde_json::Value = serde_json::from_str(ENGINE_REGISTRY)
+        .map_err(|e| format!("parse engine_registry.json: {e}"))?;
+    let oute_val = raw
+        .get("engines")
+        .and_then(|e| e.get("outetts"))
+        .ok_or_else(|| "outetts not found in engine_registry.json".to_string())?;
+    serde_json::from_value(oute_val.clone())
+        .map_err(|e| format!("parse outetts engine definition: {e}"))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct OuteEngineDef {
+    variants: Vec<OuteVariantDef>,
+    shared_files: Vec<OuteSharedFileDef>,
+    #[serde(flatten)]
+    _extra: std::collections::HashMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct OuteVariantDef {
+    name: String,
+    files: Vec<FileDef>,
+    #[serde(flatten)]
+    _extra: std::collections::HashMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct OuteSharedFileDef {
+    name: String,
+    files: Vec<OuteNamedFile>,
+    #[serde(flatten)]
+    _extra: std::collections::HashMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct OuteNamedFile {
+    name: String,
+    filename: String,
+    url: String,
+    size_mb: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -125,6 +170,20 @@ fn tokenizer_dir(app: &AppHandle) -> PathBuf {
     app_models_root(app)
         .join("qwen3tts")
         .join("tokenizer")
+}
+
+/// Directory where an OuteTTS variant's backbone GGUF lives.
+fn oute_variant_dir(app: &AppHandle, variant_name: &str) -> PathBuf {
+    app_models_root(app)
+        .join("outetts")
+        .join(variant_name)
+}
+
+/// Directory where the shared DAC ONNX decoder lives.
+fn oute_dac_dir(app: &AppHandle) -> PathBuf {
+    app_models_root(app)
+        .join("outetts")
+        .join("dac")
 }
 
 /// Check if the qwen-tts binary is installed in resources/qwentts/.
@@ -275,6 +334,46 @@ pub fn list_models(app: &AppHandle) -> Vec<ModelListEntry> {
             note: None,
         });
     }
+
+    if let Ok(oute) = parse_oute_engine() {
+        for variant in &oute.variants {
+            let vdir = oute_variant_dir(app, &variant.name);
+            let ddir = oute_dac_dir(app);
+
+            let backbone_name = format!("backbone-{}.gguf", DEFAULT_QUANT);
+            let dac_name = "decoder.onnx";
+
+            let essential_present =
+                vdir.join(&backbone_name).exists() && ddir.join(dac_name).exists();
+
+            let backbone_size = variant
+                .files
+                .first()
+                .and_then(|f| f.quants.get(DEFAULT_QUANT))
+                .map(|q| q.size_mb)
+                .unwrap_or(0);
+            let dac_size = oute
+                .shared_files
+                .first()
+                .and_then(|sf| sf.files.first())
+                .map(|f| f.size_mb)
+                .unwrap_or(0);
+
+            out.push(ModelListEntry {
+                name: variant.name.clone(),
+                engine_id: "outetts".into(),
+                format: "GGUF + ONNX".into(),
+                license: "Apache 2.0".into(),
+                size_mb: backbone_size + dac_size,
+                installed: essential_present,
+                essential_present,
+                dest: vdir.to_string_lossy().to_string(),
+                supported: true,
+                note: None,
+            });
+        }
+    }
+
     out
 }
 
@@ -290,6 +389,11 @@ pub fn remove_model(name: &str, app: &AppHandle) -> Result<(), String> {
         std::fs::remove_dir_all(&dest_path)
             .map_err(|e| format!("failed to remove {}: {e}", dest_path.display()))?;
     }
+    let oute_path = oute_variant_dir(app, name);
+    if oute_path.exists() {
+        std::fs::remove_dir_all(&oute_path)
+            .map_err(|e| format!("failed to remove {}: {e}", oute_path.display()))?;
+    }
     let _ = app.emit("engine-status-changed", ());
     Ok(())
 }
@@ -298,6 +402,12 @@ pub async fn download_model(
     name: &str,
     app: &AppHandle,
 ) -> Result<ModelDownloadResult, String> {
+    if let Ok(oute) = parse_oute_engine() {
+        if oute.variants.iter().any(|v| v.name == name) {
+            return download_outetts_model(name, &oute, app).await;
+        }
+    }
+
     let qwen = parse_qwen_engine()?;
 
     let variant = qwen
@@ -373,6 +483,94 @@ pub async fn download_model(
                 .unwrap_or(0);
             total_bytes += size;
             files.push(local_name);
+        }
+    }
+
+    let _ = app.emit("engine-status-changed", ());
+
+    Ok(ModelDownloadResult {
+        model_name: name.to_string(),
+        installed: true,
+        total_bytes,
+        files,
+        path: dest_root.to_string_lossy().to_string(),
+    })
+}
+
+/// Download backbone GGUF + DAC ONNX for an OuteTTS variant.
+async fn download_outetts_model(
+    name: &str,
+    oute: &OuteEngineDef,
+    app: &AppHandle,
+) -> Result<ModelDownloadResult, String> {
+    let variant = oute
+        .variants
+        .iter()
+        .find(|v| v.name == name)
+        .ok_or_else(|| format!("variant '{}' not found in outetts registry", name))?;
+
+    let dest_root = oute_variant_dir(app, &variant.name);
+    std::fs::create_dir_all(&dest_root)
+        .map_err(|e| format!("create dest dir: {e}"))?;
+
+    let dac_dest = oute_dac_dir(app);
+    std::fs::create_dir_all(&dac_dest)
+        .map_err(|e| format!("create dac dir: {e}"))?;
+
+    let mut total_bytes: u64 = 0;
+    let mut files: Vec<String> = Vec::new();
+
+    if let Some(backbone_file) = variant.files.first() {
+        if let Some(quant) = backbone_file.quants.get(DEFAULT_QUANT) {
+            let local_name = format!("backbone-{}.gguf", DEFAULT_QUANT);
+            let dest = dest_root.join(&local_name);
+            if dest.exists() {
+                let _ = app.emit("model-progress", serde_json::json!({
+                    "model": name, "file": local_name, "phase": "already_present",
+                    "bytes": 0, "total": 0, "speed_bps": 0, "eta_seconds": null
+                }));
+            } else {
+                download_to_file_async(
+                    app,
+                    &format!("{}:{}", name, local_name),
+                    &local_name,
+                    &quant.url,
+                    &dest,
+                )
+                .await?;
+            }
+            let size = std::fs::metadata(&dest)
+                .map(|m| m.len())
+                .unwrap_or(0);
+            total_bytes += size;
+            files.push(local_name);
+        }
+    }
+
+    if let Some(dac_shared) = oute.shared_files.first() {
+        if let Some(dac_file) = dac_shared.files.first() {
+            let local_name = &dac_file.filename;
+            let dest = dac_dest.join(local_name);
+            if dest.exists() {
+                let _ = app.emit("model-progress", serde_json::json!({
+                    "model": name, "file": local_name, "phase": "already_present",
+                    "bytes": 0, "total": 0, "speed_bps": 0, "eta_seconds": null
+                }));
+            } else {
+                download_to_file_async(
+                    app,
+                    &format!("{}:{}", name, local_name),
+                    local_name,
+                    &dac_file.url,
+                    &dest,
+                )
+                .await?;
+            }
+            let size = std::fs::metadata(&dest)
+                .map(|m| m.len())
+                .unwrap_or(0);
+            total_bytes += size;
+            files.push(local_name.clone());
         }
     }
 

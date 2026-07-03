@@ -39,8 +39,7 @@
     "type": "external_process",
     "engine_id": "outetts",
     "description": "OuteTTS 0.6B — multilingual voice cloning via stock llama-server + DAC codec ONNX",
-    "license": "Apache-2.0",
-    "planned_status": "ready_for_integration"
+    "license": "Apache-2.0"
   },
   {
     "name": "Chatterbox-Multilingual-T3",

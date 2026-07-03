@@ -98,6 +98,25 @@ impl PluginManager {
                 }
             }
         }
+
+        // OuteTTS (llama-server backbone + DAC ONNX decoder)
+        let oute_models_dir = self.app_data_dir.join("models").join("outetts");
+        for variant in &self.registry {
+            if variant.engine_id == "outetts" {
+                let plugin = crate::plugins::outetts::OuteTTSPlugin::new(
+                    oute_models_dir.clone(),
+                    &variant.name,
+                );
+                if plugin.is_installed() {
+                    eprintln!(
+                        "[PluginManager] registering {} (model files present)",
+                        variant.name
+                    );
+                    self.plugins
+                        .insert(variant.name.clone(), Arc::new(plugin));
+                }
+            }
+        }
     }
 
     pub fn list_available_models(&self) -> Vec<String> {
@@ -125,8 +144,10 @@ impl PluginManager {
             .join("tokenizer-Q4_K_M.gguf");
 
         for entry in &self.registry {
-            // Check disk for model files, not just the in-memory plugins map.
-            // This ensures the UI reflects downloads without an app restart.
+            if entry.engine_id != "qwen3tts" {
+                continue;
+            }
+
             let variant_dir = models_base.join(&entry.name);
             let talker_exists = ["talker-Q4_K_M.gguf", "talker-Q8_0.gguf", "talker-BF16.gguf"]
                 .iter()
@@ -174,6 +195,38 @@ impl PluginManager {
             let _ = mode_label;
         }
 
+        for entry in &self.registry {
+            if entry.engine_id != "outetts" {
+                continue;
+            }
+
+            let oute_base = self.app_data_dir.join("models").join("outetts");
+            let variant_dir = oute_base.join(&entry.name);
+            let backbone_exists = ["backbone-Q4_K_M.gguf", "backbone-Q8_0.gguf"]
+                .iter()
+                .any(|f| variant_dir.join(f).exists());
+            let dac_exists = oute_base.join("dac").join("decoder.onnx").exists();
+            let installed = backbone_exists && dac_exists;
+
+            out.push(EngineInfo {
+                id: entry.name.clone(),
+                display_name: "OuteTTS 0.6B".into(),
+                format: "GGUF + ONNX".into(),
+                voice_cloning: true,
+                hardware: vec!["CPU".into(), "CUDA".into(), "Vulkan".into()],
+                license: "Apache 2.0".into(),
+                languages: vec![
+                    "Auto".into(), "English".into(), "Chinese".into(), "Dutch".into(),
+                    "French".into(), "German".into(), "Hungarian".into(), "Italian".into(),
+                    "Japanese".into(), "Korean".into(), "Latvian".into(), "Polish".into(),
+                    "Russian".into(), "Spanish".into(),
+                ],
+                installed,
+                size_mb: 402 + 100,
+                voices: Vec::new(),
+            });
+        }
+
         out
     }
 
@@ -185,7 +238,28 @@ impl PluginManager {
 pub fn defaults_for(engine_id: &str) -> EngineDefaults {
     let configs = models::tts_model_config();
 
-    // Find the config for this engine variant name
+    if engine_id.starts_with("OuteTTS") {
+        return EngineDefaults {
+            engine_id: engine_id.into(),
+            chunk_strategy: "Character Limit".into(),
+            chunk_min_words: None,
+            chunk_max_words: None,
+            chunk_max_chars: 500,
+            chunk_max_chars_by_lang: HashMap::new(),
+            separator: ".".into(),
+            replace_guillemets: false,
+            voice_cloning: true,
+            needs_reference_transcript: false,
+            supported_languages: vec![
+                "Auto".into(), "English".into(), "Chinese".into(), "Dutch".into(),
+                "French".into(), "German".into(), "Hungarian".into(), "Italian".into(),
+                "Japanese".into(), "Korean".into(), "Latvian".into(), "Polish".into(),
+                "Russian".into(), "Spanish".into(),
+            ],
+            voices: Vec::new(),
+        };
+    }
+
     let config = configs.get(engine_id);
 
     let chunk_max_chars = config
