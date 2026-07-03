@@ -272,8 +272,8 @@
             {
               "name": "dac_decoder",
               "filename": "decoder.onnx",
-              "url": "https://huggingface.co/OuteAI/DAC-speech-v1.0-ONNX/resolve/main/decoder.onnx",
-              "size_mb": 100
+              "url": "https://huggingface.co/OuteAI/DAC-speech-v1.0-ONNX/resolve/main/onnx/decoder_model.onnx",
+              "size_mb": 210
             }
           ]
         }
