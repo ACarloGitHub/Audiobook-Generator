@@ -50,6 +50,7 @@ tar = "0.4"
 # them on PATH (which we prepend in the engine's load()).
 ort = { version = "2.0.0-rc.12" }
 ndarray = "0.16"
+ureq = "3"
 
 [profile.release]
 panic = "abort"

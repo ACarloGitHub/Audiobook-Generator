@@ -134,13 +134,11 @@ impl OuteTTSPlugin {
 
     fn wait_for_server(timeout: Duration) -> bool {
         let start = Instant::now();
-        let url = format!("http://127.0.0.1:{}/health", OUTE_SERVER_PORT);
+        let addr = format!("127.0.0.1:{}", OUTE_SERVER_PORT);
         while start.elapsed() < timeout {
             std::thread::sleep(Duration::from_millis(500));
-            if let Ok(resp) = reqwest::blocking::get(&url) {
-                if resp.status().is_success() {
-                    return true;
-                }
+            if std::net::TcpStream::connect(&addr).is_ok() {
+                return true;
             }
         }
         false
@@ -181,24 +179,29 @@ impl OuteTTSPlugin {
             "stream": false,
         });
 
-        let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(300))
-            .build()?;
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .timeout_global(Some(Duration::from_secs(300)))
+            .build()
+            .into();
 
-        let resp = client
+        let body_str = serde_json::to_string(&body)?;
+        let mut resp = agent
             .post(&url)
-            .json(&body)
-            .send()
+            .header("Content-Type", "application/json")
+            .send(&body_str)
             .context("failed to send completion request")?;
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().unwrap_or_default();
+        let status = resp.status();
+        if !status.is_success() {
+            let text = resp.body_mut().read_to_string().unwrap_or_default();
             anyhow::bail!("llama-server returned {}: {}", status, text);
         }
 
-        let json: serde_json::Value = resp.json()
-            .context("failed to parse completion response")?;
+        let text = resp.body_mut().read_to_string()
+            .context("failed to read completion response")?;
+        let json: serde_json::Value = serde_json::from_str(&text)
+            .with_context(|| format!("failed to parse completion response as JSON: {}", text.chars().take(200).collect::<String>()))?;
 
         let content = json.get("content")
             .and_then(|v| v.as_str())
