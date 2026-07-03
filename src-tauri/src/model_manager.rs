@@ -12,9 +12,20 @@ const DEFAULT_QUANT: &str = "Q4_K_M";
 /// Loaded at compile time so it is always in sync with the binary.
 const ENGINE_REGISTRY: &str = include_str!("../engine_registry.json");
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct EngineRegistry {
-    engines: std::collections::HashMap<String, EngineDef>,
+/// Parse only the qwen3tts engine from the registry JSON.
+/// Other engines (OuteTTS, Chatterbox, etc.) have different
+/// shared_files structures and would break strict deserialization.
+/// By parsing as Value first and extracting only qwen3tts, we
+/// isolate ourselves from incompatible engine definitions.
+fn parse_qwen_engine() -> Result<EngineDef, String> {
+    let raw: serde_json::Value = serde_json::from_str(ENGINE_REGISTRY)
+        .map_err(|e| format!("parse engine_registry.json: {e}"))?;
+    let qwen_val = raw
+        .get("engines")
+        .and_then(|e| e.get("qwen3tts"))
+        .ok_or_else(|| "qwen3tts not found in engine_registry.json".to_string())?;
+    serde_json::from_value(qwen_val.clone())
+        .map_err(|e| format!("parse qwen3tts engine definition: {e}"))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,13 +146,7 @@ async fn ensure_runtime(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    let registry: EngineRegistry = serde_json::from_str(ENGINE_REGISTRY)
-        .map_err(|e| format!("parse registry: {e}"))?;
-
-    let qwen = registry
-        .engines
-        .get("qwen3tts")
-        .ok_or_else(|| "qwen3tts not in registry".to_string())?;
+    let qwen = parse_qwen_engine()?;
 
     // Find the right runtime download for this platform
     let runtime_key = if cfg!(target_os = "windows") {
@@ -223,52 +228,52 @@ async fn ensure_runtime(app: &AppHandle) -> Result<(), String> {
 }
 
 pub fn list_models(app: &AppHandle) -> Vec<ModelListEntry> {
-    let registry: EngineRegistry = serde_json::from_str(ENGINE_REGISTRY).unwrap_or_else(|e| {
-        eprintln!("[model_manager] failed to parse engine_registry.json: {e}");
-        EngineRegistry {
-            engines: std::collections::HashMap::new(),
-        }
-    });
-
     let mut out = Vec::new();
-    if let Some(qwen) = registry.engines.get("qwen3tts") {
-        for variant in &qwen.variants {
-            let vdir = variant_dir(app, &variant.name);
-            let tdir = tokenizer_dir(app);
 
-            let talker_name = talker_filename(DEFAULT_QUANT);
-            let tok_name = tokenizer_filename(DEFAULT_QUANT);
+    let qwen = match parse_qwen_engine() {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("[model_manager] {e}");
+            return out;
+        }
+    };
 
-            let essential_present =
-                vdir.join(&talker_name).exists() && tdir.join(&tok_name).exists();
-            let installed = essential_present;
+    for variant in &qwen.variants {
+        let vdir = variant_dir(app, &variant.name);
+        let tdir = tokenizer_dir(app);
 
-            let size_mb = variant
-                .files
+        let talker_name = talker_filename(DEFAULT_QUANT);
+        let tok_name = tokenizer_filename(DEFAULT_QUANT);
+
+        let essential_present =
+            vdir.join(&talker_name).exists() && tdir.join(&tok_name).exists();
+        let installed = essential_present;
+
+        let size_mb = variant
+            .files
+            .first()
+            .and_then(|f| f.quants.get(DEFAULT_QUANT))
+            .map(|q| q.size_mb)
+            .unwrap_or(0)
+            + qwen
+                .shared_files
                 .first()
                 .and_then(|f| f.quants.get(DEFAULT_QUANT))
                 .map(|q| q.size_mb)
-                .unwrap_or(0)
-                + qwen
-                    .shared_files
-                    .first()
-                    .and_then(|f| f.quants.get(DEFAULT_QUANT))
-                    .map(|q| q.size_mb)
-                    .unwrap_or(0);
+                .unwrap_or(0);
 
-            out.push(ModelListEntry {
-                name: variant.name.clone(),
-                engine_id: "qwen3tts".into(),
-                format: "GGUF".into(),
-                license: "Apache 2.0".into(),
-                size_mb,
-                installed,
-                essential_present,
-                dest: vdir.to_string_lossy().to_string(),
-                supported: true,
-                note: None,
-            });
-        }
+        out.push(ModelListEntry {
+            name: variant.name.clone(),
+            engine_id: "qwen3tts".into(),
+            format: "GGUF".into(),
+            license: "Apache 2.0".into(),
+            size_mb,
+            installed,
+            essential_present,
+            dest: vdir.to_string_lossy().to_string(),
+            supported: true,
+            note: None,
+        });
     }
     out
 }
@@ -293,13 +298,7 @@ pub async fn download_model(
     name: &str,
     app: &AppHandle,
 ) -> Result<ModelDownloadResult, String> {
-    let registry: EngineRegistry = serde_json::from_str(ENGINE_REGISTRY)
-        .map_err(|e| format!("parse registry: {e}"))?;
-
-    let qwen = registry
-        .engines
-        .get("qwen3tts")
-        .ok_or_else(|| "qwen3tts not in registry".to_string())?;
+    let qwen = parse_qwen_engine()?;
 
     let variant = qwen
         .variants
