@@ -110,6 +110,14 @@ export function attachDemoListeners(): void {
       const outeMaxTokens = document.getElementById("oute-max-tokens") as HTMLInputElement | null;
       if (outeMaxTokens && outeMaxTokens.value) extra["max_tokens"] = outeMaxTokens.value;
 
+      if (state.selectedEngineId.startsWith("OuteTTS")) {
+        if (state.outeSpeakerJsonPath) {
+          extra["speaker_json"] = state.outeSpeakerJsonPath;
+        } else if (state.selectedVoiceId) {
+          extra["speaker"] = state.selectedVoiceId;
+        }
+      }
+
       try {
         const resultPath = await invoke<string>("synthesize_demo", {
           engineId: state.selectedEngineId,
@@ -218,6 +226,14 @@ export function attachDemoListeners(): void {
         if (outeRepPen && outeRepPen.value) extra["repetition_penalty"] = outeRepPen.value;
         const outeMaxTokens = document.getElementById("oute-max-tokens") as HTMLInputElement | null;
         if (outeMaxTokens && outeMaxTokens.value) extra["max_tokens"] = outeMaxTokens.value;
+
+        if (state.selectedEngineId.startsWith("OuteTTS")) {
+          if (state.outeSpeakerJsonPath) {
+            extra["speaker_json"] = state.outeSpeakerJsonPath;
+          } else if (state.selectedVoiceId) {
+            extra["speaker"] = state.selectedVoiceId;
+          }
+        }
 
         const maxCharsForLang =
           state.chunkMaxCharsByLang[state.selectedLanguage] ?? state.chunkMaxChars;

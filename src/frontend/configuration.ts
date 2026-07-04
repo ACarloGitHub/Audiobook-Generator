@@ -141,19 +141,26 @@ function renderQwenControls(): string {
 }
 
 function renderOuteControls(): string {
-    const langOptions = ["Auto", "English", "Chinese", "Dutch", "French", "Georgian", "German", "Hungarian", "Italian", "Japanese", "Korean", "Latvian", "Polish", "Russian", "Spanish"]
-        .map((l) => `<option value="${l}" ${state.selectedLanguage === l ? "selected" : ""}>${l}</option>`)
+    const speakers = [
+        { id: "it-male-narrator", label: "IT — Male Narrator (Italian)" },
+        { id: "en-female-1-neutral", label: "EN — Female 1 Neutral (Default English)" },
+    ];
+    if (!speakers.some((s) => s.id === state.selectedVoiceId)) {
+        state.selectedVoiceId = speakers[0].id;
+    }
+    const speakerOptions = speakers
+        .map((s) => `<option value="${s.id}" ${state.selectedVoiceId === s.id ? "selected" : ""}>${escapeHtml(s.label)}</option>`)
         .join("");
 
     return `
-      <p class="field-help">Mode: <strong>Voice Clone</strong></p>
+      <p class="field-help">Mode: <strong>Voice Clone</strong> — OuteTTS auto-detects the language from input text</p>
       <div class="field-row">
-        <label class="field-label">Reference Audio (~10s, .wav mono)</label>
-        <button class="btn-secondary" id="pick-reference-wav-btn">${state.referenceWavPath ? escapeHtml(state.referenceWavPath) : "Click to select a WAV file"}</button>
+        <label class="field-label">Speaker / Voice</label>
+        <select class="select" id="oute-speaker-select">${speakerOptions}</select>
       </div>
       <div class="field-row">
-        <label class="field-label">Language</label>
-        <select class="select" id="qwen-language-select">${langOptions}</select>
+        <label class="field-label">Custom Speaker Profile (optional .json)</label>
+        <button class="btn-secondary" id="pick-speaker-json-btn">${state.outeSpeakerJsonPath ? escapeHtml(state.outeSpeakerJsonPath) : "Import a custom speaker JSON file..."}</button>
       </div>
       <details class="accordion">
         <summary>Advanced Settings</summary>
@@ -278,6 +285,31 @@ export function attachConfigurationListeners(render: () => void): void {
                 (el as any)._qwenParam = el.value;
             });
         }
+    }
+
+    const outeSpeakerSelect = document.getElementById("oute-speaker-select") as HTMLSelectElement | null;
+    if (outeSpeakerSelect) {
+        outeSpeakerSelect.addEventListener("change", () => {
+            state.selectedVoiceId = outeSpeakerSelect.value;
+        });
+    }
+
+    const pickSpeakerJsonBtn = document.getElementById("pick-speaker-json-btn");
+    if (pickSpeakerJsonBtn) {
+        pickSpeakerJsonBtn.addEventListener("click", async () => {
+            try {
+                const path = await open({
+                    multiple: false,
+                    filters: [{ name: "Speaker JSON", extensions: ["json"] }],
+                });
+                if (typeof path === "string") {
+                    state.outeSpeakerJsonPath = path;
+                    render();
+                }
+            } catch (e) {
+                console.warn("dialog open failed:", e);
+            }
+        });
     }
 
     const releaseBtn = document.getElementById("release-engine-btn");

@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use serde::Deserialize;
 use tracing::{info, warn};
 
 use crate::base_plugin::{BaseTTSPlugin, EngineHandle, SynthesizeRequest};
@@ -21,6 +22,28 @@ const C1_TOKEN_BASE: i64 = 151669;
 const C1_TOKEN_MAX: i64 = 152693;
 const C2_TOKEN_BASE: i64 = 152694;
 const C2_TOKEN_MAX: i64 = 153718;
+
+#[derive(Debug, Clone, Deserialize)]
+struct SpeakerProfile {
+    text: String,
+    words: Vec<SpeakerWord>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SpeakerWord {
+    word: String,
+    duration: f64,
+    c1: Vec<i64>,
+    c2: Vec<i64>,
+    features: SpeakerFeatures,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SpeakerFeatures {
+    energy: i64,
+    spectral_centroid: i64,
+    pitch: i64,
+}
 
 pub struct OuteTTSPlugin {
     pub variant_name: String,
@@ -59,6 +82,38 @@ impl OuteTTSPlugin {
             return Ok(p);
         }
         anyhow::bail!("DAC decoder ONNX not found at {}", p.display());
+    }
+
+    fn default_speaker_path(&self) -> Result<PathBuf> {
+        let p = self.models_dir.join("speakers").join("en-female-1-neutral.json");
+        if p.exists() {
+            return Ok(p);
+        }
+        anyhow::bail!("default speaker JSON not found at {}", p.display());
+    }
+
+    fn speaker_path_by_name(&self, name: &str) -> Result<PathBuf> {
+        let p = self.models_dir.join("speakers").join(format!("{name}.json"));
+        if p.exists() {
+            return Ok(p);
+        }
+        anyhow::bail!("speaker JSON '{}' not found at {}", name, p.display());
+    }
+
+    fn load_default_speaker(&self) -> Option<SpeakerProfile> {
+        match self.default_speaker_path() {
+            Ok(p) => match Self::load_speaker(&p) {
+                Ok(s) => Some(s),
+                Err(e) => {
+                    warn!("[outetts] failed to load default speaker: {e:#}");
+                    None
+                }
+            },
+            Err(_) => {
+                warn!("[outetts] no speaker profile found — generating without speaker reference (lower quality)");
+                None
+            }
+        }
     }
 
     fn find_llama_server() -> Result<PathBuf> {
@@ -107,7 +162,7 @@ impl OuteTTSPlugin {
             .arg("--port").arg(OUTE_SERVER_PORT.to_string())
             .arg("--host").arg("127.0.0.1")
             .arg("-ngl").arg("999")
-            .arg("--ctx-size").arg("8192")
+            .arg("--ctx-size").arg("16384")
             .arg("--no-webui")
             .env("PATH", &path_env)
             .stdout(Stdio::piped())
@@ -320,23 +375,111 @@ impl OuteTTSPlugin {
 
     fn normalize_text(text: &str) -> String {
         let mut s = text.to_string();
+
+        s = s.replace('\u{2026}', "...");
         s = s.replace('\u{201C}', "\"")
              .replace('\u{201D}', "\"")
-             .replace('\u{2018}', "'")
+             .replace('\u{201E}', "\"")
+             .replace('\u{201F}', "\"")
+             .replace('\u{00AB}', "\"")
+             .replace('\u{00BB}', "\"");
+        s = s.replace('\u{2018}', "'")
              .replace('\u{2019}', "'")
-             .replace('\u{2013}', "-")
+             .replace('\u{201A}', "'")
+             .replace('\u{201B}', "'")
+             .replace('\u{2039}', "'")
+             .replace('\u{203A}', "'")
+             .replace('\u{0060}', "'")
+             .replace('\u{00B4}', "'");
+        s = s.replace('\u{2013}', "-")
              .replace('\u{2014}', "-")
-             .replace('\u{2026}', "...")
-             .replace('\u{00A0}', " ");
+             .replace('\u{2010}', "-")
+             .replace('\u{2011}', "-")
+             .replace('\u{2212}', "-");
+
+        while s.contains("--") {
+            s = s.replace("--", "-");
+        }
+
+        s = s.replace('\u{00A0}', " ");
+        s = s.replace('\u{00AD}', "");
+        s = s.replace('\u{200B}', "");
+        s = s.replace('\u{200C}', "");
+        s = s.replace('\u{200D}', "");
+        s = s.replace('\u{FEFF}', "");
+
         while s.contains("  ") {
             s = s.replace("  ", " ");
         }
+        s = s.replace(" .", ".");
+        s = s.replace(" ,", ",");
+        s = s.replace(" ?", "?");
+        s = s.replace(" !", "!");
+        s = s.replace(" :", ":");
+        s = s.replace(" ;", ";");
+        s = s.replace('"', "");
         s.trim().to_string()
     }
 
-    fn build_prompt(text: &str) -> String {
+    fn build_prompt(text: &str, speaker: Option<&SpeakerProfile>) -> String {
         let normalized = Self::normalize_text(text);
-        format!("<|im_start|>\n<|text_start|>{}<|text_end|>\n<|audio_start|>\n", normalized)
+
+        let full_text = match speaker {
+            Some(s) => Self::merge_speaker_text(&normalized, &s.text),
+            None => normalized,
+        };
+
+        let mut prompt = format!(
+            "<|im_start|>\n<|text_start|>{}<|text_end|>\n<|audio_start|>\n",
+            full_text
+        );
+
+        if let Some(s) = speaker {
+            for word in &s.words {
+                prompt.push_str(&Self::format_speaker_word(word));
+                prompt.push('\n');
+            }
+            prompt.push_str("<|word_start|>");
+        }
+
+        prompt
+    }
+
+    fn merge_speaker_text(input_text: &str, speaker_text: &str) -> String {
+        let speaker_trimmed = speaker_text.trim();
+        let last = speaker_trimmed.chars().last().unwrap_or('.');
+        if last == '.' || last == '!' || last == '?' {
+            format!("{} {}", speaker_trimmed, input_text.trim())
+        } else {
+            format!("{}. {}", speaker_trimmed, input_text.trim())
+        }
+    }
+
+    fn format_speaker_word(word: &SpeakerWord) -> String {
+        let mut s = format!(
+            "<|word_start|>{}<|features|><|t_{:.2}|><|energy_{}|><|spectral_centroid_{}|><|pitch_{}|><|code|>",
+            word.word,
+            word.duration,
+            word.features.energy,
+            word.features.spectral_centroid,
+            word.features.pitch
+        );
+
+        let min_len = word.c1.len().min(word.c2.len());
+        for i in 0..min_len {
+            s.push_str(&format!("<|c1_{}|><|c2_{}|>", word.c1[i], word.c2[i]));
+        }
+
+        s.push_str("<|word_end|>");
+        s
+    }
+
+    fn load_speaker(path: &Path) -> Result<SpeakerProfile> {
+        let data = std::fs::read_to_string(path)
+            .with_context(|| format!("failed to read speaker profile: {}", path.display()))?;
+        let profile: SpeakerProfile = serde_json::from_str(&data)
+            .with_context(|| format!("failed to parse speaker profile: {}", path.display()))?;
+        Ok(profile)
     }
 
     pub fn synthesize_chunk_internal(
@@ -347,8 +490,40 @@ impl OuteTTSPlugin {
     ) -> Result<()> {
         self.ensure_server_running()?;
 
-        let prompt = Self::build_prompt(text);
-        info!("[outetts] prompt length: {} chars", prompt.len());
+        let speaker = if let Some(custom_path) = extra.get("speaker_json") {
+            let p = Path::new(custom_path);
+            match Self::load_speaker(p) {
+                Ok(s) => Some(s),
+                Err(e) => {
+                    warn!("[outetts] failed to load custom speaker {}: {e:#}", p.display());
+                    None
+                }
+            }
+        } else if let Some(name) = extra.get("speaker") {
+            match self.speaker_path_by_name(name) {
+                Ok(p) => match Self::load_speaker(&p) {
+                    Ok(s) => Some(s),
+                    Err(e) => {
+                        warn!("[outetts] failed to load speaker '{}': {e:#}", name);
+                        None
+                    }
+                },
+                Err(e) => {
+                    warn!("[outetts] speaker '{}' not found, falling back to default: {e:#}", name);
+                    self.load_default_speaker()
+                }
+            }
+        } else {
+            self.load_default_speaker()
+        };
+
+        let prompt = Self::build_prompt(text, speaker.as_ref());
+        info!(
+            "[outetts] prompt length: {} chars, speaker: {}, words: {}",
+            prompt.len(),
+            if speaker.is_some() { "yes" } else { "no" },
+            speaker.map(|s| s.words.len()).unwrap_or(0)
+        );
 
         let (c1, c2) = Self::send_completion_streaming(&prompt, extra)?;
 

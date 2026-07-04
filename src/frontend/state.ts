@@ -26,6 +26,7 @@ export interface AppState {
   engineSupportedLanguages: string[];
   engineVoiceCloning: boolean;
   qwenInstruct: string;
+  outeSpeakerJsonPath: string | null;
 }
 
 export const state: AppState = {
@@ -54,6 +55,7 @@ export const state: AppState = {
   engineSupportedLanguages: [],
   engineVoiceCloning: false,
   qwenInstruct: "",
+  outeSpeakerJsonPath: null,
 };
 
 export const SEPARATOR_OPTIONS = [

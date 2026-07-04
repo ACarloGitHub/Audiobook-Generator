@@ -513,10 +513,6 @@ async fn download_outetts_model(
     std::fs::create_dir_all(&dest_root)
         .map_err(|e| format!("create dest dir: {e}"))?;
 
-    let dac_dest = oute_dac_dir(app);
-    std::fs::create_dir_all(&dac_dest)
-        .map_err(|e| format!("create dac dir: {e}"))?;
-
     let mut total_bytes: u64 = 0;
     let mut files: Vec<String> = Vec::new();
 
@@ -547,10 +543,19 @@ async fn download_outetts_model(
         }
     }
 
-    if let Some(dac_shared) = oute.shared_files.first() {
-        if let Some(dac_file) = dac_shared.files.first() {
-            let local_name = &dac_file.filename;
-            let dest = dac_dest.join(local_name);
+    for shared in &oute.shared_files {
+        let subdir = match shared.name.as_str() {
+            "dac_codec" => "dac",
+            "default_speaker" => "speakers",
+            other => other,
+        };
+        let dest_dir = app_models_root(app).join("outetts").join(subdir);
+        std::fs::create_dir_all(&dest_dir)
+            .map_err(|e| format!("create {} dir: {e}", subdir))?;
+
+        for file in &shared.files {
+            let local_name = &file.filename;
+            let dest = dest_dir.join(local_name);
             if dest.exists() {
                 let _ = app.emit("model-progress", serde_json::json!({
                     "model": name, "file": local_name, "phase": "already_present",
@@ -561,7 +566,7 @@ async fn download_outetts_model(
                     app,
                     &format!("{}:{}", name, local_name),
                     local_name,
-                    &dac_file.url,
+                    &file.url,
                     &dest,
                 )
                 .await?;

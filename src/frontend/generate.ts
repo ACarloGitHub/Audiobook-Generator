@@ -193,6 +193,14 @@ export function attachGenerateListeners(
         const outeMaxTokens = document.getElementById("oute-max-tokens") as HTMLInputElement | null;
         if (outeMaxTokens && outeMaxTokens.value) extra["max_tokens"] = outeMaxTokens.value;
 
+        if (state.selectedEngineId.startsWith("OuteTTS")) {
+          if (state.outeSpeakerJsonPath) {
+            extra["speaker_json"] = state.outeSpeakerJsonPath;
+          } else if (state.selectedVoiceId) {
+            extra["speaker"] = state.selectedVoiceId;
+          }
+        }
+
         // When using Character Limit strategy, disable word count limit
         const effectiveMaxWords =
           state.chunkStrategy === "Character Limit" ? 999999 : state.chunkMaxWords;

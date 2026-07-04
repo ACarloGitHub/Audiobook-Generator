@@ -276,6 +276,18 @@
               "size_mb": 210
             }
           ]
+        },
+        {
+          "name": "default_speaker",
+          "description": "Default speaker profile (EN-FEMALE-1-NEUTRAL). Without a speaker reference, OuteTTS produces low-quality audio with random vocal characteristics.",
+          "files": [
+            {
+              "name": "en_female_1_neutral",
+              "filename": "en-female-1-neutral.json",
+              "url": "https://raw.githubusercontent.com/edwko/OuteTTS/main/outetts/version/v3/default_speakers/json/en-female-1-neutral.json",
+              "size_mb": 0
+            }
+          ]
         }
       ],
       "parameters": {
