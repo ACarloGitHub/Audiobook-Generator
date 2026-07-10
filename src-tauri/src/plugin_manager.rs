@@ -270,6 +270,26 @@ fn read_generation_params(engine_id: &str) -> serde_json::Map<String, serde_json
     params
 }
 
+fn read_outetts_char_limit() -> u32 {
+    let Ok(raw) = serde_json::from_str::<serde_json::Value>(ENGINE_REGISTRY_JSON) else {
+        return 350;
+    };
+    let Some(engine) = raw.get("engines").and_then(|e| e.get("outetts")) else {
+        return 350;
+    };
+    let Some(variant) = engine
+        .get("variants")
+        .and_then(|v| v.as_array())
+        .and_then(|v| v.first())
+    else {
+        return 350;
+    };
+    variant
+        .get("char_limit_recommended")
+        .and_then(|c| c.as_u64())
+        .unwrap_or(350) as u32
+}
+
 pub fn defaults_for(engine_id: &str) -> EngineDefaults {
     let configs = models::tts_model_config();
     let generation = read_generation_params(engine_id);
@@ -280,7 +300,7 @@ pub fn defaults_for(engine_id: &str) -> EngineDefaults {
             chunk_strategy: "Character Limit".into(),
             chunk_min_words: None,
             chunk_max_words: None,
-            chunk_max_chars: 500,
+            chunk_max_chars: read_outetts_char_limit(),
             chunk_max_chars_by_lang: HashMap::new(),
             separator: ".".into(),
             replace_guillemets: false,

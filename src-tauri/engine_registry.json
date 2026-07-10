@@ -245,8 +245,8 @@
           "mode": "voice_clone",
           "description": "One-shot voice cloning from ~10s reference audio",
           "supported_modes": ["Voice Clone"],
-          "char_limit_recommended": 500,
-          "char_limit_max": 800,
+          "char_limit_recommended": 350,
+          "char_limit_max": 450,
           "requires_speaker_reference": true,
           "gguf_repo": "OuteAI/OuteTTS-1.0-0.6B-GGUF",
           "files": [
