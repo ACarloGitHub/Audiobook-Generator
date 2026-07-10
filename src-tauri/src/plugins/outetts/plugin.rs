@@ -142,6 +142,10 @@ impl OuteTTSPlugin {
     }
 
     fn ensure_server_running(&self) -> Result<()> {
+        self.ensure_server_running_with_ctx(8192)
+    }
+
+    fn ensure_server_running_with_ctx(&self, ctx_size: u32) -> Result<()> {
         let mut guard = self.server.lock().unwrap();
         if guard.is_some() {
             return Ok(());
@@ -150,7 +154,7 @@ impl OuteTTSPlugin {
         let binary = Self::find_llama_server()?;
         let model = self.backbone_gguf()?;
 
-        info!("[outetts] starting llama-server: {} -m {}", binary.display(), model.display());
+        info!("[outetts] starting llama-server: {} -m {} (ctx-size={})", binary.display(), model.display(), ctx_size);
 
         let mut path_env = Self::binary_dir()?.to_string_lossy().to_string();
         if let Ok(existing) = std::env::var("PATH") {
@@ -162,7 +166,7 @@ impl OuteTTSPlugin {
             .arg("--port").arg(OUTE_SERVER_PORT.to_string())
             .arg("--host").arg("127.0.0.1")
             .arg("-ngl").arg("999")
-            .arg("--ctx-size").arg("16384")
+            .arg("--ctx-size").arg(ctx_size.to_string())
             .arg("--no-webui")
             .env("PATH", &path_env)
             .stdout(Stdio::piped())
@@ -488,7 +492,10 @@ impl OuteTTSPlugin {
         output_path: &Path,
         extra: &std::collections::HashMap<String, String>,
     ) -> Result<()> {
-        self.ensure_server_running()?;
+        let ctx_size: u32 = extra.get("ctx_size")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(8192);
+        self.ensure_server_running_with_ctx(ctx_size)?;
 
         let speaker = if let Some(custom_path) = extra.get("speaker_json") {
             let p = Path::new(custom_path);

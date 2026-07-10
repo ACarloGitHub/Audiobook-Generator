@@ -1,4 +1,4 @@
-import type { PanelId } from "./types";
+import type { PanelId, GenerationParam } from "./types";
 
 export interface AppState {
   currentPanel: PanelId;
@@ -27,6 +27,7 @@ export interface AppState {
   engineVoiceCloning: boolean;
   qwenInstruct: string;
   outeSpeakerJsonPath: string | null;
+  engineGeneration: Record<string, GenerationParam>;
 }
 
 export const state: AppState = {
@@ -56,6 +57,7 @@ export const state: AppState = {
   engineVoiceCloning: false,
   qwenInstruct: "",
   outeSpeakerJsonPath: null,
+  engineGeneration: {},
 };
 
 export const SEPARATOR_OPTIONS = [

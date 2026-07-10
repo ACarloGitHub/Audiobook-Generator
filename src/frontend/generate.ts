@@ -199,6 +199,10 @@ export function attachGenerateListeners(
           } else if (state.selectedVoiceId) {
             extra["speaker"] = state.selectedVoiceId;
           }
+          const ctxSize = state.engineGeneration["ctx_size"]?.default;
+          if (ctxSize !== undefined && ctxSize !== null) {
+            extra["ctx_size"] = String(ctxSize);
+          }
         }
 
         // When using Character Limit strategy, disable word count limit

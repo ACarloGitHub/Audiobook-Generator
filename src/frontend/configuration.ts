@@ -47,6 +47,12 @@ export function renderConfiguration(status: EngineStatus): string {
   `;
 }
 
+function genDefault(key: string): string {
+    const p = state.engineGeneration[key];
+    if (!p || p.default === null || p.default === undefined) return "";
+    return String(p.default);
+}
+
 function renderQwenControls(): string {
     const mode = qwenModeFromEngineId(state.selectedEngineId);
     const modeBadge = `<p class="field-help">Mode: <strong>${mode}</strong></p>`;
@@ -114,23 +120,23 @@ function renderQwenControls(): string {
         <summary>Advanced Settings</summary>
         <div class="field-row">
           <label class="field-label">Temperature</label>
-          <input type="number" class="num-input" id="qwen-temp" min="0" max="2" step="0.05" value="0.9" />
+          <input type="number" class="num-input" id="qwen-temp" min="0" max="2" step="0.05" value="${genDefault('temp')}" />
         </div>
         <div class="field-row">
           <label class="field-label">Top-K</label>
-          <input type="number" class="num-input" id="qwen-top-k" min="0" max="100" step="1" value="50" />
+          <input type="number" class="num-input" id="qwen-top-k" min="0" max="100" step="1" value="${genDefault('top_k')}" />
         </div>
         <div class="field-row">
           <label class="field-label">Top-P</label>
-          <input type="number" class="num-input" id="qwen-top-p" min="0" max="1" step="0.05" value="1.0" />
+          <input type="number" class="num-input" id="qwen-top-p" min="0" max="1" step="0.05" value="${genDefault('top_p')}" />
         </div>
         <div class="field-row">
           <label class="field-label">Repetition Penalty</label>
-          <input type="number" class="num-input" id="qwen-rep-pen" min="1" max="2" step="0.01" value="1.05" />
+          <input type="number" class="num-input" id="qwen-rep-pen" min="1" max="2" step="0.01" value="${genDefault('rep_pen')}" />
         </div>
         <div class="field-row">
           <label class="field-label">Max New Tokens</label>
-          <input type="number" class="num-input" id="qwen-max-new" min="256" max="16384" step="256" value="8192" />
+          <input type="number" class="num-input" id="qwen-max-new" min="256" max="16384" step="256" value="${genDefault('max_new')}" />
         </div>
         <div class="field-row">
           <label class="field-label">Seed (empty = random)</label>
@@ -166,27 +172,27 @@ function renderOuteControls(): string {
         <summary>Advanced Settings</summary>
         <div class="field-row">
           <label class="field-label">Temperature</label>
-          <input type="number" class="num-input" id="oute-temperature" min="0" max="2" step="0.05" value="0.4" />
+          <input type="number" class="num-input" id="oute-temperature" min="0" max="2" step="0.05" value="${genDefault('temperature')}" />
         </div>
         <div class="field-row">
           <label class="field-label">Top-K</label>
-          <input type="number" class="num-input" id="oute-top-k" min="1" max="100" step="1" value="40" />
+          <input type="number" class="num-input" id="oute-top-k" min="1" max="100" step="1" value="${genDefault('top_k')}" />
         </div>
         <div class="field-row">
           <label class="field-label">Top-P</label>
-          <input type="number" class="num-input" id="oute-top-p" min="0" max="1" step="0.05" value="0.9" />
+          <input type="number" class="num-input" id="oute-top-p" min="0" max="1" step="0.05" value="${genDefault('top_p')}" />
         </div>
         <div class="field-row">
           <label class="field-label">Min-P</label>
-          <input type="number" class="num-input" id="oute-min-p" min="0" max="1" step="0.01" value="0.05" />
+          <input type="number" class="num-input" id="oute-min-p" min="0" max="1" step="0.01" value="${genDefault('min_p')}" />
         </div>
         <div class="field-row">
           <label class="field-label">Repetition Penalty</label>
-          <input type="number" class="num-input" id="oute-rep-pen" min="1" max="2" step="0.01" value="1.1" />
+          <input type="number" class="num-input" id="oute-rep-pen" min="1" max="2" step="0.01" value="${genDefault('repetition_penalty')}" />
         </div>
         <div class="field-row">
           <label class="field-label">Max Tokens</label>
-          <input type="number" class="num-input" id="oute-max-tokens" min="256" max="16384" step="256" value="8192" />
+          <input type="number" class="num-input" id="oute-max-tokens" min="256" max="8192" step="256" value="${genDefault('max_tokens')}" />
         </div>
       </details>
     `;
@@ -205,6 +211,7 @@ export async function applyEngineDefaults(engineId: string): Promise<void> {
         state.engineVoices = d.voices;
         state.engineSupportedLanguages = d.supported_languages;
         state.engineVoiceCloning = d.voice_cloning;
+        state.engineGeneration = d.generation ?? {};
 
         if (d.voices.length > 0 && !state.selectedVoiceId) {
             state.selectedVoiceId = d.voices[0].id;

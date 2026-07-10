@@ -60,6 +60,19 @@ export interface EngineDefaults {
   needs_reference_transcript: boolean;
   supported_languages: string[];
   voices: VoiceDescriptor[];
+  generation: Record<string, GenerationParam>;
+}
+
+export interface GenerationParam {
+  type: "float" | "int" | "string" | "bool" | "file";
+  default: number | string | boolean | null;
+  min?: number;
+  max?: number;
+  step?: number;
+  description?: string;
+  cli_flag?: string;
+  options?: string[];
+  required?: boolean;
 }
 
 export interface ChapterSummary {

@@ -50,6 +50,7 @@ pub struct EngineDefaults {
     pub needs_reference_transcript: bool,
     pub supported_languages: Vec<String>,
     pub voices: Vec<VoiceDescriptor>,
+    pub generation: serde_json::Map<String, serde_json::Value>,
 }
 
 pub struct PluginManager {
@@ -235,8 +236,43 @@ impl PluginManager {
     }
 }
 
+const ENGINE_REGISTRY_JSON: &str = include_str!("../engine_registry.json");
+
+fn read_generation_params(engine_id: &str) -> serde_json::Map<String, serde_json::Value> {
+    let engine_key = if engine_id.starts_with("Qwen3-TTS") {
+        "qwen3tts"
+    } else if engine_id.starts_with("OuteTTS") {
+        "outetts"
+    } else {
+        return serde_json::Map::new();
+    };
+
+    let Ok(raw) = serde_json::from_str::<serde_json::Value>(ENGINE_REGISTRY_JSON) else {
+        return serde_json::Map::new();
+    };
+
+    let Some(engine) = raw.get("engines").and_then(|e| e.get(engine_key)) else {
+        return serde_json::Map::new();
+    };
+
+    let mut params = engine
+        .get("parameters")
+        .and_then(|p| p.as_object())
+        .cloned()
+        .unwrap_or_default();
+
+    if let Some(ctx_size) = engine.get("ctx_size") {
+        params.insert("ctx_size".to_string(), ctx_size.clone());
+    } else if let Some(ctx) = engine.get("context_window") {
+        params.insert("ctx_size".to_string(), ctx.clone());
+    }
+
+    params
+}
+
 pub fn defaults_for(engine_id: &str) -> EngineDefaults {
     let configs = models::tts_model_config();
+    let generation = read_generation_params(engine_id);
 
     if engine_id.starts_with("OuteTTS") {
         return EngineDefaults {
@@ -257,6 +293,7 @@ pub fn defaults_for(engine_id: &str) -> EngineDefaults {
                 "Russian".into(), "Spanish".into(),
             ],
             voices: Vec::new(),
+            generation,
         };
     }
 
@@ -298,6 +335,7 @@ pub fn defaults_for(engine_id: &str) -> EngineDefaults {
             "Korean".into(), "French".into(), "Russian".into(),
         ],
         voices,
+        generation,
     }
 }
 
