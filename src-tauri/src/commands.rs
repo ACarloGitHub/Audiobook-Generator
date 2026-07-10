@@ -256,6 +256,8 @@ pub async fn synthesize_demo(
     output_wav: PathBuf,
     extra: Option<std::collections::HashMap<String, String>>,
     reference_audio: Option<String>,
+    max_chars: Option<usize>,
+    max_words: Option<usize>,
     pm: State<'_, Arc<PluginManager>>,
 ) -> Result<String, String> {
     let output_wav = resolve_output_path(&output_wav);
@@ -267,8 +269,9 @@ pub async fn synthesize_demo(
         .map_err(|e| format!("load failed: {e:#}"))?;
 
     let defaults = plugin_manager::defaults_for(&engine_id);
-    let max_chars = defaults.chunk_max_chars as usize;
-    let chunks = crate::chunker::chunk_text(&text, 1000, max_chars);
+    let effective_max_chars = max_chars.unwrap_or(defaults.chunk_max_chars as usize);
+    let effective_max_words = max_words.unwrap_or(1000);
+    let chunks = crate::chunker::chunk_text(&text, effective_max_words, effective_max_chars);
     if chunks.is_empty() {
         return Err("empty text after chunking".to_string());
     }

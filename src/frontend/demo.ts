@@ -132,6 +132,8 @@ export function attachDemoListeners(): void {
           outputWav: out,
           extra,
           referenceAudio: state.referenceWavPath,
+          maxChars: state.chunkMaxCharsByLang[state.selectedLanguage] ?? state.chunkMaxChars,
+          maxWords: state.chunkStrategy === "Character Limit" ? 999999 : state.chunkMaxWords,
         });
         if (status) status.value = `[INFO] Saved to ${resultPath}\n`;
         if (audio) {
