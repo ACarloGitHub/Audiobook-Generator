@@ -579,6 +579,17 @@ async fn download_outetts_model(
         }
     }
 
+    // Write the bundled Italian speaker profile (no download needed).
+    const IT_SPEAKER_JSON: &str = include_str!("../assets/speakers/it-male-narrator.json");
+    let speakers_dir = app_models_root(app).join("outetts").join("speakers");
+    let it_speaker_path = speakers_dir.join("it-male-narrator.json");
+    if !it_speaker_path.exists() {
+        std::fs::create_dir_all(&speakers_dir)
+            .map_err(|e| format!("create speakers dir: {e}"))?;
+        std::fs::write(&it_speaker_path, IT_SPEAKER_JSON)
+            .map_err(|e| format!("write it-male-narrator.json: {e}"))?;
+    }
+
     let _ = app.emit("engine-status-changed", ());
 
     Ok(ModelDownloadResult {

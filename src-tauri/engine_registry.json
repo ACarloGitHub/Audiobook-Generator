@@ -280,7 +280,7 @@
         },
         {
           "name": "default_speaker",
-          "description": "Default speaker profile (EN-FEMALE-1-NEUTRAL). Without a speaker reference, OuteTTS produces low-quality audio with random vocal characteristics.",
+          "description": "Default speaker profiles: EN-FEMALE-1-NEUTRAL (downloaded) and IT-MALE-NARRATOR (bundled in installer). Without a speaker reference, OuteTTS produces low-quality audio with random vocal characteristics.",
           "files": [
             {
               "name": "en_female_1_neutral",
