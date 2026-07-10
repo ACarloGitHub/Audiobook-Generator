@@ -266,7 +266,8 @@ pub async fn synthesize_demo(
         .await
         .map_err(|e| format!("load failed: {e:#}"))?;
 
-    let max_chars = 800; // Qwen3-TTS recommended limit
+    let defaults = plugin_manager::defaults_for(&engine_id);
+    let max_chars = defaults.chunk_max_chars as usize;
     let chunks = crate::chunker::chunk_text(&text, 1000, max_chars);
     if chunks.is_empty() {
         return Err("empty text after chunking".to_string());
