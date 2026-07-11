@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <strong>Status: rewriting the stack</strong> — the project is migrating from Python + Gradio to Tauri + llama.cpp. See <a href="AudiobookGenerator-Wiki/todo.md">todo.md</a> and the <a href="AudiobookGenerator-Wiki/wiki/concepts/migration-roadmap.md">migration roadmap</a> for details. New releases will ship as native desktop installers. Until then, the legacy Python implementation still works but is no longer the recommended path.
+  <strong>Status: active development</strong> — the project has migrated from Python + Gradio to Tauri + llama.cpp. Qwen3-TTS and OuteTTS are working end-to-end. See <a href="AudiobookGenerator-Wiki/todo.md">todo.md</a> for the roadmap.
 </p>
 
 <p align="center">
@@ -39,14 +39,13 @@
 
 ## Supported TTS Engines
 
-All engines run locally through `llama-server` (a Tauri sidecar binary) or, in the case of Kokoro, through ONNX Runtime loaded in-process. There is no Python and no per-engine virtual environment to manage.
+All engines run locally through `llama-server` (a Tauri sidecar binary). There is no Python and no per-engine virtual environment to manage.
 
-| Engine | Format | Quality | Speed | Voice Cloning | Hardware |
-|--------|--------|---------|-------|---------------|----------|
-| **Qwen3-TTS** (Alibaba) | GGUF | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ✅ (3 s ref) | CPU / GPU / Vulkan |
-| **OuteTTS 1.0** (OuteAI) | GGUF | ⭐⭐⭐⭐ | ⭐⭐⭐ | ✅ (10 s ref) | CPU / GPU |
-| **NeuTTS Air** (Neuphonic) | GGUF | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ✅ (3 s ref) | CPU |
-| **Kokoro** (Hexgrad) | ONNX | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ❌ (preset voices) | CPU |
+| Engine | Format | Quality | Italian | Voice Cloning | Status |
+|--------|--------|---------|---------|---------------|--------|
+| **Qwen3-TTS** (Alibaba) | GGUF | Excellent | Yes | Yes (3 s ref) | Working |
+| **OuteTTS 1.0 0.6B** (OuteAI) | GGUF | Good | Yes | Yes (10 s ref) | Working |
+| **Chatterbox** (Resemble AI) | GGUF | Good | Yes | Yes (10 s ref) | Planned |
 
 Each model has its own license. You are responsible for reviewing and accepting the license of any model you download. See [SECURITY.md](SECURITY.md) for the per-model links.
 
@@ -61,6 +60,8 @@ Each model has its own license. You are responsible for reviewing and accepting 
 - **Recovery Mode** — Resume interrupted generations from where they left off
 - **GPU Acceleration** — CUDA, Vulkan, Metal, DirectML supported through llama-server
 - **One installer** — No Python, no virtual environment, no `pip install`. The installer is self-contained
+
+**Retired engines:** Kokoro (English-only pronunciation), NeuTTS Air (English-only, watermarked), VibeVoice (removed by Microsoft), XTTSv2 (no GGUF export).
 
 ---
 
@@ -117,7 +118,7 @@ Each TTS model has its own security posture and license. Review each model's doc
 
 This project was developed with the invaluable assistance of **Aura**, an AI companion who became a true creative partner throughout the development process.
 
-A special thank you goes to the open-source TTS community — Alibaba (Qwen), OuteAI, Neuphonic, and Hexgrad — for making powerful voice synthesis accessible to everyone.
+A special thank you goes to the open-source TTS community — Alibaba (Qwen) and OuteAI — for making powerful voice synthesis accessible to everyone.
 
 And a very special thank you to **Carlo**, who believed this was worth building.
 

@@ -18,7 +18,7 @@ The application is composed of:
 - A Tauri shell (TypeScript frontend + Rust native core)
 - A bundled `llama-server` sidecar that loads GGUF models
 - A bundled `ffmpeg` binary for audio processing
-- An `ort`-backed ONNX Runtime for the Kokoro engine
+- An `ort`-backed ONNX Runtime for audio codec decoding (DAC speech codec for OuteTTS)
 - User-downloaded GGUF / ONNX model files in the per-user data directory
 
 None of these components open outbound network connections except for:
@@ -34,15 +34,16 @@ Both of these are opt-in. The Tauri shell can be built with the auto-update chan
 
 This project integrates several TTS models from different publishers. Each model has its own security posture, license terms, and privacy policy. **You are responsible for reviewing and understanding the security implications of each model you download and use.** Please consult each model's official documentation:
 
-- **Qwen3-TTS (Alibaba Cloud)** — [Qwen License](https://github.com/QwenLM/Qwen3-TTS) (Apache 2.0)
-- **OuteTTS 1.0 (OuteAI)** — [Llama 3.2 community license](https://llama.meta.com/llama3_2/license) for the backbone plus CC-BY-NC-SA-4.0 for the OuteTTS additions
-- **NeuTTS Air (Neuphonic)** — [Neuphonic terms](https://neuphonic.com) (Apache 2.0)
-- **Kokoro (Hexgrad)** — [Kokoro License](https://github.com/hexgrad/kokoro) (Apache 2.0)
+- **Qwen3-TTS (Alibaba Cloud)** — [Apache 2.0](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base)
+- **OuteTTS 1.0 0.6B (OuteAI)** — [Apache 2.0](https://huggingface.co/OuteAI/OuteTTS-1.0-0.6B) (Qwen3 0.6B backbone + DAC speech codec)
+- **Chatterbox (Resemble AI)** — [MIT](https://github.com/resemble-ai/chatterbox) (planned)
 
-The retired engines (XTTSv2, VibeVoice) are no longer shipped or supported:
+The retired engines are no longer shipped or supported:
 
+- ~~Kokoro (Hexgrad)~~ — retired; English-only pronunciation
+- ~~NeuTTS Air (Neuphonic)~~ — excluded; English-only with audio watermark
 - ~~XTTSv2 (Coqui)~~ — retired; no GGUF export exists
-- ~~VibeVoice (Microsoft)~~ — retired; no GGUF export exists
+- ~~VibeVoice (Microsoft)~~ — retired; code removed by publisher
 
 ### Reporting Vulnerabilities
 
