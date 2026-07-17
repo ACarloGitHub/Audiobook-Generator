@@ -122,6 +122,25 @@ export function attachDemoListeners(): void {
         }
       }
 
+      if (state.selectedEngineId.startsWith("Chatterbox")) {
+        const cbTemp = document.getElementById("chatterbox-temperature") as HTMLInputElement | null;
+        if (cbTemp?.value) extra["temperature"] = cbTemp.value;
+        const cbTopP = document.getElementById("chatterbox-top-p") as HTMLInputElement | null;
+        if (cbTopP?.value) extra["top_p"] = cbTopP.value;
+        const cbMinP = document.getElementById("chatterbox-min-p") as HTMLInputElement | null;
+        if (cbMinP?.value) extra["min_p"] = cbMinP.value;
+        const cbRepPenalty = document.getElementById("chatterbox-rep-penalty") as HTMLInputElement | null;
+        if (cbRepPenalty?.value) extra["repetition_penalty"] = cbRepPenalty.value;
+        const cbCfgWeight = document.getElementById("chatterbox-cfg-weight") as HTMLInputElement | null;
+        if (cbCfgWeight?.value) extra["cfg_weight"] = cbCfgWeight.value;
+        const cbExaggeration = document.getElementById("chatterbox-exaggeration") as HTMLInputElement | null;
+        if (cbExaggeration?.value) extra["exaggeration"] = cbExaggeration.value;
+        const cbMaxNewTokens = document.getElementById("chatterbox-max-new-tokens") as HTMLInputElement | null;
+        if (cbMaxNewTokens?.value) extra["max_new_tokens"] = cbMaxNewTokens.value;
+        const cbSeed = document.getElementById("chatterbox-seed") as HTMLInputElement | null;
+        if (cbSeed?.value) extra["seed"] = cbSeed.value;
+      }
+
       try {
         const resultPath = await invoke<string>("synthesize_demo", {
           engineId: state.selectedEngineId,
@@ -239,6 +258,25 @@ export function attachDemoListeners(): void {
           } else if (state.selectedVoiceId) {
             extra["speaker"] = state.selectedVoiceId;
           }
+        }
+
+        if (state.selectedEngineId.startsWith("Chatterbox")) {
+          const cbTemp = document.getElementById("chatterbox-temperature") as HTMLInputElement | null;
+          if (cbTemp?.value) extra["temperature"] = cbTemp.value;
+          const cbTopP = document.getElementById("chatterbox-top-p") as HTMLInputElement | null;
+          if (cbTopP?.value) extra["top_p"] = cbTopP.value;
+          const cbMinP = document.getElementById("chatterbox-min-p") as HTMLInputElement | null;
+          if (cbMinP?.value) extra["min_p"] = cbMinP.value;
+          const cbRepPenalty = document.getElementById("chatterbox-rep-penalty") as HTMLInputElement | null;
+          if (cbRepPenalty?.value) extra["repetition_penalty"] = cbRepPenalty.value;
+          const cbCfgWeight = document.getElementById("chatterbox-cfg-weight") as HTMLInputElement | null;
+          if (cbCfgWeight?.value) extra["cfg_weight"] = cbCfgWeight.value;
+          const cbExaggeration = document.getElementById("chatterbox-exaggeration") as HTMLInputElement | null;
+          if (cbExaggeration?.value) extra["exaggeration"] = cbExaggeration.value;
+          const cbMaxNewTokens = document.getElementById("chatterbox-max-new-tokens") as HTMLInputElement | null;
+          if (cbMaxNewTokens?.value) extra["max_new_tokens"] = cbMaxNewTokens.value;
+          const cbSeed = document.getElementById("chatterbox-seed") as HTMLInputElement | null;
+          if (cbSeed?.value) extra["seed"] = cbSeed.value;
         }
 
         const maxCharsForLang =

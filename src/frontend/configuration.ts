@@ -27,8 +27,10 @@ export function renderConfiguration(status: EngineStatus): string {
 
     const isQwen = state.selectedEngineId.startsWith("Qwen3-TTS");
     const isOute = state.selectedEngineId.startsWith("OuteTTS");
+    const isChatterbox = state.selectedEngineId.startsWith("Chatterbox");
     const qwenControls = isQwen ? renderQwenControls() : "";
     const outeControls = isOute ? renderOuteControls() : "";
+    const chatterboxControls = isChatterbox ? renderChatterboxControls() : "";
 
     return `
     ${renderEngineStrip(status)}
@@ -43,6 +45,7 @@ export function renderConfiguration(status: EngineStatus): string {
 
       ${qwenControls}
       ${outeControls}
+      ${chatterboxControls}
     </div>
   `;
 }
@@ -198,6 +201,66 @@ function renderOuteControls(): string {
     `;
 }
 
+function renderChatterboxControls(): string {
+    const langOptions = [
+        "Arabic", "Danish", "German", "Greek", "English", "Spanish", "Finnish",
+        "French", "Hebrew", "Hindi", "Italian", "Japanese", "Korean", "Malay",
+        "Dutch", "Norwegian", "Polish", "Portuguese", "Russian", "Swedish",
+        "Swahili", "Turkish", "Chinese",
+    ].map((l) => `<option value="${l}" ${state.selectedLanguage === l ? "selected" : ""}>${l}</option>`)
+     .join("");
+
+    return `
+      <p class="field-help">Mode: <strong>Voice Clone</strong> — Chatterbox uses a reference audio clip to clone the speaker's voice. Language is determined by the text content.</p>
+      <div class="field-row">
+        <label class="field-label">Reference Audio (10s+ WAV, mono)</label>
+        <button class="btn-secondary" id="chatterbox-ref-audio-btn">${state.chatterboxRefAudio ? escapeHtml(state.chatterboxRefAudio) : "Click to select a reference audio file..."}</button>
+      </div>
+      <div class="field-row">
+        <label class="field-label">Language</label>
+        <select class="select" id="chatterbox-language-select">${langOptions}</select>
+      </div>
+      <details class="accordion">
+        <summary>Advanced Settings</summary>
+        <div class="field-row">
+          <label class="field-label">Temperature (${genDefault('temperature')})</label>
+          <input type="number" class="num-input" id="chatterbox-temperature" min="0" max="2" step="0.05" value="${genDefault('temperature')}" />
+        </div>
+        <div class="field-row">
+          <label class="field-label">Top-P (${genDefault('top_p')})</label>
+          <input type="number" class="num-input" id="chatterbox-top-p" min="0" max="1" step="0.05" value="${genDefault('top_p')}" />
+        </div>
+        <div class="field-row">
+          <label class="field-label">Min-P (${genDefault('min_p')})</label>
+          <input type="number" class="num-input" id="chatterbox-min-p" min="0" max="1" step="0.01" value="${genDefault('min_p')}" />
+        </div>
+        <div class="field-row">
+          <label class="field-label">Repetition Penalty (${genDefault('repetition_penalty')})</label>
+          <input type="number" class="num-input" id="chatterbox-rep-penalty" min="1" max="3" step="0.1" value="${genDefault('repetition_penalty')}" />
+        </div>
+        <div class="field-row">
+          <label class="field-label">CFG Weight (${genDefault('cfg_weight')})</label>
+          <input type="number" class="num-input" id="chatterbox-cfg-weight" min="0" max="2" step="0.05" value="${genDefault('cfg_weight')}" />
+          <p class="field-help">Classifier-Free Guidance. Lower (~0.3) = slower pacing for fast speakers. 0 = no accent transfer.</p>
+        </div>
+        <div class="field-row">
+          <label class="field-label">Exaggeration (${genDefault('exaggeration')})</label>
+          <input type="number" class="num-input" id="chatterbox-exaggeration" min="0" max="1" step="0.05" value="${genDefault('exaggeration')}" />
+          <p class="field-help">Emotion intensity. Higher (~0.7+) = more expressive but faster speech.</p>
+        </div>
+        <div class="field-row">
+          <label class="field-label">Max New Tokens (${genDefault('max_new_tokens')})</label>
+          <input type="number" class="num-input" id="chatterbox-max-new-tokens" min="100" max="4096" step="100" value="${genDefault('max_new_tokens')}" />
+          <p class="field-help">Max speech tokens per chunk. ~16.7 tokens/sec. 1000 = ~60s max audio.</p>
+        </div>
+        <div class="field-row">
+          <label class="field-label">Seed (empty = random)</label>
+          <input type="number" class="num-input" id="chatterbox-seed" placeholder="random" />
+        </div>
+      </details>
+    `;
+}
+
 export async function applyEngineDefaults(engineId: string): Promise<void> {
     try {
         const d = await invoke<EngineDefaults>("engine_defaults", { engineId });
@@ -284,7 +347,9 @@ export function attachConfigurationListeners(render: () => void): void {
     }
 
     const advIds = ["qwen-temp", "qwen-top-k", "qwen-top-p", "qwen-rep-pen", "qwen-max-new", "qwen-seed",
-        "oute-temperature", "oute-top-k", "oute-top-p", "oute-min-p", "oute-rep-pen", "oute-max-tokens"];
+        "oute-temperature", "oute-top-k", "oute-top-p", "oute-min-p", "oute-rep-pen", "oute-max-tokens",
+        "chatterbox-temperature", "chatterbox-top-p", "chatterbox-min-p", "chatterbox-rep-penalty",
+        "chatterbox-cfg-weight", "chatterbox-exaggeration", "chatterbox-max-new-tokens", "chatterbox-seed"];
     for (const id of advIds) {
         const el = document.getElementById(id) as HTMLInputElement | null;
         if (el) {
@@ -311,6 +376,32 @@ export function attachConfigurationListeners(render: () => void): void {
                 });
                 if (typeof path === "string") {
                     state.outeSpeakerJsonPath = path;
+                    render();
+                }
+            } catch (e) {
+                console.warn("dialog open failed:", e);
+            }
+        });
+    }
+
+    const cbLangSelect = document.getElementById("chatterbox-language-select") as HTMLSelectElement | null;
+    if (cbLangSelect) {
+        cbLangSelect.addEventListener("change", () => {
+            state.selectedLanguage = cbLangSelect.value;
+        });
+    }
+
+    const cbRefAudioBtn = document.getElementById("chatterbox-ref-audio-btn");
+    if (cbRefAudioBtn) {
+        cbRefAudioBtn.addEventListener("click", async () => {
+            try {
+                const path = await open({
+                    multiple: false,
+                    filters: [{ name: "WAV audio", extensions: ["wav"] }],
+                });
+                if (typeof path === "string") {
+                    state.chatterboxRefAudio = path;
+                    state.referenceWavPath = path;
                     render();
                 }
             } catch (e) {

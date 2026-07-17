@@ -27,6 +27,7 @@ export interface AppState {
   engineVoiceCloning: boolean;
   qwenInstruct: string;
   outeSpeakerJsonPath: string | null;
+  chatterboxRefAudio: string | null;
   engineGeneration: Record<string, GenerationParam>;
 }
 
@@ -57,6 +58,7 @@ export const state: AppState = {
   engineVoiceCloning: false,
   qwenInstruct: "",
   outeSpeakerJsonPath: null,
+  chatterboxRefAudio: null,
   engineGeneration: {},
 };
 
