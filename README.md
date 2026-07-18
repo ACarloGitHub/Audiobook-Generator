@@ -45,7 +45,6 @@ All engines run locally through `llama-server` (a Tauri sidecar binary). There i
 |--------|--------|---------|---------|---------------|--------|
 | **Qwen3-TTS** (Alibaba) | GGUF | Excellent | Yes | Yes (3 s ref) | Working |
 | **OuteTTS 1.0 0.6B** (OuteAI) | GGUF | Good | Yes | Yes (10 s ref) | Working |
-| **Chatterbox** (Resemble AI) | GGUF | Good | Yes | Yes (10 s ref) | Planned |
 
 Each model has its own license. You are responsible for reviewing and accepting the license of any model you download. See [SECURITY.md](SECURITY.md) for the per-model links.
 
@@ -61,7 +60,7 @@ Each model has its own license. You are responsible for reviewing and accepting 
 - **GPU Acceleration** — CUDA, Vulkan, Metal, DirectML supported through llama-server
 - **One installer** — No Python, no virtual environment, no `pip install`. The installer is self-contained
 
-**Retired engines:** Kokoro (English-only pronunciation), NeuTTS Air (English-only, watermarked), VibeVoice (removed by Microsoft), XTTSv2 (no GGUF export).
+**Retired engines:** Kokoro (English-only pronunciation), NeuTTS Air (English-only, watermarked), Chatterbox (upstream GGUF incomplete — would require self-maintained converted model files), VibeVoice (removed by Microsoft), XTTSv2 (no GGUF export).
 
 ---
 

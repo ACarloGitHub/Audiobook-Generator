@@ -321,97 +321,7 @@
       ],
       "notes": "Italian is officially in the high-training-data list. CRITICAL: repetition_penalty must use rep_window=64, not whole context, otherwise broken output. Optimal audio length ~42s (8192 tokens), best results up to 7000 tokens."
     },
-    "chatterbox": {
-      "display_name": "Chatterbox Multilingual",
-      "license": "MIT",
-      "languages": ["Arabic", "Danish", "German", "Greek", "English", "Spanish", "Finnish", "French", "Hebrew", "Hindi", "Italian", "Japanese", "Korean", "Malay", "Dutch", "Norwegian", "Polish", "Portuguese", "Russian", "Swedish", "Swahili", "Turkish", "Chinese"],
-      "voice_cloning": true,
-      "voice_clone_min_seconds": 10,
-      "runtime": "llama-server (backbone) + codec.cpp (codec_lm + S3T tokenizer)",
-      "runtime_repo": "https://github.com/mybigday/codec.cpp",
-      "runtime_help": "Backbone via stock llama.cpp (embeddings=true); codec via codec.cpp's codec_lm parallel_heads_delay; S3T for voice clone",
-      "architecture": "Llama-520M backbone (30 layers, hidden 1024, 16 heads, head_dim 64, MLP 4096, llama3 RoPE) + S3G codec (flow-matching + HiFi-GAN) + S3T speech tokenizer",
-      "max_input_tokens": null,
-      "sample_rate": 24000,
-      "variants": [
-        {
-          "name": "Chatterbox-Multilingual-T3",
-          "size": "0.2B",
-          "mode": "voice_clone",
-          "description": "ResembleAI Chatterbox multilingual T3 (t3_mtl23ls_v3, 23-language coverage)",
-          "supported_modes": ["Voice Clone"],
-          "char_limit_recommended": 500,
-          "char_limit_max": 800,
-          "requires_speaker_reference": true,
-          "gguf_repo": "hans00/Chatterbox-Multilingual-TTS-GGUF",
-          "files": [
-            {
-              "name": "backbone",
-              "filename_template": "chatterbox-mtl-t3-{quant}.gguf",
-              "quants": {
-                "Q4_K_M": { "size_mb": 289, "url": "https://huggingface.co/hans00/Chatterbox-Multilingual-TTS-GGUF/resolve/main/chatterbox-mtl-t3-Q4_K_M.gguf" },
-                "Q5_K_M": { "size_mb": 340, "url": "https://huggingface.co/hans00/Chatterbox-Multilingual-TTS-GGUF/resolve/main/chatterbox-mtl-t3-Q5_K_M.gguf" },
-                "Q6_K": { "size_mb": 395, "url": "https://huggingface.co/hans00/Chatterbox-Multilingual-TTS-GGUF/resolve/main/chatterbox-mtl-t3-Q6_K.gguf" },
-                "Q8_0": { "size_mb": 511, "url": "https://huggingface.co/hans00/Chatterbox-Multilingual-TTS-GGUF/resolve/main/chatterbox-mtl-t3-Q8_0.gguf" }
-              }
-            }
-          ]
-        }
-      ],
-      "shared_files": [
-        {
-          "name": "codec",
-          "description": "Chatterbox S3G codec + codec_lm LM-adaptor (flow-matching + HiFi-GAN vocoder)",
-          "gguf_repo": "hans00/Chatterbox-Multilingual-TTS-GGUF",
-          "files": [
-            {
-              "name": "codec_lm",
-              "filename_template": "chatterbox-mtl-codec-{quant}.gguf",
-              "quants": {
-                "Q4_K_M": { "size_mb": 178, "url": "https://huggingface.co/hans00/Chatterbox-Multilingual-TTS-GGUF/resolve/main/chatterbox-mtl-codec-Q4_K_M.gguf" },
-                "Q5_K_M": { "size_mb": 190, "url": "https://huggingface.co/hans00/Chatterbox-Multilingual-TTS-GGUF/resolve/main/chatterbox-mtl-codec-Q5_K_M.gguf" }
-              }
-            },
-            {
-              "name": "s3t_tokenizer",
-              "filename": "chatterbox-mtl-s3t.gguf",
-              "url": "https://huggingface.co/hans00/Chatterbox-Multilingual-TTS-GGUF/resolve/main/chatterbox-mtl-s3t.gguf",
-              "size_mb": 237,
-              "required_for": "voice_cloning"
-            }
-          ]
-        }
-      ],
-      "parameters": {
-        "temperature": { "type": "float", "default": 0.8, "min": 0.0, "max": 2.0, "step": 0.05, "description": "Sampling temperature" },
-        "top_p": { "type": "float", "default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05, "description": "Top-p sampling (nucleus). Default 1.0 = disabled in practice (min_p dominates)" },
-        "min_p": { "type": "float", "default": 0.05, "min": 0.0, "max": 1.0, "step": 0.01, "description": "Min-p sampling. The primary token filter for Chatterbox" },
-        "repetition_penalty": { "type": "float", "default": 2.0, "min": 1.0, "max": 3.0, "step": 0.1, "description": "Repetition penalty applied across the full context" },
-        "cfg_weight": { "type": "float", "default": 0.5, "min": 0.0, "max": 2.0, "step": 0.05, "description": "Classifier-Free Guidance weight. Lower (~0.3) = slower pacing for fast speakers. 0 = no language-accent transfer from reference clip" },
-        "exaggeration": { "type": "float", "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.05, "description": "Emotion intensity / speech exaggeration. Higher (~0.7+) = more expressive/dramatic but faster speech" },
-        "max_new_tokens": { "type": "int", "default": 1000, "min": 100, "max": 4096, "step": 100, "description": "Max speech tokens to generate. ~16.7 tokens/sec of audio. 1000 tokens ~ 60s max audio per chunk" },
-        "seed": { "type": "int", "default": -1, "description": "Random seed (-1 = random)" }
-      },
-      "mode_specific_params": {
-        "voice_clone": {
-          "ref_audio": { "type": "file", "required": true, "description": "Reference audio for voice clone (10s+ WAV, mono, any sample rate)" },
-          "language": { "type": "string", "default": "Italian", "options": ["Arabic", "Danish", "German", "Greek", "English", "Spanish", "Finnish", "French", "Hebrew", "Hindi", "Italian", "Japanese", "Korean", "Malay", "Dutch", "Norwegian", "Polish", "Portuguese", "Russian", "Swedish", "Swahili", "Turkish", "Chinese"] }
-        }
-      },
-      "install_requirements": {
-        "llama_server": "already bundled by first-run wizard",
-        "codec_cpp": "REQUIRED — needs to be compiled from source (like qwentts.cpp). No releases published. MIT license. Build script needed.",
-        "additional_dlls": []
-      },
-      "sources": [
-        "https://huggingface.co/hans00/Chatterbox-Multilingual-TTS-GGUF (1.3k downloads/month, MIT)",
-        "https://github.com/mybigday/codec.cpp (runtime, MIT)",
-        "https://github.com/mybigday/llama.rn (mobile inference runtime reference)",
-        "https://huggingface.co/ResembleAI/chatterbox (upstream PyTorch model)"
-      ],
-      "notes": "Three GGUF files required per voice clone: backbone + codec_lm + s3t. Backbone runs in stock llama.cpp with embeddings=true. codec_lm runs in codec.cpp as parallel_heads_delay with n_cb=1. codec.cpp has no prebuilt releases — must be compiled."
-    },
-    "neuttsair": {
+        "neuttsair": {
       "display_name": "NeuTTS Air",
       "license": "Apache-2.0",
       "languages": ["English"],
@@ -579,6 +489,11 @@
     }
   },
   "retired_engines": {
+    "chatterbox": {
+      "display_name": "Chatterbox Multilingual",
+      "reason": "Upstream GGUF is incomplete (no voice encoder, no standalone default voice). Making it work required a self-maintained re-converted model file, which violates the no-custom-artifacts rule. Technical data preserved in git history.",
+      "retired_date": "2026-07-18"
+    },
     "kokoro": {
       "display_name": "Kokoro-82M",
       "reason": "kokoro-en Rust crate is English-only G2P. Cannot pronounce Italian.",

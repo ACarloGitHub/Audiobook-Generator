@@ -118,25 +118,6 @@ impl PluginManager {
                 }
             }
         }
-
-        // Chatterbox (llama-server backbone + codec.cpp codec)
-        let chatterbox_models_dir = self.app_data_dir.join("models").join("chatterbox");
-        for variant in &self.registry {
-            if variant.engine_id == "chatterbox" {
-                let plugin = crate::plugins::chatterbox::ChatterboxPlugin::new(
-                    chatterbox_models_dir.clone(),
-                    &variant.name,
-                );
-                if plugin.is_installed() {
-                    eprintln!(
-                        "[PluginManager] registering {} (model files present)",
-                        variant.name
-                    );
-                    self.plugins
-                        .insert(variant.name.clone(), Arc::new(plugin));
-                }
-            }
-        }
     }
 
     pub fn list_available_models(&self) -> Vec<String> {
@@ -247,42 +228,6 @@ impl PluginManager {
             });
         }
 
-        for entry in &self.registry {
-            if entry.engine_id != "chatterbox" {
-                continue;
-            }
-
-            let cb_base = self.app_data_dir.join("models").join("chatterbox");
-            let variant_dir = cb_base.join(&entry.name);
-            let backbone_exists = variant_dir.join("chatterbox-mtl-t3-Q4_K_M.gguf").exists()
-                || variant_dir.join("chatterbox-mtl-t3-Q5_K_M.gguf").exists()
-                || variant_dir.join("chatterbox-mtl-t3-Q6_K.gguf").exists()
-                || variant_dir.join("chatterbox-mtl-t3-Q8_0.gguf").exists();
-            let codec_exists = cb_base.join("chatterbox-mtl-codec-Q4_K_M.gguf").exists()
-                || cb_base.join("chatterbox-mtl-codec-Q5_K_M.gguf").exists();
-            let installed = backbone_exists && codec_exists;
-
-            out.push(EngineInfo {
-                id: entry.name.clone(),
-                display_name: "Chatterbox Multilingual".into(),
-                format: "GGUF".into(),
-                voice_cloning: true,
-                hardware: vec!["CPU".into(), "CUDA".into(), "Vulkan".into()],
-                license: "MIT".into(),
-                languages: vec![
-                    "Arabic".into(), "Danish".into(), "German".into(), "Greek".into(),
-                    "English".into(), "Spanish".into(), "Finnish".into(), "French".into(),
-                    "Hebrew".into(), "Hindi".into(), "Italian".into(), "Japanese".into(),
-                    "Korean".into(), "Malay".into(), "Dutch".into(), "Norwegian".into(),
-                    "Polish".into(), "Portuguese".into(), "Russian".into(), "Swedish".into(),
-                    "Swahili".into(), "Turkish".into(), "Chinese".into(),
-                ],
-                installed,
-                size_mb: 289 + 178,
-                voices: Vec::new(),
-            });
-        }
-
         out
     }
 
@@ -298,8 +243,6 @@ fn read_generation_params(engine_id: &str) -> serde_json::Map<String, serde_json
         "qwen3tts"
     } else if engine_id.starts_with("OuteTTS") {
         "outetts"
-    } else if engine_id.starts_with("Chatterbox") {
-        "chatterbox"
     } else {
         return serde_json::Map::new();
     };
@@ -347,26 +290,6 @@ fn read_outetts_char_limit() -> u32 {
         .unwrap_or(350) as u32
 }
 
-fn read_chatterbox_char_limit() -> u32 {
-    let Ok(raw) = serde_json::from_str::<serde_json::Value>(ENGINE_REGISTRY_JSON) else {
-        return 500;
-    };
-    let Some(engine) = raw.get("engines").and_then(|e| e.get("chatterbox")) else {
-        return 500;
-    };
-    let Some(variant) = engine
-        .get("variants")
-        .and_then(|v| v.as_array())
-        .and_then(|v| v.first())
-    else {
-        return 500;
-    };
-    variant
-        .get("char_limit_recommended")
-        .and_then(|c| c.as_u64())
-        .unwrap_or(500) as u32
-}
-
 pub fn defaults_for(engine_id: &str) -> EngineDefaults {
     let configs = models::tts_model_config();
     let generation = read_generation_params(engine_id);
@@ -394,33 +317,7 @@ pub fn defaults_for(engine_id: &str) -> EngineDefaults {
         };
     }
 
-    if engine_id.starts_with("Chatterbox") {
-        return EngineDefaults {
-            engine_id: engine_id.into(),
-            chunk_strategy: "Character Limit".into(),
-            chunk_min_words: None,
-            chunk_max_words: None,
-            chunk_max_chars: read_chatterbox_char_limit(),
-            chunk_max_chars_by_lang: HashMap::new(),
-            separator: ".".into(),
-            replace_guillemets: false,
-            voice_cloning: true,
-            needs_reference_transcript: false,
-            supported_languages: vec![
-                "Arabic".into(), "Danish".into(), "German".into(), "Greek".into(),
-                "English".into(), "Spanish".into(), "Finnish".into(), "French".into(),
-                "Hebrew".into(), "Hindi".into(), "Italian".into(), "Japanese".into(),
-                "Korean".into(), "Malay".into(), "Dutch".into(), "Norwegian".into(),
-                "Polish".into(), "Portuguese".into(), "Russian".into(), "Swedish".into(),
-                "Swahili".into(), "Turkish".into(), "Chinese".into(),
-            ],
-            voices: Vec::new(),
-            generation,
-        };
-    }
-
     let config = configs.get(engine_id);
-
     let chunk_max_chars = config
         .and_then(|c| c.char_limit_recommended)
         .unwrap_or(800) as u32;

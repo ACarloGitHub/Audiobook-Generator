@@ -243,14 +243,6 @@ fn get_or_create_plugin(
             return Some(Arc::new(oute_plugin));
         }
     }
-    if engine_id.starts_with("Chatterbox") {
-        let cb_dir = pm.app_data_dir().join("models").join("chatterbox");
-        let cb_plugin = crate::plugins::chatterbox::ChatterboxPlugin::new(cb_dir, engine_id);
-        if cb_plugin.is_installed() {
-            eprintln!("[commands] creating chatterbox plugin on-the-fly for {}", engine_id);
-            return Some(Arc::new(cb_plugin));
-        }
-    }
     None
 }
 
@@ -413,33 +405,6 @@ pub async fn start_generation(
             crate::plugins::outetts::synthesize_book(
                 &p, &epub, &out, max_words, max_chars_resolved, &ffmpeg,
                 &extra_task,
-                Some(cb),
-            )
-        })
-        .await
-        .map_err(|e| format!("synthesis task panicked: {e}"))?;
-
-        let _ = app.emit("generation-complete", ());
-        return result.map_err(|e| format!("book synthesis failed: {e:#}"));
-    }
-
-    // Chatterbox path
-    let cb_any = plugin.as_any();
-    if let Some(cb_plugin) = cb_any.downcast_ref::<crate::plugins::chatterbox::ChatterboxPlugin>() {
-        let models_dir = cb_plugin.models_dir.clone();
-        let variant_name = cb_plugin.variant_name.clone();
-        let extra_task = extra_map.clone();
-        let ref_audio_task = reference_audio.clone();
-
-        let result = tokio::task::spawn_blocking(move || {
-            let p = crate::plugins::chatterbox::ChatterboxPlugin::new(models_dir, &variant_name);
-            let cb: Box<dyn FnMut(&str) + Send> = Box::new(move |msg: &str| {
-                let _ = app_for_task.emit("generation-progress", msg.to_string());
-            });
-            crate::plugins::chatterbox::synthesize_book(
-                &p, &epub, &out, max_words, max_chars_resolved, &ffmpeg,
-                &extra_task,
-                ref_audio_task.as_deref(),
                 Some(cb),
             )
         })

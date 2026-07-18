@@ -42,13 +42,6 @@
     "license": "Apache-2.0"
   },
   {
-    "name": "Chatterbox-Multilingual-T3",
-    "type": "external_process",
-    "engine_id": "chatterbox",
-    "description": "ResembleAI Chatterbox multilingual T3 — 23 languages, MIT. Backbone via llama-server + codec.cpp codec.",
-    "license": "MIT"
-  },
-  {
     "name": "NeuTTS-Air-q4",
     "type": "external_process",
     "engine_id": "neuttsair",
