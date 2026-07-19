@@ -363,9 +363,9 @@
           "mode": "multi",
           "description": "Voice Design, Controllable Cloning and Ultimate Cloning in one model, 30 languages, 48kHz output",
           "supported_modes": ["Voice Design", "Controllable Cloning", "Ultimate Cloning"],
-          "char_limit_recommended": 800,
-          "char_limit_max": 1000,
-          "char_limit_note": "No official char limit published; 800 chars verified end-to-end on 2026-07-19 (32s audio, RTF 0.21 on RTX 3090). 1000 max is a prudent cap.",
+          "char_limit_recommended": 400,
+          "char_limit_max": 450,
+          "char_limit_note": "Verified 2026-07-19 with voxcpm2-cli (commit b9d15b8) on RTX 3090, Italian text, all 3 voice modes: the StopTokenPredictor misfires (early stop mid-text) on chunks above ~450 chars at every seed tested; chunks of ~400 chars complete reliably in base, -r clone and --prompt-wav modes. Official VoxCPM2 usage guide (https://voxcpm.readthedocs.io/en/latest/usage_guide.html) confirms long text triggers unstable behavior and recommends splitting into shorter segments; the Python pipeline compensates with retry_badcase=True, which the C++ CLI does not implement, so short chunks are mandatory here. Measured speech rate: ~15 chars/s Italian at 6.25 steps/s (160 ms per decode step).",
           "requires_speaker_reference": false,
           "gguf_repo": "DennisHuang648/VoxCPM2-GGUF",
           "files": [
@@ -400,7 +400,7 @@
         "cfg": { "type": "float", "default": 2.0, "min": 1.0, "max": 5.0, "step": 0.1, "description": "CFG guidance scale (voxcpm2-cli --cfg). Official default: 2.0", "cli_flag": "--cfg" },
         "timesteps": { "type": "int", "default": 10, "min": 4, "max": 30, "step": 1, "description": "CFM inference timesteps (voxcpm2-cli --timesteps). Official default: 10", "cli_flag": "--timesteps" },
         "temperature": { "type": "float", "default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05, "description": "Noise temperature (voxcpm2-cli --temperature). CLI default: 1.0", "cli_flag": "--temperature" },
-        "steps": { "type": "int", "default": 200, "min": 50, "max": 400, "step": 10, "description": "Max decode steps (voxcpm2-cli --steps). CLI default: 200 (~30s+ of audio at 6.25 Hz token rate)", "cli_flag": "--steps" },
+        "steps": { "type": "int", "default": 600, "min": 50, "max": 1000, "step": 10, "description": "Max decode steps (voxcpm2-cli --steps, 160 ms of audio per step at 6.25 Hz). CLI default 200 caps audio at 32s and truncates chunks; 600 gives a 96s ceiling. Text-only mode auto-reduces to min(steps, text_tokens*3+15); clone/streaming modes use the value directly. 600 steps + prompt stay well below the 8192-token context even with a 30s reference (~187 prompt frames)", "cli_flag": "--steps" },
         "seed": { "type": "int", "default": -1, "description": "Random seed, -1 = random (voxcpm2-cli --seed, CLI default: 42)", "cli_flag": "--seed" }
       },
       "mode_specific_params": {
