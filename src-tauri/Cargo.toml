@@ -33,10 +33,6 @@ hound = "3.5"
 # EPUB parsing (zip + xml, both MIT)
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 quick-xml = { version = "0.36", features = ["serialize"] }
-# Kokoro TTS (uses ort 2.0 RC internally)
-# We disable the default `g2p-espeak` feature for now: it requires CMake
-# and a C/C++ toolchain to build bundled espeak-ng.
-kokoro-en = { version = "0.1", default-features = false }
 async-trait = "0.1"
 dirs = "5"
 which = "7"
@@ -51,6 +47,14 @@ tar = "0.4"
 ort = { version = "2.0.0-rc.12" }
 ndarray = "0.16"
 ureq = "3"
+
+# Kokoro TTS (retired engine): no source file references `kokoro_en`
+# anymore, but keeping the crate on Windows/Linux preserves the `cuda`
+# and `coreml` feature set of `ort` used by the OuteTTS DAC decoder.
+# It is excluded on macOS because `ort` provides no CUDA (cu12)
+# prebuilt binaries for Apple targets, which breaks the build.
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+kokoro-en = { version = "0.1", default-features = false }
 
 [profile.release]
 panic = "abort"
