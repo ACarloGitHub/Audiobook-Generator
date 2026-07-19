@@ -74,6 +74,35 @@ struct VoxVariantDef {
 /// Default BaseLM quantization for VoxCPM2 downloads.
 const VOX_DEFAULT_QUANT: &str = "Q8_0";
 
+/// Map a Models-panel row name to its (variant, quant) pair for voxcpm2.
+/// Rows are "<variant> <quant>" (e.g. "VoxCPM2 Q8_0", "VoxCPM2 F16"), one
+/// per quantization like the Qwen3-TTS rows per variant. The bare variant
+/// name ("VoxCPM2") falls back to the default quant for backward
+/// compatibility with downloads triggered before the per-quant rows.
+fn vox_row_quant<'a>(name: &str, vox: &'a VoxEngineDef) -> Option<(&'a VoxVariantDef, String)> {
+    for variant in &vox.variants {
+        let file = variant.files.first()?;
+        if name == variant.name {
+            return Some((variant, VOX_DEFAULT_QUANT.to_string()));
+        }
+        if let Some(quant) = name.strip_prefix(&format!("{} ", variant.name)) {
+            if file.quants.contains_key(quant) {
+                return Some((variant, quant.to_string()));
+            }
+        }
+    }
+    None
+}
+
+/// Local filename of a variant's BaseLM GGUF for a given quantization,
+/// rendered from the registry's filename_template (never hardcoded).
+fn vox_base_lm_filename(variant: &VoxVariantDef, quant: &str) -> Option<String> {
+    variant
+        .files
+        .first()
+        .map(|f| f.filename_template.replace("{quant}", quant))
+}
+
 /// Directory where a VoxCPM2 variant's BaseLM GGUF lives.
 fn vox_variant_dir(app: &AppHandle, variant_name: &str) -> PathBuf {
     app_models_root(app)
@@ -426,37 +455,40 @@ pub fn list_models(app: &AppHandle) -> Vec<ModelListEntry> {
             let vdir = vox_variant_dir(app, &variant.name);
             let adir = vox_acoustic_dir(app);
 
-            let base_lm_present = ["VoxCPM2-BaseLM-Q8_0.gguf", "VoxCPM2-BaseLM-F16.gguf"]
-                .iter()
-                .any(|f| vdir.join(f).exists());
-            let acoustic_present = adir.join("VoxCPM2-Acoustic-F16.gguf").exists();
-            let essential_present = base_lm_present && acoustic_present;
+            // The Acoustic F16 GGUF is shared between all BaseLM quants
+            // (same pattern as the shared Qwen3-TTS tokenizer), so each row
+            // reports the combined BaseLM + Acoustic size, like Qwen3 rows do.
+            let acoustic_file = vox.shared_files.first().and_then(|sf| sf.files.first());
+            let acoustic_present = acoustic_file
+                .map(|f| adir.join(&f.filename).exists())
+                .unwrap_or(false);
+            let acoustic_size = acoustic_file.map(|f| f.size_mb).unwrap_or(0);
 
-            let base_lm_size = variant
-                .files
-                .first()
-                .and_then(|f| f.quants.get(VOX_DEFAULT_QUANT))
-                .map(|q| q.size_mb)
-                .unwrap_or(0);
-            let acoustic_size = vox
-                .shared_files
-                .first()
-                .and_then(|sf| sf.files.first())
-                .map(|f| f.size_mb)
-                .unwrap_or(0);
+            let Some(base_lm_file) = variant.files.first() else {
+                continue;
+            };
 
-            out.push(ModelListEntry {
-                name: variant.name.clone(),
-                engine_id: "voxcpm2".into(),
-                format: "GGUF".into(),
-                license: "Apache 2.0".into(),
-                size_mb: base_lm_size + acoustic_size,
-                installed: essential_present,
-                essential_present,
-                dest: vdir.to_string_lossy().to_string(),
-                supported: true,
-                note: None,
-            });
+            // One row per quantization; smaller downloads first.
+            let mut quants: Vec<(&String, &QuantInfo)> = base_lm_file.quants.iter().collect();
+            quants.sort_by_key(|(_, q)| q.size_mb);
+
+            for (quant_name, quant) in quants {
+                let local_name = base_lm_file.filename_template.replace("{quant}", quant_name);
+                let essential_present = vdir.join(&local_name).exists() && acoustic_present;
+
+                out.push(ModelListEntry {
+                    name: format!("{} {}", variant.name, quant_name),
+                    engine_id: "voxcpm2".into(),
+                    format: "GGUF".into(),
+                    license: "Apache 2.0".into(),
+                    size_mb: quant.size_mb + acoustic_size,
+                    installed: essential_present,
+                    essential_present,
+                    dest: vdir.to_string_lossy().to_string(),
+                    supported: true,
+                    note: None,
+                });
+            }
         }
     }
 
@@ -470,6 +502,51 @@ pub fn is_model_installed(name: &str, app: &AppHandle) -> bool {
 }
 
 pub fn remove_model(name: &str, app: &AppHandle) -> Result<(), String> {
+    // VoxCPM2 per-quant rows: remove only that row's BaseLM file; the shared
+    // Acoustic GGUF is removed only when no BaseLM quant remains installed
+    // (same shared-file rule as the Qwen3-TTS tokenizer).
+    if let Ok(vox) = parse_voxcpm2_engine() {
+        if let Some((variant, quant)) = vox_row_quant(name, &vox) {
+            let vdir = vox_variant_dir(app, &variant.name);
+            if name == variant.name {
+                // Legacy bare row name: remove every BaseLM of the variant.
+                if vdir.exists() {
+                    std::fs::remove_dir_all(&vdir)
+                        .map_err(|e| format!("failed to remove {}: {e}", vdir.display()))?;
+                }
+            } else if let Some(local_name) = vox_base_lm_filename(variant, &quant) {
+                let path = vdir.join(&local_name);
+                if path.exists() {
+                    std::fs::remove_file(&path)
+                        .map_err(|e| format!("failed to remove {}: {e}", path.display()))?;
+                }
+            }
+
+            let any_base_lm_left = variant
+                .files
+                .first()
+                .map(|f| {
+                    f.quants
+                        .keys()
+                        .any(|q| vdir.join(f.filename_template.replace("{quant}", q)).exists())
+                })
+                .unwrap_or(false);
+            if !any_base_lm_left {
+                if vdir.exists() {
+                    std::fs::remove_dir_all(&vdir)
+                        .map_err(|e| format!("failed to remove {}: {e}", vdir.display()))?;
+                }
+                let adir = vox_acoustic_dir(app);
+                if adir.exists() {
+                    std::fs::remove_dir_all(&adir)
+                        .map_err(|e| format!("failed to remove {}: {e}", adir.display()))?;
+                }
+            }
+            let _ = app.emit("engine-status-changed", ());
+            return Ok(());
+        }
+    }
+
     let dest_path = variant_dir(app, name);
     if dest_path.exists() {
         std::fs::remove_dir_all(&dest_path)
@@ -480,11 +557,6 @@ pub fn remove_model(name: &str, app: &AppHandle) -> Result<(), String> {
         std::fs::remove_dir_all(&oute_path)
             .map_err(|e| format!("failed to remove {}: {e}", oute_path.display()))?;
     }
-    let vox_path = vox_variant_dir(app, name);
-    if vox_path.exists() {
-        std::fs::remove_dir_all(&vox_path)
-            .map_err(|e| format!("failed to remove {}: {e}", vox_path.display()))?;
-    }
     let _ = app.emit("engine-status-changed", ());
     Ok(())
 }
@@ -494,8 +566,8 @@ pub async fn download_model(
     app: &AppHandle,
 ) -> Result<ModelDownloadResult, String> {
     if let Ok(vox) = parse_voxcpm2_engine() {
-        if vox.variants.iter().any(|v| v.name == name) {
-            return download_voxcpm2_model(name, &vox, app).await;
+        if let Some((variant, quant)) = vox_row_quant(name, &vox) {
+            return download_voxcpm2_model(variant, &quant, &vox, app).await;
         }
     }
 
@@ -594,18 +666,16 @@ pub async fn download_model(
     })
 }
 
-/// Download BaseLM GGUF + Acoustic GGUF for a VoxCPM2 variant.
+/// Download BaseLM GGUF (selected quantization) + shared Acoustic GGUF
+/// for a VoxCPM2 variant. The Acoustic file is shared between quants and
+/// is skipped when already on disk.
 async fn download_voxcpm2_model(
-    name: &str,
+    variant: &VoxVariantDef,
+    quant_name: &str,
     vox: &VoxEngineDef,
     app: &AppHandle,
 ) -> Result<ModelDownloadResult, String> {
-    let variant = vox
-        .variants
-        .iter()
-        .find(|v| v.name == name)
-        .ok_or_else(|| format!("variant '{}' not found in voxcpm2 registry", name))?;
-
+    let name = variant.name.as_str();
     let dest_root = vox_variant_dir(app, &variant.name);
     std::fs::create_dir_all(&dest_root)
         .map_err(|e| format!("create dest dir: {e}"))?;
@@ -613,32 +683,33 @@ async fn download_voxcpm2_model(
     let mut total_bytes: u64 = 0;
     let mut files: Vec<String> = Vec::new();
 
-    // Download BaseLM GGUF
+    // Download BaseLM GGUF in the quantization chosen in the Models panel.
     if let Some(base_lm_file) = variant.files.first() {
-        if let Some(quant) = base_lm_file.quants.get(VOX_DEFAULT_QUANT) {
-            let local_name = format!("VoxCPM2-BaseLM-{}.gguf", VOX_DEFAULT_QUANT);
-            let dest = dest_root.join(&local_name);
-            if dest.exists() {
-                let _ = app.emit("model-progress", serde_json::json!({
-                    "model": name, "file": local_name, "phase": "already_present",
-                    "bytes": 0, "total": 0, "speed_bps": 0, "eta_seconds": null
-                }));
-            } else {
-                download_to_file_async(
-                    app,
-                    &format!("{}:{}", name, local_name),
-                    &local_name,
-                    &quant.url,
-                    &dest,
-                )
-                .await?;
-            }
-            let size = std::fs::metadata(&dest)
-                .map(|m| m.len())
-                .unwrap_or(0);
-            total_bytes += size;
-            files.push(local_name);
+        let quant = base_lm_file.quants.get(quant_name).ok_or_else(|| {
+            format!("quant '{}' not found for voxcpm2 variant '{}'", quant_name, variant.name)
+        })?;
+        let local_name = base_lm_file.filename_template.replace("{quant}", quant_name);
+        let dest = dest_root.join(&local_name);
+        if dest.exists() {
+            let _ = app.emit("model-progress", serde_json::json!({
+                "model": name, "file": local_name, "phase": "already_present",
+                "bytes": 0, "total": 0, "speed_bps": 0, "eta_seconds": null
+            }));
+        } else {
+            download_to_file_async(
+                app,
+                &format!("{}:{}", name, local_name),
+                &local_name,
+                &quant.url,
+                &dest,
+            )
+            .await?;
         }
+        let size = std::fs::metadata(&dest)
+            .map(|m| m.len())
+            .unwrap_or(0);
+        total_bytes += size;
+        files.push(local_name);
     }
 
     // Download shared Acoustic GGUF
@@ -798,4 +869,45 @@ fn app_models_root(app: &AppHandle) -> PathBuf {
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
         .join("models")
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vox_row_quant_maps_per_quant_rows() {
+        let vox = parse_voxcpm2_engine().expect("voxcpm2 engine in registry");
+
+        let (variant, quant) = vox_row_quant("VoxCPM2 Q8_0", &vox).expect("Q8_0 row");
+        assert_eq!(variant.name, "VoxCPM2");
+        assert_eq!(quant, "Q8_0");
+        assert_eq!(
+            vox_base_lm_filename(variant, &quant).as_deref(),
+            Some("VoxCPM2-BaseLM-Q8_0.gguf")
+        );
+
+        let (variant, quant) = vox_row_quant("VoxCPM2 F16", &vox).expect("F16 row");
+        assert_eq!(variant.name, "VoxCPM2");
+        assert_eq!(quant, "F16");
+        assert_eq!(
+            vox_base_lm_filename(variant, &quant).as_deref(),
+            Some("VoxCPM2-BaseLM-F16.gguf")
+        );
+    }
+
+    #[test]
+    fn vox_row_quant_bare_name_falls_back_to_default_quant() {
+        let vox = parse_voxcpm2_engine().expect("voxcpm2 engine in registry");
+        let (_, quant) = vox_row_quant("VoxCPM2", &vox).expect("legacy bare row");
+        assert_eq!(quant, VOX_DEFAULT_QUANT);
+    }
+
+    #[test]
+    fn vox_row_quant_rejects_unknown_names() {
+        let vox = parse_voxcpm2_engine().expect("voxcpm2 engine in registry");
+        assert!(vox_row_quant("VoxCPM2 Q4_K_M", &vox).is_none());
+        assert!(vox_row_quant("Qwen3-TTS 1.7B", &vox).is_none());
+    }
 }
