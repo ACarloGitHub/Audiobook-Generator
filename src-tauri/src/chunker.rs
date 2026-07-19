@@ -96,12 +96,69 @@ fn hard_split(text: &str, max_chars: usize) -> Vec<String> {
     out
 }
 
+/// Split `text` into `n_parts` parts of similar character length, breaking
+/// on sentence boundaries whenever possible. Used by the recovery
+/// "split & retry" flow when a single chunk keeps failing.
+///
+/// Strategy: split into sentences, then greedily assign each sentence to the
+/// currently shortest part (keeps parts balanced by characters). If there
+/// are fewer sentences than requested parts, fall back to a word-level
+/// balanced split. `n_parts` is clamped to at least 2 and at most the number
+/// of available units.
+pub fn split_text_balanced(text: &str, n_parts: usize) -> Vec<String> {
+    let n = n_parts.max(2);
+    let sentences = split_sentences(text);
+    if sentences.len() >= n {
+        return distribute_balanced(sentences, n);
+    }
+    // Not enough sentence boundaries: split on words instead.
+    let words: Vec<String> = text.split_whitespace().map(|w| w.to_string()).collect();
+    if words.len() >= n {
+        return distribute_balanced(words, n);
+    }
+    // Degenerate case (very few words): return what we have, one unit per part.
+    words.into_iter().filter(|w| !w.is_empty()).collect()
+}
+
+/// Assign units (sentences or words) to `n` groups, always appending the
+/// next unit to the currently shortest group. Units stay in order within
+/// each group; because units are assigned round-robin by size, groups may
+/// interleave. To keep the spoken text in reading order we instead pack
+/// consecutive units: compute the target size and fill groups sequentially.
+fn distribute_balanced(units: Vec<String>, n: usize) -> Vec<String> {
+    let total: usize = units.iter().map(|u| u.chars().count() + 1).sum();
+    let target = total.div_ceil(n);
+    let mut parts: Vec<String> = Vec::new();
+    let mut current: Vec<String> = Vec::new();
+    let mut current_len = 0usize;
+    let mut remaining_units = units.len();
+
+    for unit in units {
+        remaining_units -= 1;
+        let unit_len = unit.chars().count() + 1;
+        let parts_left = n - parts.len();
+        // Start a new part when the current one reached the target size, as
+        // long as enough units remain to fill the parts left.
+        if !current.is_empty() && current_len >= target && remaining_units >= parts_left - 1 {
+            parts.push(current.join(" "));
+            current = Vec::new();
+            current_len = 0;
+        }
+        current.push(unit);
+        current_len += unit_len;
+    }
+    if !current.is_empty() {
+        parts.push(current.join(" "));
+    }
+    parts
+}
+
 /// Sentence splitter that mirrors the legacy Python `split_into_sentences`.
 /// Splits on `.`, `!`, `?` followed by whitespace, keeping the punctuation
 /// attached to the preceding sentence. Ellipses (`..`) are not split because
 /// we require the punctuation char to NOT be preceded by another punctuation
 /// char (so ".." stays together).
-fn split_sentences(text: &str) -> Vec<String> {
+pub fn split_sentences(text: &str) -> Vec<String> {
     let chars: Vec<char> = text.chars().collect();
     let mut out: Vec<String> = Vec::new();
     let mut start = 0usize;
@@ -210,5 +267,48 @@ mod tests {
         assert_eq!(it.len(), 1);
         let ja = chunk_text(text, 1000, 1100);
         assert_eq!(ja.len(), 1);
+    }
+
+    #[test]
+    fn split_balanced_breaks_on_sentence_boundaries() {
+        let text = "First sentence here. Second sentence is a bit longer. Third one. Fourth and final sentence.";
+        let parts = split_text_balanced(text, 2);
+        assert_eq!(parts.len(), 2);
+        // Every part must end at a sentence boundary (trailing punctuation).
+        for p in &parts {
+            assert!(p.ends_with('.') || p.ends_with('!') || p.ends_with('?'), "part: {p}");
+        }
+        // Reading order is preserved across parts.
+        assert_eq!(parts.join(" "), text);
+    }
+
+    #[test]
+    fn split_balanced_is_roughly_even() {
+        let sentences: Vec<String> = (0..8)
+            .map(|i| format!("Sentence number {i} with some padding text."))
+            .collect();
+        let text = sentences.join(" ");
+        let parts = split_text_balanced(&text, 4);
+        assert_eq!(parts.len(), 4);
+        let lens: Vec<usize> = parts.iter().map(|p| p.chars().count()).collect();
+        let max = *lens.iter().max().unwrap();
+        let min = *lens.iter().min().unwrap();
+        // With equal-length sentences each part holds 2 sentences.
+        assert!(max - min <= 2, "unbalanced split: {lens:?}");
+    }
+
+    #[test]
+    fn split_balanced_falls_back_to_words_without_sentences() {
+        let text = "one two three four five six seven eight";
+        let parts = split_text_balanced(text, 2);
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts.join(" "), text);
+    }
+
+    #[test]
+    fn split_balanced_degenerate_text() {
+        let parts = split_text_balanced("hello", 3);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0], "hello");
     }
 }

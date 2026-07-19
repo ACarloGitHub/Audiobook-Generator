@@ -219,6 +219,343 @@ pub fn get_failed_chunks(book_dir: PathBuf, chapter: String) -> Vec<FailedChunkI
         .unwrap_or_default()
 }
 
+/// Parameters needed to re-synthesize a failed chunk, resolved from the
+/// recovery metadata (preferred) with the currently selected engine as
+/// fallback for recovery files written before metadata existed.
+struct RetryParams {
+    engine_id: String,
+    reference_audio: Option<String>,
+    voice: Option<String>,
+    language: Option<String>,
+    extra: std::collections::HashMap<String, String>,
+}
+
+fn resolve_retry_params(
+    state: &RecoveryState,
+    fallback_engine_id: Option<String>,
+    fallback_reference_audio: Option<String>,
+) -> Result<RetryParams, String> {
+    let engine_id = state
+        .meta
+        .engine_id
+        .clone()
+        .or(fallback_engine_id)
+        .ok_or_else(|| {
+            "no engine recorded in the recovery file and no engine currently selected".to_string()
+        })?;
+
+    // Extra parameters: prefer what the generation recorded; otherwise fall
+    // back to the registry defaults for this engine (never hardcoded here).
+    let mut extra: std::collections::HashMap<String, String> = state.meta.extra.clone();
+    if extra.is_empty() {
+        let defaults = plugin_manager::defaults_for(&engine_id);
+        for (key, value) in defaults.generation.iter() {
+            if let Some(def) = value.get("default") {
+                let s = match def {
+                    serde_json::Value::String(s) => Some(s.clone()),
+                    serde_json::Value::Number(n) => Some(n.to_string()),
+                    serde_json::Value::Bool(b) => Some(b.to_string()),
+                    _ => None,
+                };
+                if let Some(s) = s {
+                    if !s.is_empty() {
+                        extra.insert(key.clone(), s);
+                    }
+                }
+            }
+        }
+    }
+
+    let reference_audio = state
+        .meta
+        .reference_audio
+        .clone()
+        .or(fallback_reference_audio)
+        .filter(|s| !s.is_empty());
+
+    Ok(RetryParams {
+        engine_id,
+        reference_audio,
+        voice: state.meta.voice.clone(),
+        language: state.meta.language.clone(),
+        extra,
+    })
+}
+
+/// Retry synthesis of failed chunks, optionally with edited text.
+///
+/// The engine and parameters come from the recovery metadata written during
+/// generation; `engine_id` / `reference_audio` are only fallbacks for
+/// recovery files created before metadata existed.
+#[tauri::command]
+pub async fn retry_failed_chunks(
+    book_dir: PathBuf,
+    chapter: String,
+    chunk_indices: Vec<usize>,
+    texts_override: Option<std::collections::HashMap<String, String>>,
+    engine_id: Option<String>,
+    reference_audio: Option<String>,
+    pm: State<'_, Arc<PluginManager>>,
+    app: AppHandle,
+) -> Result<String, String> {
+    let book_dir = resolve_output_path(&book_dir);
+    let mut state = recovery::RecoveryState::load(&book_dir)
+        .map_err(|e| format!("recovery load failed: {e:#}"))?;
+    let params = resolve_retry_params(&state, engine_id, reference_audio)?;
+
+    // Snapshot the failed texts we need before mutating the state.
+    let failed_for_chapter: std::collections::HashMap<usize, String> = state
+        .failed
+        .get(&chapter)
+        .map(|v| v.iter().map(|f| (f.chunk_index, f.text.clone())).collect())
+        .unwrap_or_default();
+
+    let plugin = get_or_create_plugin(&params.engine_id, &pm)
+        .ok_or_else(|| format!("engine '{}' is not installed or model files missing", params.engine_id))?;
+    let handle = plugin
+        .load_model(&params.engine_id)
+        .await
+        .map_err(|e| format!("load failed: {e:#}"))?;
+
+    STOP_FLAG.store(false, Ordering::SeqCst);
+
+    let chapter_dir = book_dir.join(crate::utils::sanitize_filename(&chapter));
+    std::fs::create_dir_all(&chapter_dir).map_err(|e| format!("create chapter dir: {e}"))?;
+
+    let mut ok = 0usize;
+    let mut still_failed = 0usize;
+    let mut stopped = false;
+    for idx in &chunk_indices {
+        if is_stop_requested() {
+            stopped = true;
+            let _ = app.emit("generation-progress", "STOP requested — aborting retry.".to_string());
+            break;
+        }
+        let text = texts_override
+            .as_ref()
+            .and_then(|m| m.get(&idx.to_string()).cloned())
+            .or_else(|| failed_for_chapter.get(idx).cloned());
+        let Some(text) = text else {
+            let _ = app.emit(
+                "generation-progress",
+                format!("WARN: chunk {} has no known text, skipped.", idx + 1),
+            );
+            continue;
+        };
+        let wav_path = chapter_dir.join(format!("chunk_{:04}.wav", idx + 1));
+        let request = SynthesizeRequest {
+            text: text.clone(),
+            output_path: wav_path.to_string_lossy().to_string(),
+            reference_audio: params.reference_audio.clone(),
+            language: params.language.clone(),
+            voice: params.voice.clone(),
+            extra: params.extra.clone(),
+        };
+        let _ = app.emit(
+            "generation-progress",
+            format!("Retrying chunk {}...", idx + 1),
+        );
+        match plugin.synthesize(&handle, &request).await {
+            Ok(()) => {
+                state.remove_failed(&chapter, *idx);
+                if !state.is_done(&chapter, *idx) {
+                    state.mark_done(&chapter, *idx);
+                }
+                ok += 1;
+                let _ = app.emit(
+                    "generation-progress",
+                    format!("Chunk {} synthesized.", idx + 1),
+                );
+            }
+            Err(e) => {
+                still_failed += 1;
+                state.update_failed(&chapter, *idx, &text, &format!("{e:#}"));
+                let _ = app.emit(
+                    "generation-progress",
+                    format!(
+                        "WARN: chunk {} failed again: {}",
+                        idx + 1,
+                        e.to_string().lines().next().unwrap_or(&e.to_string())
+                    ),
+                );
+            }
+        }
+        state
+            .save(&book_dir)
+            .map_err(|e| format!("recovery save failed: {e:#}"))?;
+    }
+
+    let _ = plugin.unload(&handle).await;
+
+    let summary = format!(
+        "{} retried OK, {} still failed{}",
+        ok,
+        still_failed,
+        if stopped { ", stopped by user" } else { "" }
+    );
+    let _ = app.emit("generation-progress", format!("Retry done: {summary}"));
+    Ok(summary)
+}
+
+/// Split a failed chunk into N parts and synthesize each part as
+/// `chunk_{idx:04}_part{kk:02}.wav`. Part files already on disk are reused
+/// (resume semantics, same as synthesize_book). When every part succeeds the
+/// failed record is removed and the chunk is marked done; the merge then
+/// picks up the parts in place of the base chunk.
+#[tauri::command]
+pub async fn split_and_retry_chunk(
+    book_dir: PathBuf,
+    chapter: String,
+    chunk_index: usize,
+    n_parts: usize,
+    engine_id: Option<String>,
+    reference_audio: Option<String>,
+    pm: State<'_, Arc<PluginManager>>,
+    app: AppHandle,
+) -> Result<String, String> {
+    let book_dir = resolve_output_path(&book_dir);
+    let mut state = recovery::RecoveryState::load(&book_dir)
+        .map_err(|e| format!("recovery load failed: {e:#}"))?;
+    let params = resolve_retry_params(&state, engine_id, reference_audio)?;
+
+    let text = state
+        .failed
+        .get(&chapter)
+        .and_then(|v| v.iter().find(|f| f.chunk_index == chunk_index))
+        .map(|f| f.text.clone())
+        .ok_or_else(|| format!("chunk {} is not recorded as failed", chunk_index + 1))?;
+
+    let n = n_parts.clamp(2, 10);
+    let parts = crate::chunker::split_text_balanced(&text, n);
+    if parts.len() < 2 {
+        return Err("text is too short to split into parts".to_string());
+    }
+
+    let plugin = get_or_create_plugin(&params.engine_id, &pm)
+        .ok_or_else(|| format!("engine '{}' is not installed or model files missing", params.engine_id))?;
+    let handle = plugin
+        .load_model(&params.engine_id)
+        .await
+        .map_err(|e| format!("load failed: {e:#}"))?;
+
+    STOP_FLAG.store(false, Ordering::SeqCst);
+
+    let chapter_dir = book_dir.join(crate::utils::sanitize_filename(&chapter));
+    std::fs::create_dir_all(&chapter_dir).map_err(|e| format!("create chapter dir: {e}"))?;
+
+    let mut failures: Vec<String> = Vec::new();
+    let mut stopped = false;
+    for (k, part_text) in parts.iter().enumerate() {
+        if is_stop_requested() {
+            stopped = true;
+            let _ = app.emit("generation-progress", "STOP requested — aborting split retry.".to_string());
+            break;
+        }
+        let part_path = chapter_dir.join(format!("chunk_{:04}_part{:02}.wav", chunk_index + 1, k + 1));
+        if part_path.exists() {
+            let _ = app.emit(
+                "generation-progress",
+                format!("Part {}/{} already on disk, reusing.", k + 1, parts.len()),
+            );
+            continue;
+        }
+        let request = SynthesizeRequest {
+            text: part_text.clone(),
+            output_path: part_path.to_string_lossy().to_string(),
+            reference_audio: params.reference_audio.clone(),
+            language: params.language.clone(),
+            voice: params.voice.clone(),
+            extra: params.extra.clone(),
+        };
+        let _ = app.emit(
+            "generation-progress",
+            format!("Synthesizing part {}/{} of chunk {}...", k + 1, parts.len(), chunk_index + 1),
+        );
+        if let Err(e) = plugin.synthesize(&handle, &request).await {
+            let msg = format!("part {}/{}: {e:#}", k + 1, parts.len());
+            let _ = app.emit(
+                "generation-progress",
+                format!(
+                    "WARN: part {}/{} failed: {}",
+                    k + 1,
+                    parts.len(),
+                    e.to_string().lines().next().unwrap_or(&e.to_string())
+                ),
+            );
+            failures.push(msg);
+        }
+    }
+
+    let _ = plugin.unload(&handle).await;
+
+    let summary = if failures.is_empty() && !stopped {
+        state.remove_failed(&chapter, chunk_index);
+        if !state.is_done(&chapter, chunk_index) {
+            state.mark_done(&chapter, chunk_index);
+        }
+        format!("chunk {} split into {} parts, all synthesized", chunk_index + 1, parts.len())
+    } else {
+        let err = if stopped {
+            "stopped by user; successful parts kept on disk".to_string()
+        } else {
+            format!(
+                "{} of {} parts failed: {}",
+                failures.len(),
+                parts.len(),
+                failures.join(" | ")
+            )
+        };
+        state.update_failed(&chapter, chunk_index, &text, &err);
+        format!(
+            "chunk {} split incomplete ({err}); run again to reuse the parts already on disk",
+            chunk_index + 1
+        )
+    };
+    state
+        .save(&book_dir)
+        .map_err(|e| format!("recovery save failed: {e:#}"))?;
+    let _ = app.emit("generation-progress", format!("Split retry done: {summary}"));
+    Ok(summary)
+}
+
+/// Merge every chunk WAV of a chapter (including `_partNN` variants) into
+/// the chapter MP3. On success the chapter is dropped from the recovery
+/// state; when nothing is left to recover, `failed_chunks.json` is deleted.
+/// The WAV files are kept on disk.
+#[tauri::command]
+pub fn merge_chapter_chunks(book_dir: PathBuf, chapter: String) -> Result<String, String> {
+    let book_dir = resolve_output_path(&book_dir);
+    let chapter_dir = book_dir.join(crate::utils::sanitize_filename(&chapter));
+    let wavs = merger::collect_chapter_wavs(&chapter_dir);
+    if wavs.is_empty() {
+        return Err(format!(
+            "no chunk WAVs found in {}",
+            chapter_dir.display()
+        ));
+    }
+    let ffmpeg = merger::find_ffmpeg().map_err(|e| format!("find ffmpeg: {e}"))?;
+    let mp3_path = book_dir.join(format!(
+        "{}.mp3",
+        crate::utils::sanitize_filename(&chapter)
+    ));
+    merger::merge_wavs_to_mp3(&wavs, &mp3_path, &ffmpeg)
+        .map_err(|e| format!("merge failed: {e:#}"))?;
+
+    let mut state = recovery::RecoveryState::load(&book_dir)
+        .map_err(|e| format!("recovery load failed: {e:#}"))?;
+    state.clear_chapter(&chapter);
+    if state.failed.is_empty() && state.done.is_empty() {
+        RecoveryState::remove_file_if_empty(&book_dir, &state)
+            .map_err(|e| format!("remove recovery file: {e:#}"))?;
+    } else {
+        state
+            .save(&book_dir)
+            .map_err(|e| format!("recovery save failed: {e:#}"))?;
+    }
+
+    Ok(mp3_path.to_string_lossy().to_string())
+}
+
 /// Get a plugin from the registry, or create one on-the-fly if the model
 /// files are on disk but the plugin wasn't registered at startup
 /// (e.g. after a model download without app restart).

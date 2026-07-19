@@ -114,6 +114,59 @@ pub fn merge_wavs_to_wav(wavs: &[PathBuf], out_wav: &Path, ffmpeg: &Path) -> Res
     Ok(())
 }
 
+/// Sort key for chunk WAV files: `chunk_0007.wav` sorts as (7, 0) and
+/// `chunk_0007_part02.wav` as (7, 2), so a base chunk always comes before
+/// its split parts and parts come in numeric order.
+fn chunk_sort_key(path: &Path) -> Option<(u64, u64)> {
+    let stem = path.file_stem()?.to_string_lossy();
+    let rest = stem.strip_prefix("chunk_")?;
+    let (idx_part, part_part) = match rest.split_once("_part") {
+        Some((a, b)) => (a, b),
+        None => (rest, "0"),
+    };
+    let idx: u64 = idx_part.parse().ok()?;
+    let part: u64 = part_part.parse().ok()?;
+    Some((idx, part))
+}
+
+/// Collect every chunk WAV in `chapter_dir`, including split-part variants
+/// (`chunk_0007_part01.wav`), ordered as: `chunk_0007.wav`,
+/// `chunk_0007_part01.wav`, `chunk_0007_part02.wav`, `chunk_0008.wav`, ...
+///
+/// When a chunk was split into parts, only the parts are kept (the base
+/// chunk WAV, if still on disk from a previous attempt, is superseded by
+/// its parts and would duplicate the audio).
+pub fn collect_chapter_wavs(chapter_dir: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(chapter_dir) else {
+        return Vec::new();
+    };
+    let mut keyed: Vec<((u64, u64), PathBuf)> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension()
+                .map(|ext| ext.eq_ignore_ascii_case("wav"))
+                .unwrap_or(false)
+        })
+        .filter_map(|p| chunk_sort_key(&p).map(|k| (k, p)))
+        .collect();
+    keyed.sort_by_key(|(k, _)| *k);
+
+    // Group by chunk index: if any `_partNN` variant exists for an index,
+    // drop the base chunk for that index.
+    let mut split_indices: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    for ((idx, part), _) in &keyed {
+        if *part > 0 {
+            split_indices.insert(*idx);
+        }
+    }
+    keyed
+        .into_iter()
+        .filter(|((idx, part), _)| *part > 0 || !split_indices.contains(idx))
+        .map(|(_, p)| p)
+        .collect()
+}
+
 /// Locate the ffmpeg binary. Order of preference:
 /// 1. `FFMPEG` env var
 /// 2. `./ffmpeg/bin/ffmpeg` next to the project root
@@ -158,4 +211,88 @@ fn which(name: &str) -> Result<PathBuf> {
         }
     }
     anyhow::bail!("ffmpeg not found in PATH; install or set FFMPEG env var")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_wavs(dir: &Path, names: &[&str]) {
+        for n in names {
+            std::fs::write(dir.join(n), b"RIFF").unwrap();
+        }
+    }
+
+    #[test]
+    fn collect_wavs_orders_base_before_parts_and_parts_numerically() {
+        let dir = std::env::temp_dir().join(format!("merger_test_{}_a", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        write_wavs(
+            &dir,
+            &[
+                "chunk_0001.wav",
+                "chunk_0002_part02.wav",
+                "chunk_0002_part01.wav",
+                "chunk_0002_part10.wav",
+                "chunk_0003.wav",
+            ],
+        );
+        let wavs = collect_chapter_wavs(&dir);
+        let names: Vec<String> = wavs
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                "chunk_0001.wav",
+                "chunk_0002_part01.wav",
+                "chunk_0002_part02.wav",
+                "chunk_0002_part10.wav",
+                "chunk_0003.wav",
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn collect_wavs_base_chunk_superseded_by_parts() {
+        let dir = std::env::temp_dir().join(format!("merger_test_{}_b", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        write_wavs(
+            &dir,
+            &[
+                "chunk_0001.wav",
+                "chunk_0002.wav",
+                "chunk_0002_part01.wav",
+                "chunk_0002_part02.wav",
+            ],
+        );
+        let wavs = collect_chapter_wavs(&dir);
+        let names: Vec<String> = wavs
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        // chunk_0002.wav is dropped: its parts replace it.
+        assert_eq!(
+            names,
+            vec![
+                "chunk_0001.wav",
+                "chunk_0002_part01.wav",
+                "chunk_0002_part02.wav",
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn collect_wavs_ignores_non_chunk_files() {
+        let dir = std::env::temp_dir().join(format!("merger_test_{}_c", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        write_wavs(&dir, &["chunk_0001.wav", "notes.wav", "chunk_abc.wav"]);
+        std::fs::write(dir.join("chunk_0002.txt"), b"x").unwrap();
+        let wavs = collect_chapter_wavs(&dir);
+        assert_eq!(wavs.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

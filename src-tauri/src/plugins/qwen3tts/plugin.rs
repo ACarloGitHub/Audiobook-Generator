@@ -255,6 +255,17 @@ pub fn synthesize_book(
     }
 
     let mut recovery_state = recovery::RecoveryState::load(output_dir).unwrap_or_default();
+    recovery_state.set_meta(recovery::RecoveryMeta {
+        engine_id: Some(plugin.variant_name.clone()),
+        reference_audio: reference_audio.map(|s| s.to_string()),
+        voice: voice.map(|s| s.to_string()),
+        language: language.map(|s| s.to_string()),
+        extra: extra.clone(),
+        generated_at: Some(recovery::now_stamp()),
+    });
+    // Persist immediately so the retry commands can resolve the engine even
+    // if the very first chapter fails or is stopped.
+    let _ = recovery_state.save(output_dir);
     let mut done_count = 0usize;
     let mut failed_count = 0usize;
 
