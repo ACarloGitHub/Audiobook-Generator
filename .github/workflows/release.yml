@@ -1,0 +1,271 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: ""
+          - os: macos-latest
+            args: "--target universal-apple-darwin"
+          - os: ubuntu-latest
+            args: ""
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libxml2-utils \
+            file \
+            wget
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Setup Rust targets (macOS universal)
+        if: matrix.os == 'macos-latest'
+        run: |
+          rustup target add aarch64-apple-darwin
+          rustup target add x86_64-apple-darwin
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build application
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Audiobook Generator ${{ github.ref_name }}"
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: audiobook-generator-${{ matrix.os }}-bundles
+          path: |
+            src-tauri/target/**/bundle/msi/*.msi
+            src-tauri/target/**/bundle/nsis/*-setup.exe
+            src-tauri/target/**/bundle/dmg/*.dmg
+            src-tauri/target/**/bundle/macos/*.app.tar.gz
+            src-tauri/target/**/bundle/deb/*.deb
+            src-tauri/target/**/bundle/rpm/*.rpm
+            src-tauri/target/**/bundle/appimage/*.AppImage
+          if-no-files-found: warn
+          retention-days: 7
+
+  release:
+    name: Publish release with all artifacts
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List downloaded artifacts
+        run: |
+          echo "=== Downloaded artifacts ==="
+          find artifacts -type f -print
+
+      - name: Generate changelog from Conventional Commits
+        id: changelog
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
+
+            try {
+              const owner = context.repo.owner;
+              const repo = context.repo.repo;
+              const currentTag = context.ref.replace(/^refs\/tags\//, '');
+              console.log(`[changelog] current tag: ${currentTag}`);
+
+              // 1. Find previous stable tag
+              const { data: tags } = await github.rest.repos.listTags({
+                owner, repo, per_page: 10,
+              });
+              const stableTags = tags
+                .map(t => t.name)
+                .filter(n => /^v\d+\.\d+\.\d+$/.test(n))
+                .filter(n => n !== currentTag)
+                .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+              const previousTag = stableTags[0] || null;
+              console.log(`[changelog] previous tag: ${previousTag || '(none)'}`);
+
+              // 2. Get commits
+              let commits = [];
+              if (previousTag) {
+                const { data } = await github.rest.repos.compareCommits({
+                  owner, repo, base: previousTag, head: currentTag,
+                });
+                commits = data.commits;
+              } else {
+                const { data } = await github.rest.repos.listCommits({
+                  owner, repo, per_page: 50,
+                });
+                commits = data;
+              }
+              console.log(`[changelog] commits in range: ${commits.length}`);
+
+              // 3. Categorize by Conventional Commits prefix
+              const whatsnew = [];
+              const improvements = [];
+              const breaking = [];
+              for (const c of commits) {
+                const msg = c.commit.message.split('\n')[0];
+                if (/^[a-zA-Z0-9_-]+!:/.test(msg) || /BREAKING CHANGE:/i.test(c.commit.message)) {
+                  breaking.push(msg);
+                } else if (/^(feat|fix)(\([^)]+\))?!?:/i.test(msg)) {
+                  whatsnew.push(msg);
+                } else if (/^(refactor|perf|docs)(\([^)]+\))?!?:/i.test(msg)) {
+                  improvements.push(msg);
+                }
+              }
+
+              // 4. Build body
+              const fmt = (arr) => arr.length
+                ? arr.map(m => '- ' + m).join('\n')
+                : '_No changes in this category — see commits on GitHub._';
+              const sections = [
+                "## What's new",
+                fmt(whatsnew),
+                "## Improvements",
+                fmt(improvements),
+              ];
+              if (breaking.length > 0) {
+                sections.push("## \u26A0\uFE0F Breaking changes");
+                sections.push(fmt(breaking));
+              }
+              sections.push("## First run");
+              sections.push('- On first launch the built-in wizard downloads the native runtime components (`llama-server`, `voxcpm2-cli`, `ffmpeg`) for your platform. TTS models are then downloaded on demand from inside the app.');
+              sections.push("## Notes");
+              sections.push('- **No Python required**: everything runs through native sidecar binaries.');
+              sections.push('- **No code signing**: Audiobook Generator is open source (MIT) but not yet code-signed. You may see a SmartScreen warning on Windows or a Gatekeeper block on macOS.');
+              sections.push("## Downloads");
+              sections.push('- **Windows:** `.msi` (WiX) and `-setup.exe` (NSIS) installers');
+              sections.push('- **macOS:** Universal `.dmg` (Intel + Apple Silicon), `.app.tar.gz`');
+              sections.push('- **Linux:** `.deb`, `.rpm`, and AppImage');
+
+              const body = sections.join('\n\n');
+
+              // 5. Write body to file
+              const bodyPath = path.join(workspace, 'release_body.md');
+              fs.writeFileSync(bodyPath, body, 'utf8');
+              console.log(`[changelog] wrote body to ${bodyPath} (${body.length} chars)`);
+              core.setOutput('body_path', bodyPath);
+            } catch (err) {
+              console.error(`[changelog] FAILED: ${err.message}`);
+              console.error(err.stack);
+              core.setFailed(`Generate changelog failed: ${err.message}`);
+            }
+
+      - name: Sync release body and tag from changelog file
+        id: sync
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
+            const bodyPath = path.join(workspace, 'release_body.md');
+            const currentTag = context.ref.replace(/^refs\/tags\//, '');
+
+            try {
+              if (!fs.existsSync(bodyPath)) {
+                console.log(`[sync] no changelog file at ${bodyPath}, skipping`);
+                return;
+              }
+              const body = fs.readFileSync(bodyPath, 'utf8');
+
+              const { data: releases } = await github.rest.repos.listReleases({
+                owner: context.repo.owner, repo: context.repo.repo, per_page: 20,
+              });
+              const target = releases.find(r =>
+                r.tag_name === currentTag || r.target_commitish === context.sha
+              );
+
+              if (target) {
+                console.log(`[sync] deleting pre-existing release id=${target.id} tag=${target.tag_name} (draft=${target.draft})`);
+                await github.rest.repos.deleteRelease({
+                  owner: context.repo.owner, repo: context.repo.repo, release_id: target.id,
+                });
+              }
+
+              const { data: created } = await github.rest.repos.createRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: currentTag,
+                name: `Audiobook Generator ${currentTag}`,
+                body: body,
+                draft: true,
+                prerelease: false,
+                target_commitish: context.sha,
+              });
+              console.log(`[sync] created release id=${created.id} tag_name=${created.tag_name}`);
+            } catch (err) {
+              console.error(`[sync] FAILED: ${err.message}`);
+              console.error(err.stack);
+              core.setFailed(`Sync release body failed: ${err.message}`);
+            }
+
+      - name: Create or update release and attach all artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "Audiobook Generator ${{ github.ref_name }}"
+          draft: true
+          prerelease: false
+          generate_release_notes: false
+          body_path: release_body.md
+          files: |
+            artifacts/**/*.msi
+            artifacts/**/*-setup.exe
+            artifacts/**/*.dmg
+            artifacts/**/*.app.tar.gz
+            artifacts/**/*.deb
+            artifacts/**/*.rpm
+            artifacts/**/*.AppImage
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
