@@ -20,7 +20,9 @@ jobs:
           - os: windows-latest
             args: ""
           - os: macos-latest
-            args: "--target universal-apple-darwin"
+            # ort (ONNX Runtime) ships prebuilt binaries only for
+            # aarch64-apple-darwin, so the macOS build is Apple Silicon only.
+            args: "--target aarch64-apple-darwin"
           - os: ubuntu-latest
             args: ""
 
@@ -48,11 +50,9 @@ jobs:
           node-version: "22"
           cache: "npm"
 
-      - name: Setup Rust targets (macOS universal)
+      - name: Setup Rust target (macOS Apple Silicon)
         if: matrix.os == 'macos-latest'
-        run: |
-          rustup target add aarch64-apple-darwin
-          rustup target add x86_64-apple-darwin
+        run: rustup target add aarch64-apple-darwin
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -185,7 +185,7 @@ jobs:
               sections.push('- **No code signing**: Audiobook Generator is open source (MIT) but not yet code-signed. You may see a SmartScreen warning on Windows or a Gatekeeper block on macOS.');
               sections.push("## Downloads");
               sections.push('- **Windows:** `.msi` (WiX) and `-setup.exe` (NSIS) installers');
-              sections.push('- **macOS:** Universal `.dmg` (Intel + Apple Silicon), `.app.tar.gz`');
+              sections.push('- **macOS:** `.dmg` (Apple Silicon), `.app.tar.gz`');
               sections.push('- **Linux:** `.deb`, `.rpm`, and AppImage');
 
               const body = sections.join('\n\n');
