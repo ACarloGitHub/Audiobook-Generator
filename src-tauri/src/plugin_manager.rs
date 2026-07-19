@@ -118,6 +118,24 @@ impl PluginManager {
                 }
             }
         }
+        // VoxCPM2 (external process: voxcpm2-cli sidecar)
+        let vox_paths = VoxCpm2Paths::from_app_data(&self.app_data_dir);
+        for variant in &self.registry {
+            if variant.engine_id == "voxcpm2" {
+                let plugin = crate::plugins::voxcpm2::VoxCpm2Plugin::new(
+                    vox_paths.clone(),
+                    &variant.name,
+                );
+                if plugin.is_installed() {
+                    eprintln!(
+                        "[PluginManager] registering {} (model files present)",
+                        variant.name
+                    );
+                    self.plugins
+                        .insert(variant.name.clone(), Arc::new(plugin));
+                }
+            }
+        }
     }
 
     pub fn list_available_models(&self) -> Vec<String> {
@@ -228,6 +246,36 @@ impl PluginManager {
             });
         }
 
+        for entry in &self.registry {
+            if entry.engine_id != "voxcpm2" {
+                continue;
+            }
+
+            let vox_base = self.app_data_dir.join("models").join("voxcpm2");
+            let variant_dir = vox_base.join(&entry.name);
+            let base_lm_exists = ["VoxCPM2-BaseLM-Q8_0.gguf", "VoxCPM2-BaseLM-F16.gguf"]
+                .iter()
+                .any(|f| variant_dir.join(f).exists());
+            let acoustic_exists = vox_base
+                .join("acoustic")
+                .join("VoxCPM2-Acoustic-F16.gguf")
+                .exists();
+            let installed = base_lm_exists && acoustic_exists;
+
+            out.push(EngineInfo {
+                id: entry.name.clone(),
+                display_name: "VoxCPM2 2B".into(),
+                format: "GGUF".into(),
+                voice_cloning: true,
+                hardware: vec!["CPU".into(), "CUDA".into()],
+                license: "Apache 2.0".into(),
+                languages: voxcpm2_languages(),
+                installed,
+                size_mb: 1647 + 1740,
+                voices: Vec::new(),
+            });
+        }
+
         out
     }
 
@@ -243,6 +291,8 @@ fn read_generation_params(engine_id: &str) -> serde_json::Map<String, serde_json
         "qwen3tts"
     } else if engine_id.starts_with("OuteTTS") {
         "outetts"
+    } else if engine_id.starts_with("VoxCPM2") {
+        "voxcpm2"
     } else {
         return serde_json::Map::new();
     };
@@ -290,9 +340,67 @@ fn read_outetts_char_limit() -> u32 {
         .unwrap_or(350) as u32
 }
 
+fn read_voxcpm2_char_limit() -> u32 {
+    let Ok(raw) = serde_json::from_str::<serde_json::Value>(ENGINE_REGISTRY_JSON) else {
+        return 800;
+    };
+    let Some(engine) = raw.get("engines").and_then(|e| e.get("voxcpm2")) else {
+        return 800;
+    };
+    let Some(variant) = engine
+        .get("variants")
+        .and_then(|v| v.as_array())
+        .and_then(|v| v.first())
+    else {
+        return 800;
+    };
+    variant
+        .get("char_limit_recommended")
+        .and_then(|c| c.as_u64())
+        .unwrap_or(800) as u32
+}
+
+fn voxcpm2_languages() -> Vec<String> {
+    let mut langs = vec!["Auto".to_string()];
+    let Ok(raw) = serde_json::from_str::<serde_json::Value>(ENGINE_REGISTRY_JSON) else {
+        return langs;
+    };
+    if let Some(arr) = raw
+        .get("engines")
+        .and_then(|e| e.get("voxcpm2"))
+        .and_then(|e| e.get("languages"))
+        .and_then(|l| l.as_array())
+    {
+        for l in arr {
+            if let Some(s) = l.as_str() {
+                langs.push(s.to_string());
+            }
+        }
+    }
+    langs
+}
+
 pub fn defaults_for(engine_id: &str) -> EngineDefaults {
     let configs = models::tts_model_config();
     let generation = read_generation_params(engine_id);
+
+    if engine_id.starts_with("VoxCPM2") {
+        return EngineDefaults {
+            engine_id: engine_id.into(),
+            chunk_strategy: "Character Limit".into(),
+            chunk_min_words: None,
+            chunk_max_words: None,
+            chunk_max_chars: read_voxcpm2_char_limit(),
+            chunk_max_chars_by_lang: HashMap::new(),
+            separator: ".".into(),
+            replace_guillemets: false,
+            voice_cloning: true,
+            needs_reference_transcript: false,
+            supported_languages: voxcpm2_languages(),
+            voices: Vec::new(),
+            generation,
+        };
+    }
 
     if engine_id.starts_with("OuteTTS") {
         return EngineDefaults {
@@ -391,6 +499,21 @@ fn qwen_preset_voices() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
+#[derive(Debug, Clone)]
+pub struct VoxCpm2Paths {
+    pub models_dir: PathBuf,
+    pub acoustic_dir: PathBuf,
+}
+
+impl VoxCpm2Paths {
+    pub fn from_app_data(app_data: &std::path::Path) -> Self {
+        let base = app_data.join("models").join("voxcpm2");
+        Self {
+            models_dir: base.clone(),
+            acoustic_dir: base.join("acoustic"),
+        }
+    }
+}
 #[derive(Debug, Clone)]
 pub struct QwenPaths {
     pub models_dir: PathBuf,

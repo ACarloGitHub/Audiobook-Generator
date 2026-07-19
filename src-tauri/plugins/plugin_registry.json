@@ -42,6 +42,13 @@
     "license": "Apache-2.0"
   },
   {
+    "name": "VoxCPM2",
+    "type": "external_process",
+    "engine_id": "voxcpm2",
+    "description": "VoxCPM2 2B — Voice Design, Controllable Cloning and Ultimate Cloning, 30 languages, 48kHz, via voxcpm2-cli sidecar",
+    "license": "Apache-2.0"
+  },
+  {
     "name": "NeuTTS-Air-q4",
     "type": "external_process",
     "engine_id": "neuttsair",

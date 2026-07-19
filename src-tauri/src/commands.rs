@@ -235,6 +235,14 @@ fn get_or_create_plugin(
         eprintln!("[commands] creating qwen plugin on-the-fly for {}", engine_id);
         return Some(Arc::new(qwen_plugin));
     }
+    if engine_id.starts_with("VoxCPM2") {
+        let vox_paths = plugin_manager::VoxCpm2Paths::from_app_data(pm.app_data_dir());
+        let vox_plugin = crate::plugins::voxcpm2::VoxCpm2Plugin::new(vox_paths, engine_id);
+        if vox_plugin.is_installed() {
+            eprintln!("[commands] creating voxcpm2 plugin on-the-fly for {}", engine_id);
+            return Some(Arc::new(vox_plugin));
+        }
+    }
     if engine_id.starts_with("OuteTTS") {
         let oute_dir = pm.app_data_dir().join("models").join("outetts");
         let oute_plugin = crate::plugins::outetts::OuteTTSPlugin::new(oute_dir, engine_id);
@@ -378,6 +386,33 @@ pub async fn start_generation(
                 &q, &epub, &out, max_words, max_chars_resolved, &ffmpeg,
                 voice_task.as_deref(),
                 lang_task.as_deref(),
+                ref_audio_task.as_deref(),
+                &extra_task,
+                Some(cb),
+            )
+        })
+        .await
+        .map_err(|e| format!("synthesis task panicked: {e}"))?;
+
+        let _ = app.emit("generation-complete", ());
+        return result.map_err(|e| format!("book synthesis failed: {e:#}"));
+    }
+
+    // VoxCPM2 path
+    let vox_any = plugin.as_any();
+    if let Some(vox_plugin) = vox_any.downcast_ref::<crate::plugins::voxcpm2::VoxCpm2Plugin>() {
+        let variant_name = vox_plugin.variant_name.clone();
+        let vox_paths = vox_plugin.paths.clone();
+        let ref_audio_task = reference_audio.clone();
+        let extra_task = extra_map.clone();
+
+        let result = tokio::task::spawn_blocking(move || {
+            let p = crate::plugins::voxcpm2::VoxCpm2Plugin::new(vox_paths, &variant_name);
+            let cb: Box<dyn FnMut(&str) + Send> = Box::new(move |msg: &str| {
+                let _ = app_for_task.emit("generation-progress", msg.to_string());
+            });
+            crate::plugins::voxcpm2::synthesize_book(
+                &p, &epub, &out, max_words, max_chars_resolved, &ffmpeg,
                 ref_audio_task.as_deref(),
                 &extra_task,
                 Some(cb),

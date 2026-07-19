@@ -104,6 +104,29 @@ pub fn tts_model_config() -> HashMap<&'static str, TtsModelConfig> {
         },
     );
 
+    m.insert(
+        "VoxCPM2",
+        TtsModelConfig {
+            mode: Some("Voice Design".into()),
+            supported_modes: Some(vec![
+                "Voice Design".into(),
+                "Controllable Cloning".into(),
+                "Ultimate Cloning".into(),
+            ]),
+            note: Some("VoxCPM2 2B: Voice Design, Controllable Cloning and Ultimate Cloning, 30 languages, 48kHz output.".into()),
+            char_limit_recommended: Some(800),
+            char_limit_max: Some(1000),
+            char_limits_by_lang: None,
+            separator: ".".into(),
+            replace_guillemets: false,
+            chunking_strategy: "Character Limit".into(),
+            force_char_limit_chunking: Some(true),
+            time_warning: None,
+            voice_cloning: Some(true),
+            needs_reference_transcript: Some(false),
+        },
+    );
+
     m
 }
 

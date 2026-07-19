@@ -41,6 +41,53 @@ fn parse_oute_engine() -> Result<OuteEngineDef, String> {
         .map_err(|e| format!("parse outetts engine definition: {e}"))
 }
 
+/// Parse the voxcpm2 engine from the registry JSON.
+/// VoxCPM2 has its own structure (BaseLM quant files + shared Acoustic file);
+/// parsing is isolated so other engines cannot break it.
+fn parse_voxcpm2_engine() -> Result<VoxEngineDef, String> {
+    let raw: serde_json::Value = serde_json::from_str(ENGINE_REGISTRY)
+        .map_err(|e| format!("parse engine_registry.json: {e}"))?;
+    let vox_val = raw
+        .get("engines")
+        .and_then(|e| e.get("voxcpm2"))
+        .ok_or_else(|| "voxcpm2 not found in engine_registry.json".to_string())?;
+    serde_json::from_value(vox_val.clone())
+        .map_err(|e| format!("parse voxcpm2 engine definition: {e}"))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct VoxEngineDef {
+    variants: Vec<VoxVariantDef>,
+    shared_files: Vec<OuteSharedFileDef>,
+    #[serde(flatten)]
+    _extra: std::collections::HashMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct VoxVariantDef {
+    name: String,
+    files: Vec<FileDef>,
+    #[serde(flatten)]
+    _extra: std::collections::HashMap<String, serde_json::Value>,
+}
+
+/// Default BaseLM quantization for VoxCPM2 downloads.
+const VOX_DEFAULT_QUANT: &str = "Q8_0";
+
+/// Directory where a VoxCPM2 variant's BaseLM GGUF lives.
+fn vox_variant_dir(app: &AppHandle, variant_name: &str) -> PathBuf {
+    app_models_root(app)
+        .join("voxcpm2")
+        .join(variant_name)
+}
+
+/// Directory where the shared VoxCPM2 Acoustic GGUF lives.
+fn vox_acoustic_dir(app: &AppHandle) -> PathBuf {
+    app_models_root(app)
+        .join("voxcpm2")
+        .join("acoustic")
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct OuteEngineDef {
     variants: Vec<OuteVariantDef>,
@@ -374,6 +421,45 @@ pub fn list_models(app: &AppHandle) -> Vec<ModelListEntry> {
         }
     }
 
+    if let Ok(vox) = parse_voxcpm2_engine() {
+        for variant in &vox.variants {
+            let vdir = vox_variant_dir(app, &variant.name);
+            let adir = vox_acoustic_dir(app);
+
+            let base_lm_present = ["VoxCPM2-BaseLM-Q8_0.gguf", "VoxCPM2-BaseLM-F16.gguf"]
+                .iter()
+                .any(|f| vdir.join(f).exists());
+            let acoustic_present = adir.join("VoxCPM2-Acoustic-F16.gguf").exists();
+            let essential_present = base_lm_present && acoustic_present;
+
+            let base_lm_size = variant
+                .files
+                .first()
+                .and_then(|f| f.quants.get(VOX_DEFAULT_QUANT))
+                .map(|q| q.size_mb)
+                .unwrap_or(0);
+            let acoustic_size = vox
+                .shared_files
+                .first()
+                .and_then(|sf| sf.files.first())
+                .map(|f| f.size_mb)
+                .unwrap_or(0);
+
+            out.push(ModelListEntry {
+                name: variant.name.clone(),
+                engine_id: "voxcpm2".into(),
+                format: "GGUF".into(),
+                license: "Apache 2.0".into(),
+                size_mb: base_lm_size + acoustic_size,
+                installed: essential_present,
+                essential_present,
+                dest: vdir.to_string_lossy().to_string(),
+                supported: true,
+                note: None,
+            });
+        }
+    }
+
     out
 }
 
@@ -394,6 +480,11 @@ pub fn remove_model(name: &str, app: &AppHandle) -> Result<(), String> {
         std::fs::remove_dir_all(&oute_path)
             .map_err(|e| format!("failed to remove {}: {e}", oute_path.display()))?;
     }
+    let vox_path = vox_variant_dir(app, name);
+    if vox_path.exists() {
+        std::fs::remove_dir_all(&vox_path)
+            .map_err(|e| format!("failed to remove {}: {e}", vox_path.display()))?;
+    }
     let _ = app.emit("engine-status-changed", ());
     Ok(())
 }
@@ -402,6 +493,12 @@ pub async fn download_model(
     name: &str,
     app: &AppHandle,
 ) -> Result<ModelDownloadResult, String> {
+    if let Ok(vox) = parse_voxcpm2_engine() {
+        if vox.variants.iter().any(|v| v.name == name) {
+            return download_voxcpm2_model(name, &vox, app).await;
+        }
+    }
+
     if let Ok(oute) = parse_oute_engine() {
         if oute.variants.iter().any(|v| v.name == name) {
             return download_outetts_model(name, &oute, app).await;
@@ -483,6 +580,100 @@ pub async fn download_model(
                 .unwrap_or(0);
             total_bytes += size;
             files.push(local_name);
+        }
+    }
+
+    let _ = app.emit("engine-status-changed", ());
+
+    Ok(ModelDownloadResult {
+        model_name: name.to_string(),
+        installed: true,
+        total_bytes,
+        files,
+        path: dest_root.to_string_lossy().to_string(),
+    })
+}
+
+/// Download BaseLM GGUF + Acoustic GGUF for a VoxCPM2 variant.
+async fn download_voxcpm2_model(
+    name: &str,
+    vox: &VoxEngineDef,
+    app: &AppHandle,
+) -> Result<ModelDownloadResult, String> {
+    let variant = vox
+        .variants
+        .iter()
+        .find(|v| v.name == name)
+        .ok_or_else(|| format!("variant '{}' not found in voxcpm2 registry", name))?;
+
+    let dest_root = vox_variant_dir(app, &variant.name);
+    std::fs::create_dir_all(&dest_root)
+        .map_err(|e| format!("create dest dir: {e}"))?;
+
+    let mut total_bytes: u64 = 0;
+    let mut files: Vec<String> = Vec::new();
+
+    // Download BaseLM GGUF
+    if let Some(base_lm_file) = variant.files.first() {
+        if let Some(quant) = base_lm_file.quants.get(VOX_DEFAULT_QUANT) {
+            let local_name = format!("VoxCPM2-BaseLM-{}.gguf", VOX_DEFAULT_QUANT);
+            let dest = dest_root.join(&local_name);
+            if dest.exists() {
+                let _ = app.emit("model-progress", serde_json::json!({
+                    "model": name, "file": local_name, "phase": "already_present",
+                    "bytes": 0, "total": 0, "speed_bps": 0, "eta_seconds": null
+                }));
+            } else {
+                download_to_file_async(
+                    app,
+                    &format!("{}:{}", name, local_name),
+                    &local_name,
+                    &quant.url,
+                    &dest,
+                )
+                .await?;
+            }
+            let size = std::fs::metadata(&dest)
+                .map(|m| m.len())
+                .unwrap_or(0);
+            total_bytes += size;
+            files.push(local_name);
+        }
+    }
+
+    // Download shared Acoustic GGUF
+    for shared in &vox.shared_files {
+        let subdir = match shared.name.as_str() {
+            "acoustic" => "acoustic",
+            other => other,
+        };
+        let dest_dir = app_models_root(app).join("voxcpm2").join(subdir);
+        std::fs::create_dir_all(&dest_dir)
+            .map_err(|e| format!("create {} dir: {e}", subdir))?;
+
+        for file in &shared.files {
+            let local_name = &file.filename;
+            let dest = dest_dir.join(local_name);
+            if dest.exists() {
+                let _ = app.emit("model-progress", serde_json::json!({
+                    "model": name, "file": local_name, "phase": "already_present",
+                    "bytes": 0, "total": 0, "speed_bps": 0, "eta_seconds": null
+                }));
+            } else {
+                download_to_file_async(
+                    app,
+                    &format!("{}:{}", name, local_name),
+                    local_name,
+                    &file.url,
+                    &dest,
+                )
+                .await?;
+            }
+            let size = std::fs::metadata(&dest)
+                .map(|m| m.len())
+                .unwrap_or(0);
+            total_bytes += size;
+            files.push(local_name.clone());
         }
     }
 
