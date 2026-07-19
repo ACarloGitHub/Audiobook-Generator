@@ -1,6 +1,6 @@
 {
-  "version": "1.2.0",
-  "last_verified": "2026-07-10",
+  "version": "1.3.0",
+  "last_verified": "2026-07-19",
   "engines": {
     "qwen3tts": {
       "display_name": "Qwen3-TTS",
@@ -321,7 +321,110 @@
       ],
       "notes": "Italian is officially in the high-training-data list. CRITICAL: repetition_penalty must use rep_window=64, not whole context, otherwise broken output. Optimal audio length ~42s (8192 tokens), best results up to 7000 tokens."
     },
-        "neuttsair": {
+    "voxcpm2": {
+      "display_name": "VoxCPM2",
+      "license": "Apache-2.0",
+      "languages": ["Arabic", "Burmese", "Chinese", "Danish", "Dutch", "English", "Finnish", "French", "German", "Greek", "Hebrew", "Hindi", "Indonesian", "Italian", "Japanese", "Khmer", "Korean", "Lao", "Malay", "Norwegian", "Polish", "Portuguese", "Russian", "Spanish", "Swahili", "Swedish", "Tagalog", "Thai", "Turkish", "Vietnamese"],
+      "voice_cloning": true,
+      "runtime": "voxcpm2-cli (sidecar binary, compiled from unmodified upstream sources)",
+      "runtime_repo": "https://github.com/tc-mb/llama.cpp-omni",
+      "runtime_commit": "b9d15b8",
+      "runtime_binary": "voxcpm2-cli",
+      "runtime_build_commands": {
+        "windows_cuda": "cmake -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=86 && cmake --build build --config Release --target voxcpm2-cli",
+        "macos_metal": "TODO: cmake -B build -DGGML_METAL=ON && cmake --build build --config Release --target voxcpm2-cli",
+        "linux_vulkan": "TODO: cmake -B build -DGGML_VULKAN=ON && cmake --build build --config Release --target voxcpm2-cli"
+      },
+      "runtime_help": "Usage: voxcpm2-cli -t \"text\" -o out.wav [options] <BaseLM.gguf> <Acoustic.gguf>",
+      "runtime_args": {
+        "-t, --text": "Input text to synthesize (required). Voice design: prefix with '(voice description)'",
+        "-o, --output": "Output WAV path (default: output.wav)",
+        "-r, --reference": "Reference WAV for controllable voice cloning",
+        "--prompt-wav": "Prompt WAV for ultimate cloning (use with --prompt-text)",
+        "--prompt-text": "Transcript of prompt WAV for ultimate cloning",
+        "--stream": "Streaming mode",
+        "--steps": "Max decode steps (default: 200)",
+        "--timesteps": "CFM inference timesteps (default: 10, official default)",
+        "--cfg": "CFG guidance scale (default: 2.0, official default)",
+        "--temperature": "Noise temperature (default: 1.0)",
+        "--seed": "Random seed (default: 42)",
+        "--cpu": "Use CPU backend (default: GPU)",
+        "--n-gpu-layers": "Layers to offload to GPU (default: all)"
+      },
+      "architecture": "Tokenizer-free Diffusion Autoregressive (LocEnc → TSLM → RALM → LocDiT), MiniCPM-4 backbone, 2B parameters, AudioVAE V2 (16kHz in → 48kHz out)",
+      "sample_rate": 48000,
+      "lm_token_rate_hz": 6.25,
+      "max_sequence_length": 8192,
+      "encoding_note": "The CLI receives argv in the ANSI code page (CP1252) on Windows but the tokenizer expects UTF-8. The Rust plugin pre-encodes text as UTF-8-bytes-decoded-as-CP1252 so the CRT conversion reconstructs valid UTF-8. No upstream patch needed.",
+      "variants": [
+        {
+          "name": "VoxCPM2",
+          "size": "2B",
+          "mode": "multi",
+          "description": "Voice Design, Controllable Cloning and Ultimate Cloning in one model, 30 languages, 48kHz output",
+          "supported_modes": ["Voice Design", "Controllable Cloning", "Ultimate Cloning"],
+          "char_limit_recommended": 800,
+          "char_limit_max": 1000,
+          "char_limit_note": "No official char limit published; 800 chars verified end-to-end on 2026-07-19 (32s audio, RTF 0.21 on RTX 3090). 1000 max is a prudent cap.",
+          "requires_speaker_reference": false,
+          "gguf_repo": "DennisHuang648/VoxCPM2-GGUF",
+          "files": [
+            {
+              "name": "base_lm",
+              "filename_template": "VoxCPM2-BaseLM-{quant}.gguf",
+              "quants": {
+                "Q8_0": { "size_mb": 1647, "url": "https://huggingface.co/DennisHuang648/VoxCPM2-GGUF/resolve/main/VoxCPM2-BaseLM-Q8_0.gguf" },
+                "F16": { "size_mb": 3097, "url": "https://huggingface.co/DennisHuang648/VoxCPM2-GGUF/resolve/main/VoxCPM2-BaseLM-F16.gguf" }
+              }
+            }
+          ]
+        }
+      ],
+      "shared_files": [
+        {
+          "name": "acoustic",
+          "description": "VoxCPM2 Acoustic model (LocDiT + AudioVAE V2 decoder), required together with BaseLM",
+          "gguf_repo": "DennisHuang648/VoxCPM2-GGUF",
+          "license": "Apache-2.0",
+          "files": [
+            {
+              "name": "acoustic_f16",
+              "filename": "VoxCPM2-Acoustic-F16.gguf",
+              "url": "https://huggingface.co/DennisHuang648/VoxCPM2-GGUF/resolve/main/VoxCPM2-Acoustic-F16.gguf",
+              "size_mb": 1740
+            }
+          ]
+        }
+      ],
+      "parameters": {
+        "cfg": { "type": "float", "default": 2.0, "min": 1.0, "max": 5.0, "step": 0.1, "description": "CFG guidance scale (voxcpm2-cli --cfg). Official default: 2.0", "cli_flag": "--cfg" },
+        "timesteps": { "type": "int", "default": 10, "min": 4, "max": 30, "step": 1, "description": "CFM inference timesteps (voxcpm2-cli --timesteps). Official default: 10", "cli_flag": "--timesteps" },
+        "temperature": { "type": "float", "default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05, "description": "Noise temperature (voxcpm2-cli --temperature). CLI default: 1.0", "cli_flag": "--temperature" },
+        "steps": { "type": "int", "default": 200, "min": 50, "max": 400, "step": 10, "description": "Max decode steps (voxcpm2-cli --steps). CLI default: 200 (~30s+ of audio at 6.25 Hz token rate)", "cli_flag": "--steps" },
+        "seed": { "type": "int", "default": -1, "description": "Random seed, -1 = random (voxcpm2-cli --seed, CLI default: 42)", "cli_flag": "--seed" }
+      },
+      "mode_specific_params": {
+        "voice_design": {
+          "voice_description": { "type": "string", "required": true, "description": "Voice description in English, e.g. 'A calm middle-aged male narrator with a deep voice'" }
+        },
+        "controllable_cloning": {
+          "ref_audio": { "type": "file", "required": true, "description": "Reference audio (WAV, 16-bit PCM, ~10-30s, 16kHz accepted)" },
+          "voice_description": { "type": "string", "required": false, "description": "Optional style guidance, e.g. 'slightly faster, cheerful tone'" }
+        },
+        "ultimate_cloning": {
+          "ref_audio": { "type": "file", "required": true, "description": "Reference audio (WAV, 16-bit PCM, ~10-30s)" },
+          "ref_text": { "type": "string", "required": true, "description": "Exact transcription of the reference audio" }
+        }
+      },
+      "sources": [
+        "https://huggingface.co/openbmb/VoxCPM2 (official model card: cfg=2.0, timesteps=10, 8192 max sequence, 6.25 Hz LM token rate, 48kHz, 30 languages, Apache-2.0 — verified 2026-07-19)",
+        "https://voxcpm.readthedocs.io/ (official docs — verified 2026-07-19)",
+        "https://github.com/tc-mb/llama.cpp-omni (official GGUF runtime fork, commit b9d15b8, compiled unmodified)",
+        "https://huggingface.co/DennisHuang648/VoxCPM2-GGUF (GGUF conversion linked from the official README, URLs verified 2026-07-19)"
+      ],
+      "notes": "Both GGUF files (BaseLM + Acoustic) are required. VRAM ~4.5-6 GB measured on RTX 3090 (Q8_0 + F16 acoustic). RTF 0.21-0.24 measured on RTX 3090. Voice Design results vary between runs; 1-3 attempts recommended by upstream."
+    },
+    "neuttsair": {
       "display_name": "NeuTTS Air",
       "license": "Apache-2.0",
       "languages": ["English"],

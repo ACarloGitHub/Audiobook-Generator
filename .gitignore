@@ -145,3 +145,9 @@ CLAUDE.md
 DEV_LOG.md
 TODO_NEXT.md
 ANALISI_ARCHITETTURALE.md
+
+# Local engine evaluation scratch area (binaries, models, test wavs)
+_engine_eval/
+
+# Root-level build/test output
+target/
