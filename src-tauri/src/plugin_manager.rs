@@ -252,26 +252,28 @@ impl PluginManager {
             }
 
             let vox_base = self.app_data_dir.join("models").join("voxcpm2");
-            let variant_dir = vox_base.join(&entry.name);
-            let base_lm_exists = ["VoxCPM2-BaseLM-Q8_0.gguf", "VoxCPM2-BaseLM-F16.gguf"]
-                .iter()
-                .any(|f| variant_dir.join(f).exists());
-            let acoustic_exists = vox_base
-                .join("acoustic")
-                .join("VoxCPM2-Acoustic-F16.gguf")
+            let Some(quant_file) = voxcpm2_quant_for_engine(&entry.name) else {
+                continue;
+            };
+            let (acoustic_name, acoustic_size) =
+                voxcpm2_acoustic_file().unwrap_or_else(|| (String::new(), 0));
+            let base_lm_exists = vox_base
+                .join(&quant_file.base_name)
+                .join(&quant_file.filename)
                 .exists();
+            let acoustic_exists = vox_base.join("acoustic").join(&acoustic_name).exists();
             let installed = base_lm_exists && acoustic_exists;
 
             out.push(EngineInfo {
                 id: entry.name.clone(),
-                display_name: "VoxCPM2 2B".into(),
+                display_name: format!("VoxCPM2 2B {}", quant_file.quant),
                 format: "GGUF".into(),
                 voice_cloning: true,
                 hardware: vec!["CPU".into(), "CUDA".into()],
                 license: "Apache 2.0".into(),
                 languages: voxcpm2_languages(),
                 installed,
-                size_mb: 1647 + 1740,
+                size_mb: quant_file.size_mb + acoustic_size,
                 voices: Vec::new(),
             });
         }
@@ -378,6 +380,94 @@ fn voxcpm2_languages() -> Vec<String> {
         }
     }
     langs
+}
+
+/// One downloadable BaseLM quantization of the voxcpm2 engine,
+/// parsed data-driven from engine_registry.json.
+#[derive(Debug, Clone)]
+pub struct VoxQuantFile {
+    pub base_name: String,
+    pub quant: String,
+    pub filename: String,
+    pub size_mb: u32,
+}
+
+/// All voxcpm2 BaseLM quant files from engine_registry.json,
+/// sorted by size ascending (smallest = legacy default quant).
+pub fn voxcpm2_registry_files() -> Vec<VoxQuantFile> {
+    let Ok(raw) = serde_json::from_str::<serde_json::Value>(ENGINE_REGISTRY_JSON) else {
+        return Vec::new();
+    };
+    let Some(variant) = raw
+        .get("engines")
+        .and_then(|e| e.get("voxcpm2"))
+        .and_then(|e| e.get("variants"))
+        .and_then(|v| v.as_array())
+        .and_then(|v| v.first())
+    else {
+        return Vec::new();
+    };
+    let Some(base_name) = variant.get("name").and_then(|n| n.as_str()) else {
+        return Vec::new();
+    };
+    let Some(file) = variant.get("files").and_then(|f| f.as_array()).and_then(|f| f.first()) else {
+        return Vec::new();
+    };
+    let Some(template) = file.get("filename_template").and_then(|t| t.as_str()) else {
+        return Vec::new();
+    };
+    let Some(quants) = file.get("quants").and_then(|q| q.as_object()) else {
+        return Vec::new();
+    };
+    let mut out: Vec<VoxQuantFile> = quants
+        .iter()
+        .map(|(quant, info)| VoxQuantFile {
+            base_name: base_name.to_string(),
+            quant: quant.clone(),
+            filename: template.replace("{quant}", quant),
+            size_mb: info
+                .get("size_mb")
+                .and_then(|s| s.as_u64())
+                .unwrap_or(0) as u32,
+        })
+        .collect();
+    out.sort_by_key(|f| f.size_mb);
+    out
+}
+
+/// Map a voxcpm2 engine id (e.g. "VoxCPM2 Q8_0") to its BaseLM quant file.
+/// The bare variant name ("VoxCPM2", saved before per-quant selection
+/// existed) maps to the smallest quant, which was the only one available
+/// at that time.
+pub fn voxcpm2_quant_for_engine(engine_id: &str) -> Option<VoxQuantFile> {
+    let files = voxcpm2_registry_files();
+    if let Some(f) = files
+        .iter()
+        .find(|f| format!("{} {}", f.base_name, f.quant) == engine_id)
+    {
+        return Some(f.clone());
+    }
+    if files.first().map(|f| f.base_name.as_str()) == Some(engine_id) {
+        return files.into_iter().next();
+    }
+    None
+}
+
+/// Shared voxcpm2 Acoustic file (filename, size_mb) from engine_registry.json.
+pub fn voxcpm2_acoustic_file() -> Option<(String, u32)> {
+    let raw = serde_json::from_str::<serde_json::Value>(ENGINE_REGISTRY_JSON).ok()?;
+    let file = raw
+        .get("engines")?
+        .get("voxcpm2")?
+        .get("shared_files")?
+        .as_array()?
+        .first()?
+        .get("files")?
+        .as_array()?
+        .first()?;
+    let filename = file.get("filename")?.as_str()?.to_string();
+    let size_mb = file.get("size_mb")?.as_u64()? as u32;
+    Some((filename, size_mb))
 }
 
 pub fn defaults_for(engine_id: &str) -> EngineDefaults {
@@ -527,5 +617,44 @@ impl QwenPaths {
             models_dir: base.clone(),
             tokenizer_dir: base.join("tokenizer"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vox_quant_for_engine_maps_per_quant_ids() {
+        let f = voxcpm2_quant_for_engine("VoxCPM2 Q8_0").expect("Q8_0");
+        assert_eq!(f.quant, "Q8_0");
+        assert_eq!(f.base_name, "VoxCPM2");
+        assert_eq!(f.filename, "VoxCPM2-BaseLM-Q8_0.gguf");
+        assert_eq!(f.size_mb, 1647);
+
+        let f = voxcpm2_quant_for_engine("VoxCPM2 F16").expect("F16");
+        assert_eq!(f.quant, "F16");
+        assert_eq!(f.filename, "VoxCPM2-BaseLM-F16.gguf");
+        assert_eq!(f.size_mb, 3097);
+    }
+
+    #[test]
+    fn vox_quant_for_engine_bare_id_maps_to_smallest_quant() {
+        // Legacy engine ids saved before per-quant selection existed.
+        let f = voxcpm2_quant_for_engine("VoxCPM2").expect("legacy bare id");
+        assert_eq!(f.quant, "Q8_0");
+    }
+
+    #[test]
+    fn vox_quant_for_engine_rejects_unknown_ids() {
+        assert!(voxcpm2_quant_for_engine("VoxCPM2 Q4_K_M").is_none());
+        assert!(voxcpm2_quant_for_engine("Qwen3-TTS-12Hz-0.6B-Base").is_none());
+    }
+
+    #[test]
+    fn vox_acoustic_file_comes_from_registry() {
+        let (filename, size_mb) = voxcpm2_acoustic_file().expect("acoustic in registry");
+        assert_eq!(filename, "VoxCPM2-Acoustic-F16.gguf");
+        assert_eq!(size_mb, 1740);
     }
 }

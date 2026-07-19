@@ -42,10 +42,17 @@
     "license": "Apache-2.0"
   },
   {
-    "name": "VoxCPM2",
+    "name": "VoxCPM2 Q8_0",
     "type": "external_process",
     "engine_id": "voxcpm2",
-    "description": "VoxCPM2 2B — Voice Design, Controllable Cloning and Ultimate Cloning, 30 languages, 48kHz, via voxcpm2-cli sidecar",
+    "description": "VoxCPM2 2B Q8_0 — Voice Design, Controllable Cloning and Ultimate Cloning, 30 languages, 48kHz, via voxcpm2-cli sidecar",
+    "license": "Apache-2.0"
+  },
+  {
+    "name": "VoxCPM2 F16",
+    "type": "external_process",
+    "engine_id": "voxcpm2",
+    "description": "VoxCPM2 2B F16 — Voice Design, Controllable Cloning and Ultimate Cloning, 30 languages, 48kHz, via voxcpm2-cli sidecar (highest quality)",
     "license": "Apache-2.0"
   },
   {

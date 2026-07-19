@@ -29,19 +29,29 @@ impl VoxCpm2Plugin {
     }
 
     fn resolve_base_lm_gguf(&self) -> Result<PathBuf> {
-        let variant_dir = self.paths.models_dir.join(&self.variant_name);
-        // Both quants may be installed (the Models panel offers one row per
-        // quant). Prefer F16: higher quality (unquantized weights); fall
-        // back to Q8_0 when it is the only one present.
-        for name in ["VoxCPM2-BaseLM-F16.gguf", "VoxCPM2-BaseLM-Q8_0.gguf"] {
-            let p = variant_dir.join(name);
-            if p.exists() {
-                return Ok(p);
-            }
+        // The engine id IS the quant selection (e.g. "VoxCPM2 Q8_0" or
+        // "VoxCPM2 F16", as chosen in Configuration / the Models panel).
+        // No automatic fallback to another quant: if the chosen file is
+        // missing, the user must download it explicitly.
+        let quant_file = crate::plugin_manager::voxcpm2_quant_for_engine(&self.variant_name)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "unknown VoxCPM2 engine id '{}'. Expected e.g. 'VoxCPM2 Q8_0'.",
+                    self.variant_name
+                )
+            })?;
+        let p = self
+            .paths
+            .models_dir
+            .join(&quant_file.base_name)
+            .join(&quant_file.filename);
+        if p.exists() {
+            return Ok(p);
         }
         anyhow::bail!(
-            "no VoxCPM2 BaseLM GGUF found in {}. Download from the Models panel.",
-            variant_dir.display()
+            "{} is not downloaded (missing {}). Download it from the Models panel.",
+            self.variant_name,
+            p.display()
         );
     }
 
