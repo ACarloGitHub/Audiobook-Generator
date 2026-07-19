@@ -114,8 +114,11 @@ pub fn tts_model_config() -> HashMap<&'static str, TtsModelConfig> {
                 "Ultimate Cloning".into(),
             ]),
             note: Some("VoxCPM2 2B: Voice Design, Controllable Cloning and Ultimate Cloning, 30 languages, 48kHz output.".into()),
-            char_limit_recommended: Some(800),
-            char_limit_max: Some(1000),
+            // Verified 2026-07-19 via voxcpm2-cli tests: the stop predictor
+            // misfires on chunks above ~450 chars (early stop mid-text, all
+            // seeds, all voice modes). Chunks of ~400 chars complete reliably.
+            char_limit_recommended: Some(400),
+            char_limit_max: Some(450),
             char_limits_by_lang: None,
             separator: ".".into(),
             replace_guillemets: false,
