@@ -36,6 +36,7 @@ This project integrates several TTS models from different publishers. Each model
 
 - **Qwen3-TTS (Alibaba Cloud)** — [Apache 2.0](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base)
 - **OuteTTS 1.0 0.6B (OuteAI)** — [Apache 2.0](https://huggingface.co/OuteAI/OuteTTS-1.0-0.6B) (Qwen3 0.6B backbone + DAC speech codec)
+- **VoxCPM2 (OpenBMB)** — [Apache 2.0](https://huggingface.co/openbmb/VoxCPM2) (2B tokenizer-free diffusion-AR TTS, 30 languages, 48 kHz; GGUF build from the official [llama.cpp-omni](https://github.com/tc-mb/llama.cpp-omni) fork, compiled unmodified)
 
 The retired engines are no longer shipped or supported:
 

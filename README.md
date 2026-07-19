@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <strong>Status: active development</strong> — the project has migrated from Python + Gradio to Tauri + llama.cpp. Qwen3-TTS and OuteTTS are working end-to-end. See <a href="AudiobookGenerator-Wiki/todo.md">todo.md</a> for the roadmap.
+  <strong>Status: active development</strong> — the project has migrated from Python + Gradio to Tauri + llama.cpp. Qwen3-TTS, OuteTTS and VoxCPM2 are working end-to-end. See <a href="AudiobookGenerator-Wiki/todo.md">todo.md</a> for the roadmap.
 </p>
 
 <p align="center">
@@ -45,6 +45,7 @@ All engines run locally through `llama-server` (a Tauri sidecar binary). There i
 |--------|--------|---------|---------|---------------|--------|
 | **Qwen3-TTS** (Alibaba) | GGUF | Excellent | Yes | Yes (3 s ref) | Working |
 | **OuteTTS 1.0 0.6B** (OuteAI) | GGUF | Good | Yes | Yes (10 s ref) | Working |
+| **VoxCPM2** (OpenBMB) | GGUF | Excellent | Yes | Yes (10-30 s ref) + Voice Design | Working |
 
 Each model has its own license. You are responsible for reviewing and accepting the license of any model you download. See [SECURITY.md](SECURITY.md) for the per-model links.
 
