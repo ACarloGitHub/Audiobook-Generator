@@ -205,6 +205,25 @@ export function attachGenerateListeners(
           }
         }
 
+        if (state.selectedEngineId.startsWith("VoxCPM2")) {
+          const voxDescVal = state.voxVoiceDescription?.trim();
+          if (voxDescVal) {
+            extra["voice_description"] = voxDescVal;
+          }
+          if (state.voxMode === "ultimate") {
+            const voxRefVal = state.referenceTranscript?.trim();
+            if (voxRefVal) {
+              extra["prompt_text"] = voxRefVal;
+            }
+          }
+          for (const key of ["cfg", "timesteps", "temperature", "steps"]) {
+            const def = state.engineGeneration[key]?.default;
+            if (def !== undefined && def !== null) {
+              extra[key] = String(def);
+            }
+          }
+        }
+
         // When using Character Limit strategy, disable word count limit
         const effectiveMaxWords =
           state.chunkStrategy === "Character Limit" ? 999999 : state.chunkMaxWords;

@@ -122,6 +122,35 @@ export function attachDemoListeners(): void {
         }
       }
 
+      if (state.selectedEngineId.startsWith("VoxCPM2")) {
+        const voxDescEl = document.getElementById("vox-voice-description") as HTMLTextAreaElement | null;
+        const voxDescVal = voxDescEl?.value?.trim() || state.voxVoiceDescription?.trim();
+        if (voxDescVal) {
+          extra["voice_description"] = voxDescVal;
+        }
+        if (state.voxMode === "ultimate") {
+          const voxRefEl = document.getElementById("vox-ref-text") as HTMLTextAreaElement | null;
+          const voxRefVal = voxRefEl?.value?.trim() || state.referenceTranscript?.trim();
+          if (voxRefVal) {
+            extra["prompt_text"] = voxRefVal;
+          }
+        }
+        // Advanced params: live DOM value, else registry default from state
+        for (const key of ["cfg", "timesteps", "temperature", "steps"]) {
+          const el = document.getElementById(`vox-${key}`) as HTMLInputElement | null;
+          if (el && el.value) {
+            extra[key] = el.value;
+          } else {
+            const def = state.engineGeneration[key]?.default;
+            if (def !== undefined && def !== null) {
+              extra[key] = String(def);
+            }
+          }
+        }
+        const voxSeedEl = document.getElementById("vox-seed") as HTMLInputElement | null;
+        if (voxSeedEl && voxSeedEl.value) extra["seed"] = voxSeedEl.value;
+      }
+
       try {
         const resultPath = await invoke<string>("synthesize_demo", {
           engineId: state.selectedEngineId,
@@ -238,6 +267,25 @@ export function attachDemoListeners(): void {
             extra["speaker_json"] = state.outeSpeakerJsonPath;
           } else if (state.selectedVoiceId) {
             extra["speaker"] = state.selectedVoiceId;
+          }
+        }
+
+        if (state.selectedEngineId.startsWith("VoxCPM2")) {
+          const voxDescVal = state.voxVoiceDescription?.trim();
+          if (voxDescVal) {
+            extra["voice_description"] = voxDescVal;
+          }
+          if (state.voxMode === "ultimate") {
+            const voxRefVal = state.referenceTranscript?.trim();
+            if (voxRefVal) {
+              extra["prompt_text"] = voxRefVal;
+            }
+          }
+          for (const key of ["cfg", "timesteps", "temperature", "steps"]) {
+            const def = state.engineGeneration[key]?.default;
+            if (def !== undefined && def !== null) {
+              extra[key] = String(def);
+            }
           }
         }
 

@@ -27,6 +27,8 @@ export interface AppState {
   engineVoiceCloning: boolean;
   qwenInstruct: string;
   outeSpeakerJsonPath: string | null;
+  voxMode: "design" | "clone" | "ultimate";
+  voxVoiceDescription: string;
   engineGeneration: Record<string, GenerationParam>;
 }
 
@@ -57,6 +59,8 @@ export const state: AppState = {
   engineVoiceCloning: false,
   qwenInstruct: "",
   outeSpeakerJsonPath: null,
+  voxMode: "design",
+  voxVoiceDescription: "",
   engineGeneration: {},
 };
 

@@ -27,8 +27,10 @@ export function renderConfiguration(status: EngineStatus): string {
 
     const isQwen = state.selectedEngineId.startsWith("Qwen3-TTS");
     const isOute = state.selectedEngineId.startsWith("OuteTTS");
+    const isVox = state.selectedEngineId.startsWith("VoxCPM2");
     const qwenControls = isQwen ? renderQwenControls() : "";
     const outeControls = isOute ? renderOuteControls() : "";
+    const voxControls = isVox ? renderVoxControls() : "";
 
     return `
     ${renderEngineStrip(status)}
@@ -43,6 +45,7 @@ export function renderConfiguration(status: EngineStatus): string {
 
       ${qwenControls}
       ${outeControls}
+      ${voxControls}
     </div>
   `;
 }
@@ -198,6 +201,80 @@ function renderOuteControls(): string {
     `;
 }
 
+function renderVoxControls(): string {
+    const mode = state.voxMode;
+    const modeOptions = [
+        { id: "design", label: "Voice Design — voice from a text description" },
+        { id: "clone", label: "Controllable Cloning — clone a reference voice" },
+        { id: "ultimate", label: "Ultimate Cloning — reference + transcript (max fidelity)" },
+    ]
+        .map((m) => `<option value="${m.id}" ${mode === m.id ? "selected" : ""}>${m.label}</option>`)
+        .join("");
+
+    const descLabel =
+        mode === "design"
+            ? "Voice Description (in English, required)"
+            : "Style Guidance (optional, in English)";
+    const descPlaceholder =
+        mode === "design"
+            ? "A calm middle-aged male narrator with a deep voice"
+            : "slightly faster, cheerful tone";
+
+    let cloneControls = "";
+    if (mode === "clone" || mode === "ultimate") {
+        cloneControls = `
+          <div class="field-row">
+            <label class="field-label">Reference Audio (WAV, 16-bit PCM, ~10-30s)</label>
+            <button class="btn-secondary" id="pick-reference-wav-btn">${state.referenceWavPath ? escapeHtml(state.referenceWavPath) : "Click to select a WAV file"}</button>
+          </div>
+        `;
+    }
+    if (mode === "ultimate") {
+        cloneControls += `
+          <div class="field-row">
+            <label class="field-label">Reference Transcription (required — exact text of the reference audio)</label>
+            <textarea class="text-input" rows="2" id="vox-ref-text" placeholder="Exact transcription of the reference audio">${escapeHtml(state.referenceTranscript || "")}</textarea>
+          </div>
+        `;
+    }
+
+    return `
+      <p class="field-help">VoxCPM2 auto-detects the language from input text (30 languages). Output is 48 kHz.</p>
+      <div class="field-row">
+        <label class="field-label">Voice Mode</label>
+        <select class="select" id="vox-mode-select">${modeOptions}</select>
+      </div>
+      <div class="field-row">
+        <label class="field-label">${descLabel}</label>
+        <textarea class="text-input" rows="2" id="vox-voice-description" placeholder="${descPlaceholder}">${escapeHtml(state.voxVoiceDescription || "")}</textarea>
+      </div>
+      ${cloneControls}
+      <details class="accordion">
+        <summary>Advanced Settings</summary>
+        <div class="field-row">
+          <label class="field-label">CFG Guidance Scale</label>
+          <input type="number" class="num-input" id="vox-cfg" min="1" max="5" step="0.1" value="${genDefault('cfg')}" />
+        </div>
+        <div class="field-row">
+          <label class="field-label">CFM Timesteps</label>
+          <input type="number" class="num-input" id="vox-timesteps" min="4" max="30" step="1" value="${genDefault('timesteps')}" />
+        </div>
+        <div class="field-row">
+          <label class="field-label">Temperature</label>
+          <input type="number" class="num-input" id="vox-temperature" min="0" max="2" step="0.05" value="${genDefault('temperature')}" />
+        </div>
+        <div class="field-row">
+          <label class="field-label">Max Decode Steps</label>
+          <input type="number" class="num-input" id="vox-steps" min="50" max="400" step="10" value="${genDefault('steps')}" />
+        </div>
+        <div class="field-row">
+          <label class="field-label">Seed (empty = random)</label>
+          <input type="number" class="num-input" id="vox-seed" placeholder="random" />
+        </div>
+      </details>
+    `;
+}
+
 export async function applyEngineDefaults(engineId: string): Promise<void> {
     try {
         const d = await invoke<EngineDefaults>("engine_defaults", { engineId });
@@ -284,7 +361,8 @@ export function attachConfigurationListeners(render: () => void): void {
     }
 
     const advIds = ["qwen-temp", "qwen-top-k", "qwen-top-p", "qwen-rep-pen", "qwen-max-new", "qwen-seed",
-        "oute-temperature", "oute-top-k", "oute-top-p", "oute-min-p", "oute-rep-pen", "oute-max-tokens"];
+        "oute-temperature", "oute-top-k", "oute-top-p", "oute-min-p", "oute-rep-pen", "oute-max-tokens",
+        "vox-cfg", "vox-timesteps", "vox-temperature", "vox-steps", "vox-seed"];
     for (const id of advIds) {
         const el = document.getElementById(id) as HTMLInputElement | null;
         if (el) {
@@ -316,6 +394,28 @@ export function attachConfigurationListeners(render: () => void): void {
             } catch (e) {
                 console.warn("dialog open failed:", e);
             }
+        });
+    }
+
+    const voxModeSelect = document.getElementById("vox-mode-select") as HTMLSelectElement | null;
+    if (voxModeSelect) {
+        voxModeSelect.addEventListener("change", () => {
+            state.voxMode = voxModeSelect.value as "design" | "clone" | "ultimate";
+            render();
+        });
+    }
+
+    const voxDescInput = document.getElementById("vox-voice-description") as HTMLTextAreaElement | null;
+    if (voxDescInput) {
+        voxDescInput.addEventListener("input", () => {
+            state.voxVoiceDescription = voxDescInput.value;
+        });
+    }
+
+    const voxRefTextInput = document.getElementById("vox-ref-text") as HTMLTextAreaElement | null;
+    if (voxRefTextInput) {
+        voxRefTextInput.addEventListener("input", () => {
+            state.referenceTranscript = voxRefTextInput.value;
         });
     }
 
