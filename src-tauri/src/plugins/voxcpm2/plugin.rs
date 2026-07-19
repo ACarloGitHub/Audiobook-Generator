@@ -30,7 +30,10 @@ impl VoxCpm2Plugin {
 
     fn resolve_base_lm_gguf(&self) -> Result<PathBuf> {
         let variant_dir = self.paths.models_dir.join(&self.variant_name);
-        for name in ["VoxCPM2-BaseLM-Q8_0.gguf", "VoxCPM2-BaseLM-F16.gguf"] {
+        // Both quants may be installed (the Models panel offers one row per
+        // quant). Prefer F16: higher quality (unquantized weights); fall
+        // back to Q8_0 when it is the only one present.
+        for name in ["VoxCPM2-BaseLM-F16.gguf", "VoxCPM2-BaseLM-Q8_0.gguf"] {
             let p = variant_dir.join(name);
             if p.exists() {
                 return Ok(p);
