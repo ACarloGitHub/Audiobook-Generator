@@ -16,13 +16,13 @@ Audiobook Generator processes everything **locally on your machine**. No data is
 The application is composed of:
 
 - A Tauri shell (TypeScript frontend + Rust native core)
-- A bundled `llama-server` sidecar that loads GGUF models
-- A bundled `ffmpeg` binary for audio processing
+- Native sidecar binaries downloaded on first run by the built-in wizard: `llama-server` and `voxcpm2-cli` (load GGUF models) and `ffmpeg` (audio processing)
 - An `ort`-backed ONNX Runtime for audio codec decoding (DAC speech codec for OuteTTS)
 - User-downloaded GGUF / ONNX model files in the per-user data directory
 
 None of these components open outbound network connections except for:
 
+- The first-run wizard, which downloads the native runtime components (`llama-server`, `voxcpm2-cli`, `ffmpeg`) when the user explicitly confirms
 - The model downloader, which talks to `huggingface.co` when the user explicitly clicks "Download model"
 - The auto-update channel (if enabled in the build), which talks to the project's GitHub releases
 
@@ -45,6 +45,8 @@ The retired engines are no longer shipped or supported:
 - ~~Chatterbox (Resemble AI)~~ — retired 2026-07-18; upstream GGUF incomplete, would require self-maintained converted model files
 - ~~XTTSv2 (Coqui)~~ — retired; no GGUF export exists
 - ~~VibeVoice (Microsoft)~~ — retired; code removed by publisher
+- ~~Voxtral TTS (Mistral AI)~~ — excluded; CC BY-NC license (non-commercial only)
+- ~~MOSS-TTS~~ — excluded; requires Python at runtime
 
 ### Reporting Vulnerabilities
 

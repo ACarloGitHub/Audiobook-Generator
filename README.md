@@ -39,13 +39,13 @@
 
 ## Supported TTS Engines
 
-All engines run locally through `llama-server` (a Tauri sidecar binary). There is no Python and no per-engine virtual environment to manage.
+All engines run locally through native C++ sidecar binaries (`llama-server` and `voxcpm2-cli`, built from the official [llama.cpp-omni](https://github.com/tc-mb/llama.cpp-omni) sources). There is no Python and no per-engine virtual environment to manage.
 
-| Engine | Format | Quality | Italian | Voice Cloning | Status |
-|--------|--------|---------|---------|---------------|--------|
-| **Qwen3-TTS** (Alibaba) | GGUF | Excellent | Yes | Yes (3 s ref) | Working |
-| **OuteTTS 1.0 0.6B** (OuteAI) | GGUF | Good | Yes | Yes (10 s ref) | Working |
-| **VoxCPM2** (OpenBMB) | GGUF | Excellent | Yes | Yes (10-30 s ref) + Voice Design | Working |
+| Engine | License | Format | Quality | Languages | Voice Cloning | Status |
+|--------|---------|--------|---------|-----------|---------------|--------|
+| **Qwen3-TTS** (Alibaba) | Apache 2.0 | GGUF | Excellent | Multilingual | Yes (3 s ref) | Working |
+| **OuteTTS 1.0 0.6B** (OuteAI) | Apache 2.0 | GGUF | Good | Multilingual | Yes (10 s ref) | Working |
+| **VoxCPM2** (OpenBMB) | Apache 2.0 | GGUF | Excellent | 30 languages, 48 kHz | 3 modes: Controllable Cloning, Ultimate Cloning, Voice Design | Working |
 
 Each model has its own license. You are responsible for reviewing and accepting the license of any model you download. See [SECURITY.md](SECURITY.md) for the per-model links.
 
@@ -57,32 +57,35 @@ Each model has its own license. You are responsible for reviewing and accepting 
 - **Multiple TTS Engines** — Choose the best model for your needs, switch any time
 - **Voice Cloning** — Clone your own voice for a personal narrated audiobook (3-10 seconds of reference audio, depending on the engine)
 - **Multilingual** — The TTS models auto-detect the language of the input text. No language picker in the UI
-- **Recovery Mode** — Resume interrupted generations from where they left off
+- **Recovery Mode** — Resume interrupted generations from where they left off, with full manual control: retry failed chunks, split long chunks and retry, or merge chunks by hand
+- **User-chosen quantization** — Pick the model quantization that fits your hardware (e.g. VoxCPM2 Q8_0 vs F16)
 - **GPU Acceleration** — CUDA, Vulkan, Metal, DirectML supported through llama-server
 - **One installer** — No Python, no virtual environment, no `pip install`. The installer is self-contained
 
-**Retired engines:** Kokoro (English-only pronunciation), NeuTTS Air (English-only, watermarked), Chatterbox (upstream GGUF incomplete — would require self-maintained converted model files), VibeVoice (removed by Microsoft), XTTSv2 (no GGUF export).
+**Retired engines:** Kokoro (English-only pronunciation), NeuTTS Air (English-only, watermarked), Chatterbox (upstream GGUF incomplete — would require self-maintained converted model files), VibeVoice (removed by Microsoft), XTTSv2 (no GGUF export), Voxtral TTS (CC BY-NC license — non-commercial only), MOSS-TTS (requires Python at runtime).
 
 ---
 
 ## Quick Start
 
-The first public release will ship as a native installer for Windows, macOS, and Linux. Until then, the project is in active development — see the [migration roadmap](AudiobookGenerator-Wiki/wiki/concepts/migration-roadmap.md).
+Download the latest installer from the [GitHub Releases](https://github.com/ACarloGitHub/Audiobook-Generator/releases) page:
 
-When the first installer is available:
+- **Windows:** `.msi` (WiX) or `*-setup.exe` (NSIS)
+- **macOS:** `.dmg`
+- **Linux:** `.AppImage` or `.deb`
+
+Then:
 
 ```bash
-# 1. Download the installer for your platform
-#    Windows: AudiobookGenerator-x.y.z.msi
-#    macOS:   AudiobookGenerator-x.y.z.dmg
-#    Linux:   AudiobookGenerator-x.y.z.AppImage
+# 1. Install and launch
 
-# 2. Install and launch
+# 2. Follow the first-run wizard: it downloads the native runtime
+#    components (llama-server, ffmpeg) for your platform
 
 # 3. Pick a TTS engine, download a model, drop in an EPUB, click Generate
 ```
 
-The installer bundles `llama-server`, `ffmpeg`, and the Tauri shell. Models are downloaded on demand from inside the app. There is no Python, no `pip install`, no virtual environment to manage.
+The installer bundles only the Tauri shell. The native runtime components (`llama-server`, `voxcpm2-cli`, `ffmpeg`) are downloaded on first run by the built-in wizard, and models are downloaded on demand from inside the app. There is no Python, no `pip install`, no virtual environment to manage.
 
 ---
 
