@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <strong>Status: active development</strong> — the project has migrated from Python + Gradio to Tauri + llama.cpp. Qwen3-TTS, OuteTTS and VoxCPM2 are working end-to-end. See <a href="AudiobookGenerator-Wiki/todo.md">todo.md</a> for the roadmap.
+  <strong>Status: active development — v0.1.1</strong> — the project has migrated from Python + Gradio to Tauri + llama.cpp. Qwen3-TTS, OuteTTS and VoxCPM2 are working end-to-end. v0.1.1: fixes Qwen3-TTS runtime download, wizard roster, Models panel path display, uninstaller docs. See <a href="AudiobookGenerator-Wiki/todo.md">todo.md</a> for the roadmap.
 </p>
 
 <p align="center">
