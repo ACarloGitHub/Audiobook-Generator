@@ -1,6 +1,6 @@
 //! Centralized resolution of bundled sidecar binaries.
 //!
-//! All engine binaries (qwen-tts, voxcpm2-cli, llama-server, ffmpeg) ship
+//! All engine binaries (qwen-tts, voxcpm2-cli, llama-server) ship
 //! INSIDE the installer as Tauri bundle resources, so the app works offline
 //! out of the box. The lookup order is:
 //!
