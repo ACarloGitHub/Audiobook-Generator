@@ -1,5 +1,5 @@
 use std::fs::{self, File};
-use std::io::{self, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
@@ -7,7 +7,7 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
-const LLAMACPP_PINNED_VERSION: &str = "b9756";
+use crate::sidecars;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct HardwareInfo {
@@ -65,6 +65,10 @@ pub struct DependencyStatus {
     pub ffmpeg_path: Option<String>,
     pub llama_server_installed: bool,
     pub llama_server_path: Option<String>,
+    pub qwentts_installed: bool,
+    pub qwentts_path: Option<String>,
+    pub voxcpm2_installed: bool,
+    pub voxcpm2_path: Option<String>,
     pub ort_installed: bool,
     pub cudnn_installed: bool,
 }
@@ -77,18 +81,6 @@ pub struct WizardStep {
     pub completed: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct DownloadProgress {
-    pub id: String,
-    pub name: String,
-    pub phase: String,
-    pub bytes: u64,
-    pub total: u64,
-    pub speed_bps: u64,
-    pub eta_seconds: Option<f64>,
-    pub error: Option<String>,
-}
-
 fn silent_command(program: &str) -> Command {
     let mut cmd = Command::new(program);
     #[cfg(target_os = "windows")]
@@ -97,10 +89,6 @@ fn silent_command(program: &str) -> Command {
         cmd.creation_flags(0x08000000);
     }
     cmd
-}
-
-fn command_exists(cmd: &str) -> bool {
-    which::which(cmd).is_ok()
 }
 
 fn detect_nvidia_smi() -> Option<String> {
@@ -169,97 +157,6 @@ fn recommended_backend() -> String {
     }
 }
 
-fn platform_string() -> &'static str {
-    if cfg!(target_os = "windows") {
-        "windows"
-    } else if cfg!(target_os = "macos") {
-        "macos"
-    } else {
-        "linux"
-    }
-}
-
-fn arch_string() -> &'static str {
-    if cfg!(target_arch = "aarch64") {
-        "arm64"
-    } else if cfg!(target_arch = "x86_64") {
-        "x64"
-    } else {
-        "unknown"
-    }
-}
-
-pub(crate) fn resources_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let base = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("app_data_dir error: {}", e))?;
-    let dir = base.join("resources");
-    if !dir.exists() {
-        fs::create_dir_all(&dir).map_err(|e| format!("create resources dir: {}", e))?;
-    }
-    Ok(dir)
-}
-
-pub(crate) fn bin_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let base = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("app_data_dir error: {}", e))?;
-    let dir = base.join("bin");
-    if !dir.exists() {
-        fs::create_dir_all(&dir).map_err(|e| format!("create bin dir: {}", e))?;
-    }
-    Ok(dir)
-}
-
-fn llamacpp_binary_name() -> &'static str {
-    if cfg!(target_os = "windows") {
-        "llama-server.exe"
-    } else {
-        "llama-server"
-    }
-}
-
-fn llamacpp_url_for_variant(variant: &str) -> String {
-    let platform = platform_string();
-    let arch = arch_string();
-    let ver = LLAMACPP_PINNED_VERSION;
-    let asset = match (platform, arch, variant) {
-        ("windows", "x64", "cpu") => format!("llama-{}-bin-win-cpu-x64.zip", ver),
-        ("windows", "x64", "cuda") => format!("llama-{}-bin-win-cuda-12.4-x64.zip", ver),
-        ("windows", "x64", "vulkan") => format!("llama-{}-bin-win-vulkan-x64.zip", ver),
-        ("windows", "arm64", "cpu") => format!("llama-{}-bin-win-cpu-arm64.zip", ver),
-        ("macos", "arm64", _) => format!("llama-{}-bin-macos-arm64.tar.gz", ver),
-        ("macos", "x64", _) => format!("llama-{}-bin-macos-x64.tar.gz", ver),
-        ("linux", "x64", "cpu") => format!("llama-{}-bin-ubuntu-x64.tar.gz", ver),
-        ("linux", "x64", "vulkan") => format!("llama-{}-bin-ubuntu-vulkan-x64.tar.gz", ver),
-        ("linux", "arm64", _) => format!("llama-{}-bin-ubuntu-arm64.tar.gz", ver),
-        _ => format!("llama-{}-bin-ubuntu-x64.tar.gz", ver),
-    };
-    format!(
-        "https://github.com/ggml-org/llama.cpp/releases/download/{}/{}",
-        ver, asset
-    )
-}
-
-fn llamacpp_cudart_url() -> Option<String> {
-    if cfg!(target_os = "windows") && cfg!(target_arch = "x86_64") {
-        let ver = LLAMACPP_PINNED_VERSION;
-        let asset = "cudart-llama-bin-win-cuda-12.4-x64.zip";
-        Some(format!(
-            "https://github.com/ggml-org/llama.cpp/releases/download/{}/{}",
-            ver, asset
-        ))
-    } else {
-        None
-    }
-}
-
-fn is_zip_url(url: &str) -> bool {
-    url.to_lowercase().ends_with(".zip")
-}
-
 #[tauri::command]
 pub fn detect_hardware() -> HardwareInfo {
     detect_hardware_impl()
@@ -305,45 +202,45 @@ fn detect_hardware_impl() -> HardwareInfo {
 }
 
 #[tauri::command]
-pub fn check_dependencies(app: AppHandle) -> DependencyStatus {
-    let app_data = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let bin = match bin_dir(&app) {
-        Ok(b) => b,
-        Err(_) => app_data.join("bin"),
-    };
-    let res = match resources_dir(&app) {
-        Ok(r) => r,
-        Err(_) => app_data.join("resources"),
-    };
-
+pub fn check_dependencies(_app: AppHandle) -> DependencyStatus {
     let ffmpeg_exe = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
-    let ffmpeg_installed = command_exists("ffmpeg") || bin.join(ffmpeg_exe).exists();
+    // ffmpeg ships inside the installer (resources/ffmpeg); PATH and the
+    // legacy per-user bin dir are kept as fallbacks for dev setups.
     let ffmpeg_path = which::which("ffmpeg")
         .ok()
+        .or_else(|| sidecars::sidecar_binary("ffmpeg", ffmpeg_exe))
         .or_else(|| {
-            let p = bin.join(ffmpeg_exe);
+            let p = crate::config::paths::default_ffmpeg_exe();
             if p.exists() { Some(p) } else { None }
-        })
-        .map(|p| p.to_string_lossy().to_string());
+        });
+    let ffmpeg_installed = ffmpeg_path.is_some();
 
-    let llama_exe = llamacpp_binary_name();
-    let llama_dir = res.join("llama.cpp");
-    let llama_installed = command_exists("llama-server")
-        || find_binary_in_dir(&llama_dir, llama_exe).is_some();
+    let llama_exe = if cfg!(windows) { "llama-server.exe" } else { "llama-server" };
     let llama_server_path = which::which("llama-server")
         .ok()
-        .or_else(|| find_binary_in_dir(&llama_dir, llama_exe))
-        .map(|p| p.to_string_lossy().to_string());
+        .or_else(|| sidecars::sidecar_binary("llama.cpp", llama_exe));
+    let llama_installed = llama_server_path.is_some();
+
+    let qwen_exe = if cfg!(windows) { "qwen-tts.exe" } else { "qwen-tts" };
+    let qwentts_path = sidecars::sidecar_binary("qwentts", qwen_exe);
+    let qwentts_installed = qwentts_path.is_some();
+
+    let vox_exe = if cfg!(windows) { "voxcpm2-cli.exe" } else { "voxcpm2-cli" };
+    let voxcpm2_path = sidecars::sidecar_binary("voxcpm2", vox_exe);
+    let voxcpm2_installed = voxcpm2_path.is_some();
 
     // ONNX Runtime is a Rust dependency (ort crate); if the app is running it is available.
     let ort_installed = true;
 
+    let llama_dir = sidecars::sidecar_dir("llama.cpp");
     let cudnn_installed = if cfg!(target_os = "windows") {
         let system32 = PathBuf::from("C:\\Windows\\System32");
         system32.join("cudnn64_9.dll").exists()
             || system32.join("cudnn_ops_infer64_9.dll").exists()
-            || res.join("llama.cpp").join("cublas64_12.dll").exists()
-            || res.join("llama.cpp").join("cudart64_12.dll").exists()
+            || llama_dir
+                .as_ref()
+                .map(|d| d.join("cublas64_12.dll").exists() || d.join("cudart64_12.dll").exists())
+                .unwrap_or(false)
     } else {
         let lib_paths = ["/usr/lib/x86_64-linux-gnu/libcudnn.so.9", "/usr/local/cuda/lib64/libcudnn.so.9"];
         lib_paths.iter().any(|p| PathBuf::from(p).exists())
@@ -351,9 +248,13 @@ pub fn check_dependencies(app: AppHandle) -> DependencyStatus {
 
     DependencyStatus {
         ffmpeg_installed,
-        ffmpeg_path,
+        ffmpeg_path: ffmpeg_path.map(|p| p.to_string_lossy().to_string()),
         llama_server_installed: llama_installed,
-        llama_server_path,
+        llama_server_path: llama_server_path.map(|p| p.to_string_lossy().to_string()),
+        qwentts_installed,
+        qwentts_path: qwentts_path.map(|p| p.to_string_lossy().to_string()),
+        voxcpm2_installed,
+        voxcpm2_path: voxcpm2_path.map(|p| p.to_string_lossy().to_string()),
         ort_installed,
         cudnn_installed,
     }
@@ -365,7 +266,7 @@ pub fn get_wizard_steps() -> Vec<WizardStep> {
         WizardStep {
             id: "welcome".into(),
             title: "Welcome".into(),
-            description: "Audiobook Generator needs a few system components to work. This wizard will help you install them.".into(),
+            description: "Everything needed to run is bundled in the installer. This wizard checks your hardware and guides you to the first model download.".into(),
             completed: false,
         },
         WizardStep {
@@ -375,175 +276,18 @@ pub fn get_wizard_steps() -> Vec<WizardStep> {
             completed: false,
         },
         WizardStep {
-            id: "ffmpeg".into(),
-            title: "FFmpeg".into(),
-            description: "FFmpeg is required to merge audio chunks into MP3 files.".into(),
-            completed: false,
-        },
-        WizardStep {
-            id: "llama_server".into(),
-            title: "llama-server".into(),
-            description: "llama-server is the inference engine for GGUF models (Qwen3-TTS, OuteTTS, VoxCPM2).".into(),
-            completed: false,
-        },
-        WizardStep {
-            id: "ort".into(),
-            title: "ONNX Runtime + cuDNN".into(),
-            description: "ONNX Runtime is built into the app (used by OuteTTS). cuDNN is optional for GPU acceleration on NVIDIA.".into(),
+            id: "components".into(),
+            title: "Bundled Components".into(),
+            description: "Verifying the engine binaries shipped with the installer (ffmpeg, llama-server, qwen-tts, voxcpm2-cli).".into(),
             completed: false,
         },
         WizardStep {
             id: "done".into(),
             title: "Setup Complete".into(),
-            description: "All system dependencies are installed. You can now download TTS models from the Models panel.".into(),
+            description: "All components are in place. You can now download TTS models from the Models panel.".into(),
             completed: false,
         },
     ]
-}
-
-#[tauri::command]
-pub async fn download_ffmpeg(app: AppHandle) -> Result<String, String> {
-    if command_exists("ffmpeg") {
-        return Ok("FFmpeg is already available on PATH.".into());
-    }
-    let res = resources_dir(&app)?;
-    let bin = bin_dir(&app)?;
-
-    let url = if cfg!(target_os = "windows") {
-        "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
-    } else {
-        return Err("On macOS/Linux, please install FFmpeg via your package manager:\n  macOS: brew install ffmpeg\n  Linux: sudo apt install ffmpeg".into());
-    };
-
-    let archive_path = res.join("ffmpeg-download.zip");
-    download_to_file_async(&app, "ffmpeg", "FFmpeg", url, &archive_path).await?;
-
-    let target_dir = res.join("ffmpeg");
-    if target_dir.exists() {
-        let _ = fs::remove_dir_all(&target_dir);
-    }
-    let _ = fs::create_dir_all(&target_dir);
-
-    app.emit("download-progress", serde_json::json!({
-        "id": "ffmpeg", "name": "FFmpeg", "phase": "extracting",
-        "bytes": 0, "total": 0, "speed_bps": 0, "eta_seconds": null
-    })).ok();
-
-    extract_zip(&archive_path, &target_dir)?;
-    let _ = fs::remove_file(&archive_path);
-
-    let ffmpeg_exe = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
-    let ffprobe_exe = if cfg!(windows) { "ffprobe.exe" } else { "ffprobe" };
-
-    let src_bin = find_binary_in_dir(&target_dir, ffmpeg_exe)
-        .ok_or_else(|| "Could not find ffmpeg in extracted archive".to_string())?;
-    let dest_bin = bin.join(ffmpeg_exe);
-    fs::copy(&src_bin, &dest_bin).map_err(|e| format!("Failed to copy ffmpeg: {e}"))?;
-
-    if let Some(src_ffprobe) = find_binary_in_dir(&target_dir, ffprobe_exe) {
-        let dest_ffprobe = bin.join(ffprobe_exe);
-        fs::copy(&src_ffprobe, &dest_ffprobe).ok();
-    }
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&dest_bin, fs::Permissions::from_mode(0o755))
-            .map_err(|e| format!("Failed to set permissions: {e}"))?;
-    }
-
-    app.emit("download-progress", serde_json::json!({
-        "id": "ffmpeg", "name": "FFmpeg", "phase": "done",
-        "bytes": 0, "total": 0, "speed_bps": 0, "eta_seconds": null
-    })).ok();
-
-    Ok("FFmpeg installed successfully.".into())
-}
-
-#[tauri::command]
-pub async fn download_llama_server(app: AppHandle) -> Result<String, String> {
-    if command_exists("llama-server") {
-        return Ok("llama-server is already available on PATH.".into());
-    }
-    let res = resources_dir(&app)?;
-
-    let variant = if cfg!(target_os = "macos") {
-        "metal"
-    } else if cfg!(target_os = "windows") && detect_nvidia_smi().is_some() {
-        let driver = detect_nvidia_smi().unwrap_or_default();
-        let major: u32 = driver.split('.').next().and_then(|s| s.parse().ok()).unwrap_or(0);
-        if major >= 525 { "cuda" } else { "vulkan" }
-    } else if cfg!(target_os = "linux") && detect_nvidia_smi().is_some() {
-        "vulkan"
-    } else if cfg!(target_os = "windows") {
-        "vulkan"
-    } else {
-        "cpu"
-    };
-
-    let url = llamacpp_url_for_variant(variant);
-    let is_zip = is_zip_url(&url);
-    let target_dir = res.join("llama.cpp");
-
-    if target_dir.exists() {
-        let _ = fs::remove_dir_all(&target_dir);
-    }
-    let _ = fs::create_dir_all(&target_dir);
-
-    let archive_ext = if is_zip { "llama-server-download.zip" } else { "llama-server-download.tar.gz" };
-    let archive_path = res.join(archive_ext);
-
-    let display_name = format!("llama-server ({})", variant);
-    download_to_file_async(&app, "llama-server", &display_name, &url, &archive_path).await?;
-
-    app.emit("download-progress", serde_json::json!({
-        "id": "llama-server", "name": display_name, "phase": "extracting",
-        "bytes": 0, "total": 0, "speed_bps": 0, "eta_seconds": null
-    })).ok();
-
-    if is_zip {
-        extract_zip(&archive_path, &target_dir)?;
-    } else {
-        extract_tar_gz(&archive_path, &target_dir)?;
-    }
-    let _ = fs::remove_file(&archive_path);
-
-    // On Windows with CUDA: download and merge CUDA runtime DLLs
-    if variant == "cuda" && cfg!(target_os = "windows") {
-        if let Some(cudart_url) = llamacpp_cudart_url() {
-            let cudart_archive = res.join("llama-server-cudart.zip");
-            download_to_file_async(&app, "llama-server-cudart", "CUDA Runtime DLLs", &cudart_url, &cudart_archive).await?;
-            app.emit("download-progress", serde_json::json!({
-                "id": "llama-server-cudart", "name": "CUDA Runtime DLLs", "phase": "extracting",
-                "bytes": 0, "total": 0, "speed_bps": 0, "eta_seconds": null
-            })).ok();
-            extract_zip_into(&cudart_archive, &target_dir)?;
-            let _ = fs::remove_file(&cudart_archive);
-        }
-    }
-
-    let exe_name = llamacpp_binary_name();
-    let bin = find_binary_in_dir(&target_dir, exe_name)
-        .ok_or_else(|| format!("Could not find {} in extracted archive", exe_name))?;
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&bin).map_err(|e| e.to_string())?.permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&bin, perms).ok();
-    }
-
-    // Write variant metadata
-    let meta_path = target_dir.join("variant.txt");
-    fs::write(&meta_path, variant).map_err(|e| format!("write variant: {}", e))?;
-
-    app.emit("download-progress", serde_json::json!({
-        "id": "llama-server", "name": display_name, "phase": "done",
-        "bytes": 0, "total": 0, "speed_bps": 0, "eta_seconds": null
-    })).ok();
-
-    Ok(format!("llama-server ({}) installed successfully.", variant))
 }
 
 #[tauri::command]
@@ -772,135 +516,3 @@ async fn download_stream_to_file(
     Ok(part_size)
 }
 
-// =============================================================================
-// Extraction (from AuraWrite pattern: temp dir + atomic rename + path traversal guard)
-// =============================================================================
-
-pub(crate) fn extract_zip(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {
-    let f = File::open(zip_path).map_err(|e| format!("open zip: {}", e))?;
-    let mut archive = zip::ZipArchive::new(f).map_err(|e| format!("read zip: {}", e))?;
-    // Extract to a temporary subdirectory first, then atomically move into place.
-    let temp_dir = dest_dir.with_file_name(format!(
-        "{}.extract-{}",
-        dest_dir.file_name().and_then(|n| n.to_str()).unwrap_or("dest"),
-        std::process::id()
-    ));
-    let _ = fs::remove_dir_all(&temp_dir);
-    fs::create_dir_all(&temp_dir).map_err(|e| format!("create temp dir: {}", e))?;
-    for i in 0..archive.len() {
-        let mut entry = archive.by_index(i).map_err(|e| format!("zip entry: {}", e))?;
-        let name = entry.name().to_string();
-        if name.contains("..") {
-            continue;
-        }
-        let outpath = temp_dir.join(&name);
-        if entry.is_dir() {
-            fs::create_dir_all(&outpath).ok();
-        } else {
-            if let Some(parent) = outpath.parent() {
-                fs::create_dir_all(parent).ok();
-            }
-            // Retry on Windows sharing violations (OS error 32) — antivirus may lock files
-            let mut out = None;
-            let mut last_err: Option<String> = None;
-            for attempt in 0..5 {
-                match File::create(&outpath) {
-                    Ok(f) => { out = Some(f); break; }
-                    Err(e) => {
-                        last_err = Some(format!("create {}: {}", outpath.display(), e));
-                        std::thread::sleep(Duration::from_millis(150 * (attempt + 1)));
-                    }
-                }
-            }
-            let mut out = out.ok_or_else(|| last_err.unwrap_or_else(|| "create failed".to_string()))?;
-            io::copy(&mut entry, &mut out).map_err(|e| format!("write: {}", e))?;
-        }
-    }
-    if dest_dir.exists() {
-        fs::remove_dir_all(dest_dir).map_err(|e| format!("remove old dest: {}", e))?;
-    }
-    fs::rename(&temp_dir, dest_dir).map_err(|e| format!("rename temp to dest: {}", e))?;
-    Ok(())
-}
-
-/// Extract a zip archive into dest_dir WITHOUT clearing it first.
-/// Used to merge CUDA runtime DLLs into the same directory as the binary.
-pub(crate) fn extract_zip_into(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {
-    let f = File::open(zip_path).map_err(|e| format!("open zip: {}", e))?;
-    let mut archive = zip::ZipArchive::new(f).map_err(|e| format!("read zip: {}", e))?;
-    fs::create_dir_all(dest_dir).map_err(|e| format!("create dir: {}", e))?;
-    for i in 0..archive.len() {
-        let mut entry = archive.by_index(i).map_err(|e| format!("zip entry: {}", e))?;
-        let name = entry.name().to_string();
-        if name.contains("..") {
-            continue;
-        }
-        let outpath = dest_dir.join(&name);
-        if entry.is_dir() {
-            fs::create_dir_all(&outpath).ok();
-        } else {
-            if let Some(parent) = outpath.parent() {
-                fs::create_dir_all(parent).ok();
-            }
-            let mut out = None;
-            let mut last_err: Option<String> = None;
-            for attempt in 0..5 {
-                match File::create(&outpath) {
-                    Ok(f) => { out = Some(f); break; }
-                    Err(e) => {
-                        last_err = Some(format!("create {}: {}", outpath.display(), e));
-                        std::thread::sleep(Duration::from_millis(150 * (attempt + 1)));
-                    }
-                }
-            }
-            let mut out = out.ok_or_else(|| last_err.unwrap_or_else(|| "create failed".to_string()))?;
-            io::copy(&mut entry, &mut out).map_err(|e| format!("write: {}", e))?;
-        }
-    }
-    Ok(())
-}
-
-pub(crate) fn extract_tar_gz(tar_gz_path: &Path, dest_dir: &Path) -> Result<(), String> {
-    let f = File::open(tar_gz_path).map_err(|e| format!("open tar.gz: {}", e))?;
-    let gz = flate2::read::GzDecoder::new(f);
-    let mut archive = tar::Archive::new(gz);
-    let temp_dir = dest_dir.with_file_name(format!(
-        "{}.extract-{}",
-        dest_dir.file_name().and_then(|n| n.to_str()).unwrap_or("dest"),
-        std::process::id()
-    ));
-    let _ = fs::remove_dir_all(&temp_dir);
-    fs::create_dir_all(&temp_dir).map_err(|e| format!("create temp dir: {}", e))?;
-    archive.unpack(&temp_dir).map_err(|e| format!("unpack tar.gz: {}", e))?;
-    if dest_dir.exists() {
-        fs::remove_dir_all(dest_dir).map_err(|e| format!("remove old dest: {}", e))?;
-    }
-    fs::rename(&temp_dir, dest_dir).map_err(|e| format!("rename temp to dest: {}", e))?;
-    Ok(())
-}
-
-pub(crate) fn find_binary_in_dir(root: &Path, name: &str) -> Option<PathBuf> {
-    if !root.exists() {
-        return None;
-    }
-    let mut stack: Vec<PathBuf> = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let entries = match fs::read_dir(&dir) {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.is_file() {
-                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                    if file_name == name {
-                        return Some(path);
-                    }
-                }
-            }
-        }
-    }
-    None
-}

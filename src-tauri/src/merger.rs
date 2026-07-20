@@ -169,8 +169,10 @@ pub fn collect_chapter_wavs(chapter_dir: &Path) -> Vec<PathBuf> {
 
 /// Locate the ffmpeg binary. Order of preference:
 /// 1. `FFMPEG` env var
-/// 2. `./ffmpeg/bin/ffmpeg` next to the project root
-/// 3. ffmpeg on PATH
+/// 2. ffmpeg bundled in the installer (`resources/ffmpeg/ffmpeg[.exe]`,
+///    with legacy per-user/dev fallbacks handled by the sidecars module)
+/// 3. `./ffmpeg/bin/ffmpeg` next to the project root
+/// 4. ffmpeg on PATH
 pub fn find_ffmpeg() -> Result<PathBuf> {
     if let Ok(p) = std::env::var("FFMPEG") {
         let pb = PathBuf::from(p);
@@ -178,20 +180,14 @@ pub fn find_ffmpeg() -> Result<PathBuf> {
             return Ok(pb);
         }
     }
-    // Tauri places sidecars in `src-tauri/sidecars/<name>/`. After
-    // bundling, the binary will live next to the .exe; in dev it lives
-    // in the project source tree.
-    let sidecar = std::env::current_exe()?
-        .parent()
-        .map(|p| p.join("ffmpeg.exe"))
-        .filter(|p| p.exists());
-    if let Some(p) = sidecar {
+    let exe_name = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+    if let Some(p) = crate::sidecars::sidecar_binary("ffmpeg", exe_name) {
         return Ok(p);
     }
     let local = std::env::current_dir()?
         .join("ffmpeg")
         .join("bin")
-        .join(if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" });
+        .join(exe_name);
     if local.exists() {
         return Ok(local);
     }

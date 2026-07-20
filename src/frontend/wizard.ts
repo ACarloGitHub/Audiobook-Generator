@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { escapeHtml, bytesToGB } from "./helpers";
 
 export interface HardwareInfo {
@@ -20,6 +19,10 @@ export interface DependencyStatus {
   ffmpeg_path: string | null;
   llama_server_installed: boolean;
   llama_server_path: string | null;
+  qwentts_installed: boolean;
+  qwentts_path: string | null;
+  voxcpm2_installed: boolean;
+  voxcpm2_path: string | null;
   ort_installed: boolean;
   cudnn_installed: boolean;
 }
@@ -31,60 +34,10 @@ export interface WizardStep {
   completed: boolean;
 }
 
-interface DownloadProgress {
-  id: string;
-  name: string;
-  phase: string;
-  bytes: number;
-  total: number;
-  speed_bps: number;
-  eta_seconds: number | null;
-  error?: string;
-}
-
 let currentStep = 0;
 let steps: WizardStep[] = [];
 let hardware: HardwareInfo | null = null;
 let deps: DependencyStatus | null = null;
-let downloadListenerActive = false;
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
-}
-
-function formatSpeed(bps: number): string {
-  if (bps === 0) return "...";
-  return `${formatBytes(bps)}/s`;
-}
-
-function formatEta(seconds: number | null): string {
-  if (seconds === null || seconds < 0) return "";
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.round(seconds % 60);
-  return `${mins}m ${secs}s`;
-}
-
-function progressText(p: DownloadProgress): string {
-  switch (p.phase) {
-    case "downloading":
-    case "resuming": {
-      const pct = p.total > 0 ? `(${((p.bytes / p.total) * 100).toFixed(1)}%)` : "";
-      return `Downloading ${p.name}... ${formatBytes(p.bytes)} ${pct} ${formatSpeed(p.speed_bps)} ETA: ${formatEta(p.eta_seconds)}`;
-    }
-    case "extracting":
-      return `Extracting ${p.name}...`;
-    case "done":
-      return `${p.name} installed successfully.`;
-    case "error":
-      return `Error: ${p.error ?? "unknown"}`;
-    default:
-      return `${p.phase} ${p.name}...`;
-  }
-}
 
 export function renderWizard(): string {
   return `
@@ -113,9 +66,7 @@ function renderStepContent(): string {
   switch (step.id) {
     case "welcome": return renderWelcome();
     case "hardware": return renderHardware();
-    case "ffmpeg": return renderFfmpeg();
-    case "llama_server": return renderLlamaServer();
-    case "ort": return renderOrt();
+    case "components": return renderComponents();
     case "done": return renderDone();
     default: return `<p>${escapeHtml(step.description)}</p>`;
   }
@@ -124,13 +75,15 @@ function renderStepContent(): string {
 function renderWelcome(): string {
   return `
     <p>Audiobook Generator converts EPUB books to audiobooks using local TTS (text-to-speech) models.</p>
-    <p>Before you can use it, a few system components need to be installed:</p>
+    <p>Everything needed to run is <strong>bundled in the installer</strong> — no extra downloads, works offline:</p>
     <ul>
       <li><strong>FFmpeg</strong> — merges audio chunks into MP3</li>
-      <li><strong>llama-server</strong> — runs GGUF models (Qwen3-TTS, OuteTTS, VoxCPM2)</li>
-      <li><strong>ONNX Runtime + cuDNN</strong> — accelerates ONNX inference (OuteTTS DAC decoder) on NVIDIA GPUs</li>
+      <li><strong>llama-server</strong> — runs GGUF models (OuteTTS)</li>
+      <li><strong>qwen-tts</strong> — the Qwen3-TTS engine binary</li>
+      <li><strong>voxcpm2-cli</strong> — the VoxCPM2 engine binary</li>
+      <li><strong>ONNX Runtime</strong> — built into the app (OuteTTS DAC decoder)</li>
     </ul>
-    <p>Models are downloaded separately from the <strong>Models</strong> panel after setup.</p>
+    <p>Only the TTS model weights are downloaded separately, from the <strong>Models</strong> panel, after setup.</p>
   `;
 }
 
@@ -152,76 +105,48 @@ function renderHardware(): string {
   `;
 }
 
-function renderFfmpeg(): string {
-  const installed = deps?.ffmpeg_installed ?? false;
-  const path = deps?.ffmpeg_path ?? null;
+function componentRow(label: string, installed: boolean, path: string | null): string {
   return `
-    <h3>FFmpeg</h3>
-    <p>FFmpeg merges audio chunks into MP3 files. It is required for all engines.</p>
-    <p class="field-help">Status: ${installed ? "✅ installed" : "❌ not found"}${path ? ` at <code>${escapeHtml(path)}</code>` : ""}</p>
-    ${!installed ? `
-      <button class="btn-primary" id="wizard-download-ffmpeg">Download FFmpeg</button>
-      <p class="field-help" id="ffmpeg-log"></p>
-      <div class="progress-bar-container" id="ffmpeg-progress-container" style="display:none;">
-        <div class="progress-bar" id="ffmpeg-progress-bar" style="width:0%"></div>
-      </div>
-    ` : ""}
-    <details class="accordion">
-      <summary>Manual installation</summary>
-      <p class="field-help">
-        Windows: <code>choco install ffmpeg</code> or download from <code>https://ffmpeg.org/download.html</code><br/>
-        macOS: <code>brew install ffmpeg</code><br/>
-        Linux: <code>sudo apt install ffmpeg</code> or <code>sudo dnf install ffmpeg</code>
-      </p>
-    </details>
+    <tr>
+      <td><strong>${label}</strong></td>
+      <td>${installed ? "✅ bundled" : "❌ not found"}</td>
+      <td>${path ? `<code>${escapeHtml(path)}</code>` : ""}</td>
+    </tr>
   `;
 }
 
-function renderLlamaServer(): string {
-  const installed = deps?.llama_server_installed ?? false;
-  const path = deps?.llama_server_path ?? null;
+function renderComponents(): string {
+  const allOk =
+    (deps?.ffmpeg_installed ?? false) &&
+    (deps?.llama_server_installed ?? false) &&
+    (deps?.qwentts_installed ?? false);
   return `
-    <h3>llama-server</h3>
-    <p>llama-server is the inference engine for GGUF models (Qwen3-TTS, OuteTTS, VoxCPM2). It is required for all engines except VoxCPM2, which uses its own sidecar binary.</p>
-    <p class="field-help">Status: ${installed ? "✅ installed" : "❌ not found"}${path ? ` at <code>${escapeHtml(path)}</code>` : ""}</p>
-    ${!installed ? `
-      <button class="btn-primary" id="wizard-download-llama">Download llama-server</button>
-      <p class="field-help" id="llama-log"></p>
-      <div class="progress-bar-container" id="llama-progress-container" style="display:none;">
-        <div class="progress-bar" id="llama-progress-bar" style="width:0%"></div>
-      </div>
-    ` : ""}
-    <details class="accordion">
-      <summary>Manual installation</summary>
-      <p class="field-help">
-        Download from <code>https://github.com/ggml-org/llama.cpp/releases</code>. Place the binary in your PATH or in the app's resources directory.
-      </p>
-    </details>
-  `;
-}
-
-function renderOrt(): string {
-  const ortOk = deps?.ort_installed ?? false;
-  const cudnnOk = deps?.cudnn_installed ?? false;
-  return `
-    <h3>ONNX Runtime + cuDNN</h3>
-    <p>ONNX Runtime is built into the application and is used by OuteTTS for the DAC audio decoder. cuDNN accelerates ONNX inference on NVIDIA GPUs.</p>
-    <p class="field-help">ONNX Runtime: ${ortOk ? "✅ built-in" : "❌ not available"}</p>
-    <p class="field-help">cuDNN 9: ${cudnnOk ? "✅ found" : "❌ not found (CPU-only fallback will be used)"}</p>
-    <details class="accordion">
-      <summary>Manual cuDNN installation</summary>
-      <p class="field-help">
-        Windows: Download cuDNN 9 from <code>https://developer.nvidia.com/cudnn</code> and place the DLLs in <code>C:\\Windows\\System32\\</code> or next to the app executable.<br/>
-        Linux: Install via package manager or download from NVIDIA.
-      </p>
-    </details>
+    <h3>Bundled Components</h3>
+    <p>These engine binaries ship inside the installer and should be present out of the box.</p>
+    <table class="wizard-table">
+      ${componentRow("FFmpeg", deps?.ffmpeg_installed ?? false, deps?.ffmpeg_path ?? null)}
+      ${componentRow("llama-server", deps?.llama_server_installed ?? false, deps?.llama_server_path ?? null)}
+      ${componentRow("qwen-tts", deps?.qwentts_installed ?? false, deps?.qwentts_path ?? null)}
+      ${componentRow("voxcpm2-cli", deps?.voxcpm2_installed ?? false, deps?.voxcpm2_path ?? null)}
+      <tr>
+        <td><strong>ONNX Runtime</strong></td>
+        <td>${deps?.ort_installed ? "✅ built-in" : "❌ not available"}</td>
+        <td></td>
+      </tr>
+      <tr>
+        <td><strong>cuDNN 9 (optional)</strong></td>
+        <td>${deps?.cudnn_installed ? "✅ found" : "⚠ not found (CPU fallback)"}</td>
+        <td></td>
+      </tr>
+    </table>
+    ${!allOk ? `<p class="field-help">Some components are missing. If you installed via the official installer, try reinstalling. In a development checkout, place the binaries under <code>resources/</code> in the working directory.</p>` : ""}
   `;
 }
 
 function renderDone(): string {
   return `
     <h3>Setup Complete!</h3>
-    <p>All system dependencies are in place. You can now:</p>
+    <p>All components are in place. You can now:</p>
     <ol>
       <li>Go to the <strong>Models</strong> panel to download TTS models (Qwen3-TTS, OuteTTS, VoxCPM2)</li>
       <li>Go to <strong>Configuration</strong> to select an engine and voice</li>
@@ -229,37 +154,6 @@ function renderDone(): string {
       <li>Go to <strong>Generate</strong> to create your audiobook</li>
     </ol>
   `;
-}
-
-function setupDownloadProgressListener(logId: string, progressBarId: string, progressContainerId: string, downloadId: string): void {
-  if (downloadListenerActive) return;
-  downloadListenerActive = true;
-
-  listen<DownloadProgress>("download-progress", (event) => {
-    const p = event.payload;
-    if (p.id !== downloadId) return;
-
-    const log = document.getElementById(logId);
-    const container = document.getElementById(progressContainerId);
-    const bar = document.getElementById(progressBarId);
-
-    if (log) log.textContent = progressText(p);
-
-    if (container && bar) {
-      if (p.phase === "downloading" || p.phase === "resuming") {
-        container.style.display = "block";
-        const pct = p.total > 0 ? (p.bytes / p.total) * 100 : 0;
-        bar.style.width = `${pct}%`;
-      } else if (p.phase === "extracting") {
-        if (log) log.textContent = progressText(p);
-        bar.style.width = "100%";
-      } else if (p.phase === "done") {
-        container.style.display = "none";
-      } else if (p.phase === "error") {
-        container.style.display = "none";
-      }
-    }
-  });
 }
 
 export async function initWizard(): Promise<boolean> {
@@ -303,44 +197,6 @@ export function attachWizardListeners(rerender: () => void, closeWizard: () => v
     skipBtn.addEventListener("click", async () => {
       await invoke("mark_wizard_done");
       closeWizard();
-    });
-  }
-
-  const downloadFfmpegBtn = document.getElementById("wizard-download-ffmpeg");
-  if (downloadFfmpegBtn) {
-    downloadFfmpegBtn.addEventListener("click", async () => {
-      const log = document.getElementById("ffmpeg-log");
-      const container = document.getElementById("ffmpeg-progress-container");
-      if (container) container.style.display = "block";
-      setupDownloadProgressListener("ffmpeg-log", "ffmpeg-progress-bar", "ffmpeg-progress-container", "ffmpeg");
-      try {
-        const result = await invoke<string>("download_ffmpeg");
-        if (log) log.textContent = result;
-        if (container) container.style.display = "none";
-        deps = await invoke<DependencyStatus>("check_dependencies");
-        rerender();
-      } catch (e) {
-        if (log) log.textContent = `Error: ${e}`;
-      }
-    });
-  }
-
-  const downloadLlamaBtn = document.getElementById("wizard-download-llama");
-  if (downloadLlamaBtn) {
-    downloadLlamaBtn.addEventListener("click", async () => {
-      const log = document.getElementById("llama-log");
-      const container = document.getElementById("llama-progress-container");
-      if (container) container.style.display = "block";
-      setupDownloadProgressListener("llama-log", "llama-progress-bar", "llama-progress-container", "llama-server");
-      try {
-        const result = await invoke<string>("download_llama_server");
-        if (log) log.textContent = result;
-        if (container) container.style.display = "none";
-        deps = await invoke<DependencyStatus>("check_dependencies");
-        rerender();
-      } catch (e) {
-        if (log) log.textContent = `Error: ${e}`;
-      }
     });
   }
 }

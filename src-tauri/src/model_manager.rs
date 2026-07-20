@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::wizard::{download_to_file_async, extract_zip, resources_dir};
+use crate::sidecars;
+use crate::wizard::download_to_file_async;
 
 /// Default quantization for downloads.
 const DEFAULT_QUANT: &str = "Q4_K_M";
@@ -188,18 +189,6 @@ struct QuantInfo {
     url: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct RuntimeDownload {
-    dest_dir: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct RuntimeVariant {
-    url: String,
-    dest_dir: String,
-    size_mb: u32,
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct ModelDownloadResult {
     pub model_name: String,
@@ -262,116 +251,15 @@ fn oute_dac_dir(app: &AppHandle) -> PathBuf {
         .join("dac")
 }
 
-/// Check if the qwen-tts binary is installed in resources/qwentts/.
-pub fn is_runtime_installed(app: &AppHandle) -> bool {
+/// Check if the qwen-tts binary is available (bundled in the installer, or
+/// in the legacy per-user resources dir from older dev installs).
+pub fn is_runtime_installed(_app: &AppHandle) -> bool {
     let exe_name = if cfg!(windows) {
         "qwen-tts.exe"
     } else {
         "qwen-tts"
     };
-
-    // 1. Check app_data resources (downloaded at runtime)
-    if let Ok(res) = resources_dir(app) {
-        if res.join("qwentts").join(exe_name).exists() {
-            return true;
-        }
-    }
-
-    // 2. Check bundle resources (shipped with installer)
-    if let Ok(bundle_res) = app.path().resource_dir() {
-        if bundle_res.join("qwentts").join(exe_name).exists() {
-            return true;
-        }
-    }
-
-    false
-}
-
-/// Download and extract the qwen-tts binary if not already present.
-async fn ensure_runtime(app: &AppHandle) -> Result<(), String> {
-    if is_runtime_installed(app) {
-        return Ok(());
-    }
-
-    let qwen = parse_qwen_engine()?;
-
-    // Find the right runtime download for this platform
-    let runtime_key = if cfg!(target_os = "windows") {
-        "windows_cuda"
-    } else if cfg!(target_os = "linux") {
-        "linux_cuda"
-    } else if cfg!(target_os = "macos") {
-        "macos_metal"
-    } else {
-        return Err("unsupported platform for qwen-tts runtime".into());
-    };
-
-    let runtime = qwen
-        ._extra
-        .get("runtime_download")
-        .and_then(|rd| rd.get(runtime_key))
-        .ok_or_else(|| format!("no runtime download configured for {}", runtime_key))?;
-
-    let url = runtime
-        .get("url")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "runtime URL missing".to_string())?;
-
-    let _ = app.emit("model-progress", serde_json::json!({
-        "model": "qwen-tts-runtime", "file": "qwen-tts-runtime.zip",
-        "phase": "downloading", "bytes": 0, "total": 0,
-        "speed_bps": 0, "eta_seconds": null
-    }));
-
-    let res = resources_dir(app)?;
-    let dest = res.join("qwentts");
-    std::fs::create_dir_all(&dest)
-        .map_err(|e| format!("create qwentts dir: {e}"))?;
-
-    let zip_dest = res.join("qwen-tts-runtime.zip");
-
-    // Handle file:// URLs (local testing) vs HTTP URLs
-    if url.starts_with("file://") {
-        let local_path = url.strip_prefix("file:///").unwrap_or(&url[7..]);
-        let local_path = if local_path.starts_with('/') {
-            local_path.to_string()
-        } else {
-            local_path.replace('/', "\\")
-        };
-        std::fs::copy(&local_path, &zip_dest)
-            .map_err(|e| format!("copy local runtime: {e}"))?;
-        let _ = app.emit("model-progress", serde_json::json!({
-            "model": "qwen-tts-runtime", "file": "qwen-tts-runtime.zip",
-            "phase": "done", "bytes": 0, "total": 0,
-            "speed_bps": 0, "eta_seconds": null
-        }));
-    } else {
-        download_to_file_async(
-            app,
-            "qwen-tts-runtime",
-            "qwen-tts-runtime.zip",
-            url,
-            &zip_dest,
-        )
-        .await?;
-    }
-
-    let _ = app.emit("model-progress", serde_json::json!({
-        "model": "qwen-tts-runtime", "file": "qwen-tts-runtime.zip",
-        "phase": "extracting", "bytes": 0, "total": 0,
-        "speed_bps": 0, "eta_seconds": null
-    }));
-
-    extract_zip(&zip_dest, &dest)?;
-    let _ = std::fs::remove_file(&zip_dest);
-
-    let _ = app.emit("model-progress", serde_json::json!({
-        "model": "qwen-tts-runtime", "file": "qwen-tts-runtime.zip",
-        "phase": "done", "bytes": 0, "total": 0,
-        "speed_bps": 0, "eta_seconds": null
-    }));
-
-    Ok(())
+    sidecars::sidecar_binary("qwentts", exe_name).is_some()
 }
 
 pub fn list_models(app: &AppHandle) -> Vec<ModelListEntry> {
@@ -597,10 +485,8 @@ pub async fn download_model(
         .find(|v| v.name == name)
         .ok_or_else(|| format!("variant '{}' not found in registry", name))?;
 
-    // Step 1: ensure the qwen-tts binary is installed
-    ensure_runtime(app).await?;
-
-    // Step 2: download model files
+    // The qwen-tts binary ships inside the installer (bundled sidecar);
+    // here we only download the GGUF model files.
     let dest_root = variant_dir(app, &variant.name);
     std::fs::create_dir_all(&dest_root)
         .map_err(|e| format!("create dest dir: {e}"))?;

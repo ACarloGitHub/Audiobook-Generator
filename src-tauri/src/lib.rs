@@ -10,6 +10,7 @@ mod model_manager;
 pub mod plugin_manager;
 pub mod plugins;
 mod recovery;
+pub mod sidecars;
 mod utils;
 mod wizard;
 
@@ -85,8 +86,6 @@ pub fn run() {
             wizard::detect_hardware,
             wizard::check_dependencies,
             wizard::get_wizard_steps,
-            wizard::download_ffmpeg,
-            wizard::download_llama_server,
             wizard::is_wizard_done,
             wizard::mark_wizard_done,
         ])

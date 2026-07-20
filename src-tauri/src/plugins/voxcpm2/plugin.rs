@@ -75,39 +75,11 @@ impl VoxCpm2Plugin {
         } else {
             "voxcpm2-cli"
         };
-
-        // Check APPDATA\Roaming (Tauri app_data_dir on Windows)
-        if let Ok(app_data) = std::env::var("APPDATA") {
-            let p = PathBuf::from(&app_data)
-                .join("com.patata.audiobookgenerator")
-                .join("resources")
-                .join("voxcpm2")
-                .join(exe_name);
-            if p.exists() {
-                return Ok(p);
-            }
+        if let Some(p) = crate::sidecars::sidecar_binary("voxcpm2", exe_name) {
+            return Ok(p);
         }
-
-        // Check HOME/.local/share (Tauri app_data_dir on Linux)
-        if let Ok(home) = std::env::var("HOME") {
-            let p = PathBuf::from(&home)
-                .join(".local/share/com.patata.audiobookgenerator")
-                .join("resources")
-                .join("voxcpm2")
-                .join(exe_name);
-            if p.exists() {
-                return Ok(p);
-            }
-        }
-
-        // Development fallback: relative path
-        let dev = PathBuf::from("resources").join("voxcpm2").join(exe_name);
-        if dev.exists() {
-            return Ok(dev);
-        }
-
         anyhow::bail!(
-            "voxcpm2-cli binary not found. Build it from https://github.com/tc-mb/llama.cpp-omni (see engine_registry.json runtime_build_commands) or install it from the Models panel."
+            "voxcpm2-cli binary not found. It ships inside the installer; reinstall the app or, for development, place it in resources/voxcpm2/."
         )
     }
 
@@ -119,27 +91,9 @@ impl VoxCpm2Plugin {
             .to_path_buf())
     }
 
-    /// Get the llama.cpp resources directory (for CUDA runtime DLLs).
+    /// Get the llama.cpp sidecar directory (extra CUDA runtime DLLs).
     fn llamacpp_resources_dir() -> Option<PathBuf> {
-        if let Ok(app_data) = std::env::var("APPDATA") {
-            let p = PathBuf::from(&app_data)
-                .join("com.patata.audiobookgenerator")
-                .join("resources")
-                .join("llama.cpp");
-            if p.exists() {
-                return Some(p);
-            }
-        }
-        if let Ok(home) = std::env::var("HOME") {
-            let p = PathBuf::from(&home)
-                .join(".local/share/com.patata.audiobookgenerator")
-                .join("resources")
-                .join("llama.cpp");
-            if p.exists() {
-                return Some(p);
-            }
-        }
-        None
+        crate::sidecars::sidecar_dir("llama.cpp")
     }
 
     /// Re-encode a UTF-8 string so it survives the Windows ANSI (CP1252)

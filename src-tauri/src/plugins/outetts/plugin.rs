@@ -117,21 +117,16 @@ impl OuteTTSPlugin {
     }
 
     fn find_llama_server() -> Result<PathBuf> {
-        if let Ok(app_data) = std::env::var("APPDATA") {
-            let p = PathBuf::from(&app_data)
-                .join("com.patata.audiobookgenerator")
-                .join("resources")
-                .join("llama.cpp")
-                .join("llama-server.exe");
-            if p.exists() {
-                return Ok(p);
-            }
+        let exe_name = if cfg!(windows) { "llama-server.exe" } else { "llama-server" };
+        if let Some(p) = crate::sidecars::sidecar_binary("llama.cpp", exe_name) {
+            return Ok(p);
         }
-        let dev = PathBuf::from("resources").join("llama.cpp").join("llama-server.exe");
-        if dev.exists() {
-            return Ok(dev);
+        if let Ok(p) = which::which("llama-server") {
+            return Ok(p);
         }
-        anyhow::bail!("llama-server not found")
+        anyhow::bail!(
+            "llama-server not found. It ships inside the installer; reinstall the app or, for development, place it in resources/llama.cpp/."
+        )
     }
 
     fn binary_dir() -> Result<PathBuf> {

@@ -57,49 +57,11 @@ impl QwenPlugin {
 
     fn find_qwen_tts_binary() -> Result<PathBuf> {
         let exe_name = if cfg!(windows) { "qwen-tts.exe" } else { "qwen-tts" };
-
-        // Check APPDATA\Roaming (Tauri app_data_dir on Windows)
-        if let Ok(app_data) = std::env::var("APPDATA") {
-            let p = PathBuf::from(&app_data)
-                .join("com.patata.audiobookgenerator")
-                .join("resources")
-                .join("qwentts")
-                .join(exe_name);
-            if p.exists() {
-                return Ok(p);
-            }
+        if let Some(p) = crate::sidecars::sidecar_binary("qwentts", exe_name) {
+            return Ok(p);
         }
-
-        // Check HOME/.local/share (Tauri app_data_dir on Linux)
-        if let Ok(home) = std::env::var("HOME") {
-            let p = PathBuf::from(&home)
-                .join(".local/share/com.patata.audiobookgenerator")
-                .join("resources")
-                .join("qwentts")
-                .join(exe_name);
-            if p.exists() {
-                return Ok(p);
-            }
-        }
-
-        // Check bundle resources (next to the app executable, for Tauri bundled installs)
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(dir) = exe.parent() {
-                let p = dir.join("resources").join("qwentts").join(exe_name);
-                if p.exists() {
-                    return Ok(p);
-                }
-            }
-        }
-
-        // Development fallback: relative path
-        let dev = PathBuf::from("resources").join("qwentts").join(exe_name);
-        if dev.exists() {
-            return Ok(dev);
-        }
-
         anyhow::bail!(
-            "qwen-tts binary not found. Download it from the Models panel (Runtime Binaries section)."
+            "qwen-tts binary not found. It ships inside the installer; reinstall the app or, for development, place it in resources/qwentts/."
         )
     }
 
@@ -109,29 +71,11 @@ impl QwenPlugin {
             .parent()
             .ok_or_else(|| anyhow::anyhow!("cannot get parent of qwen-tts binary"))?
             .to_path_buf())
-}
+    }
 
-    /// Get the llama.cpp resources directory (for CUDA runtime DLLs).
+    /// Get the llama.cpp sidecar directory (extra CUDA runtime DLLs).
     fn llamacpp_resources_dir() -> Option<PathBuf> {
-        if let Ok(app_data) = std::env::var("APPDATA") {
-            let p = PathBuf::from(&app_data)
-                .join("com.patata.audiobookgenerator")
-                .join("resources")
-                .join("llama.cpp");
-            if p.exists() {
-                return Some(p);
-            }
-        }
-        if let Ok(home) = std::env::var("HOME") {
-            let p = PathBuf::from(&home)
-                .join(".local/share/com.patata.audiobookgenerator")
-                .join("resources")
-                .join("llama.cpp");
-            if p.exists() {
-                return Some(p);
-            }
-        }
-        None
+        crate::sidecars::sidecar_dir("llama.cpp")
     }
 
     fn parse_variant_mode(&self) -> &'static str {
