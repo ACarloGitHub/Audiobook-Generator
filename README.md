@@ -89,6 +89,29 @@ The installer bundles only the Tauri shell. The native runtime components (`llam
 
 ---
 
+## Uninstall
+
+**Windows (NSIS installer `*-setup.exe`):**
+- Open **Settings → Apps → Installed apps**, search for "Audiobook Generator", and click **Uninstall**.
+- Alternatively, run the uninstaller directly from the Start Menu: **Start → Audiobook Generator → Uninstall**.
+
+**Windows (MSI installer `.msi`):**
+- Open **Settings → Apps → Installed apps**, search for "Audiobook Generator", and click **Uninstall**.
+
+**macOS (`.dmg`):**
+- Drag the Audiobook Generator app from **Applications** to the **Trash**.
+
+**Linux (`.deb` / AppImage):**
+- For `.deb`: `sudo apt remove audiobook-generator`
+- For AppImage: simply delete the AppImage file.
+
+User data (downloaded models, configuration, and recovery files) is stored in the app data directory and is **not** removed by the uninstaller. To delete it manually:
+- Windows: `%APPDATA%\com.patata.audiobookgenerator`
+- macOS: `~/Library/Application Support/com.patata.audiobookgenerator`
+- Linux: `~/.local/share/com.patata.audiobookgenerator`
+
+---
+
 ## Documentation
 
 - [AGENTS.md](AGENTS.md) — collaboration rules for AI assistants working in this repo
