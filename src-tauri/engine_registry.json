@@ -33,7 +33,7 @@
           "url": "https://github.com/ACarloGitHub/Audiobook-Generator/releases/latest/download/qwen-tts-runtime-windows-x64.zip",
           "dest_dir": "resources/qwentts",
           "size_mb": 15,
-          "note": "CPU-only build produced by CI from unmodified upstream sources. CUDA/Vulkan variants will be added when CI GPU runners are available."
+          "note": "CUDA build produced by CI from unmodified upstream sources (GGML_BACKEND_DL=ON, CUDA archs 75;80;86;89;90). Bundles cudart/cublas/cublasLt and ggml-cpu.dll, so it falls back to CPU automatically on machines without an NVIDIA GPU. Vulkan variant and macOS/Linux builds still to do."
         }
       },
       "runtime_args": {

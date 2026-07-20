@@ -31,26 +31,43 @@ jobs:
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Build qwen-tts (CPU, universal)
+      - name: Locate CUDA toolkit and add to PATH
+        shell: powershell
+        run: |
+          $cudaRoot = Get-ChildItem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA" -Directory |
+            Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $cudaRoot) { throw "CUDA toolkit not found on runner" }
+          Write-Host "Using CUDA toolkit: $($cudaRoot.FullName)"
+          Write-Output "$($cudaRoot.FullName)\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          Write-Output "CUDA_BIN=$($cudaRoot.FullName)\bin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build qwen-tts (CUDA, dynamic backend loading)
         shell: cmd
         run: |
           cd qwentts.cpp
           if not exist build mkdir build
           cd build
-          cmake .. -A x64 -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=OFF -DGGML_VULKAN=OFF -DGGML_BACKEND_DL=ON
+          cmake .. -A x64 -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90" -DGGML_BACKEND_DL=ON
           cmake --build . --config Release --target qwen-tts -j %NUMBER_OF_PROCESSORS%
 
       - name: Package runtime
         shell: powershell
         run: |
           $pkg = "qwen-tts-runtime-windows-x64"
-          New-Item -ItemType Directory -Path $pkg -Force
+          New-Item -ItemType Directory -Path $pkg -Force | Out-Null
           Copy-Item qwentts.cpp\build\Release\qwen-tts.exe $pkg\
-          # Bundle any ggml backend DLLs produced by the build
+          # Bundle every ggml backend DLL (cpu + cuda) produced by the build.
+          # With GGML_BACKEND_DL=ON, if ggml-cuda.dll fails to load (no NVIDIA
+          # GPU) the runtime falls back to ggml-cpu.dll automatically.
           $dlls = Get-ChildItem -Path qwentts.cpp\build\Release -Filter "ggml*.dll" -ErrorAction SilentlyContinue
-          if ($dlls) {
-            Copy-Item $dlls.FullName $pkg\
+          if ($dlls) { Copy-Item $dlls.FullName $pkg\ }
+          # Bundle the CUDA runtime DLLs so end users do not need the toolkit.
+          foreach ($name in @("cudart64_*.dll", "cublas64_*.dll", "cublasLt64_*.dll")) {
+            Get-ChildItem -Path $env:CUDA_BIN -Filter $name -ErrorAction SilentlyContinue |
+              ForEach-Object { Copy-Item $_.FullName $pkg\ }
           }
+          Get-ChildItem $pkg | Format-Table Name, Length
+          if (-not (Test-Path "$pkg\qwen-tts.exe")) { throw "qwen-tts.exe missing from package" }
           Compress-Archive -Path "$pkg\*" -DestinationPath "$pkg.zip" -Force
 
       - name: Upload to release
