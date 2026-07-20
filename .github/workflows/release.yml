@@ -92,6 +92,17 @@ jobs:
         if: matrix.os == 'windows-latest'
         uses: ilammy/msvc-dev-cmd@v1
 
+      - name: Install CUDA toolkit (Windows)
+        if: matrix.os == 'windows-latest'
+        # windows-latest runners do NOT ship the CUDA toolkit; install only
+        # the packages needed to compile (nvcc + cudart + cublas) to keep the
+        # install time low.
+        uses: Jimver/cuda-toolkit@v0.2.23
+        with:
+          cuda: "12.4.0"
+          method: network
+          sub-packages: '["nvcc", "cudart", "cublas"]'
+
       - name: Locate CUDA toolkit (Windows)
         if: matrix.os == 'windows-latest'
         shell: powershell
@@ -100,7 +111,6 @@ jobs:
             Sort-Object Name -Descending | Select-Object -First 1
           if (-not $cudaRoot) { throw "CUDA toolkit not found on runner" }
           Write-Host "Using CUDA toolkit: $($cudaRoot.FullName)"
-          Write-Output "$($cudaRoot.FullName)\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
           Write-Output "CUDA_BIN=$($cudaRoot.FullName)\bin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build qwen-tts sidecar (CUDA, dynamic backend loading)
@@ -274,9 +284,14 @@ jobs:
       - name: Download official ffmpeg static build (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
-          # johnvansickle.com static build (linked from ffmpeg.org as the
-          # canonical Linux static build). TODO: pin to a fixed version.
-          curl -sL -o ffmpeg.tar.xz "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+          # BtbN/FFmpeg-Builds "latest" permalink (same source as Windows
+          # job). johnvansickle.com was unreliable (intermittent non-xz
+          # responses). TODO: pin to a dated release for reproducibility.
+          url="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
+          curl -fSL --retry 3 -o ffmpeg.tar.xz "$url"
+          file ffmpeg.tar.xz
+          # Fail loudly if we got an HTML/redirect page instead of xz.
+          file ffmpeg.tar.xz | grep -q "XZ compressed data" || { echo "ffmpeg download is not an xz archive"; exit 1; }
           mkdir -p ffmpeg && tar -xJf ffmpeg.tar.xz -C ffmpeg --strip-components=1
           dst="src-tauri/sidecars/bundled/ffmpeg"
           mkdir -p "$dst"
