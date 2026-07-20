@@ -81,6 +81,7 @@ pub fn run() {
             commands::is_model_installed,
             commands::download_model,
             commands::remove_model,
+            commands::get_models_path,
             wizard::detect_hardware,
             wizard::check_dependencies,
             wizard::get_wizard_steps,

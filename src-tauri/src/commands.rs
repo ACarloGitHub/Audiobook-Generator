@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::base_plugin::{EngineHandle, SynthesizeRequest, BaseTTSPlugin};
 use crate::merger;
@@ -968,4 +968,14 @@ pub fn remove_model(
     app: AppHandle,
 ) -> Result<(), String> {
     crate::model_manager::remove_model(&name, &app)
+}
+
+#[tauri::command]
+pub fn get_models_path(app: AppHandle) -> String {
+    app.path()
+        .app_data_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join("models")
+        .to_string_lossy()
+        .to_string()
 }

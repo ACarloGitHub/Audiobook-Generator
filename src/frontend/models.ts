@@ -54,6 +54,7 @@ Not installed: ${missingCount}</textarea>
 
     <div class="card">
       <h2>Models</h2>
+      <p class="field-help" id="models-path-display">Loading models path...</p>
       <table class="models-table">
         <thead>
           <tr>
@@ -193,6 +194,17 @@ export function attachModelsListeners(refresh: () => Promise<void>): void {
       }
     }
   );
+
+  // Show models directory path
+  invoke<string>("get_models_path")
+    .then((path) => {
+      const el = document.getElementById("models-path-display");
+      if (el) el.textContent = `Models directory: ${path}`;
+    })
+    .catch(() => {
+      const el = document.getElementById("models-path-display");
+      if (el) el.textContent = "Models directory: unknown";
+    });
 
   // Initial runtime check
   refreshRuntimeStatus();
