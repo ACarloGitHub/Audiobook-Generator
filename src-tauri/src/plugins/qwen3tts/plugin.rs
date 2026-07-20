@@ -82,6 +82,16 @@ impl QwenPlugin {
             }
         }
 
+        // Check bundle resources (next to the app executable, for Tauri bundled installs)
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent() {
+                let p = dir.join("resources").join("qwentts").join(exe_name);
+                if p.exists() {
+                    return Ok(p);
+                }
+            }
+        }
+
         // Development fallback: relative path
         let dev = PathBuf::from("resources").join("qwentts").join(exe_name);
         if dev.exists() {

@@ -5,7 +5,18 @@
     "qwen3tts": {
       "display_name": "Qwen3-TTS",
       "license": "Apache-2.0",
-      "languages": ["Chinese", "English", "Japanese", "Korean", "German", "French", "Russian", "Portuguese", "Spanish", "Italian"],
+      "languages": [
+        "Chinese",
+        "English",
+        "Japanese",
+        "Korean",
+        "German",
+        "French",
+        "Russian",
+        "Portuguese",
+        "Spanish",
+        "Italian"
+      ],
       "voice_cloning": true,
       "runtime": "qwentts.cpp (sidecar binary, compiled from source)",
       "runtime_repo": "https://github.com/ServeurpersoCom/qwentts.cpp",
@@ -19,9 +30,10 @@
       "runtime_help": "Usage: qwen-tts --model <talker.gguf> --codec <tokenizer.gguf> [options] -o <out.wav> < text.txt",
       "runtime_download": {
         "windows_cuda": {
-          "url": "file:///C:/Users/carlo/AppData/Local/Temp/opencode/qwen-tts-cuda-windows-x64.zip",
+          "url": "https://github.com/ACarloGitHub/Audiobook-Generator/releases/latest/download/qwen-tts-runtime-windows-x64.zip",
           "dest_dir": "resources/qwentts",
-          "size_mb": 20
+          "size_mb": 15,
+          "note": "CPU-only build produced by CI from unmodified upstream sources. CUDA/Vulkan variants will be added when CI GPU runners are available."
         }
       },
       "runtime_args": {
@@ -59,7 +71,9 @@
           "mode": "base",
           "mode_label": "Voice Clone",
           "description": "Zero-shot voice cloning from 3-20s reference audio",
-          "supported_modes": ["Voice Clone"],
+          "supported_modes": [
+            "Voice Clone"
+          ],
           "char_limit_recommended": 800,
           "char_limit_max": 1000,
           "requires_speaker_encoder": true,
@@ -70,10 +84,22 @@
               "name": "talker",
               "filename_template": "qwen-talker-0.6b-base-{quant}.gguf",
               "quants": {
-                "Q4_K_M": { "size_mb": 629, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-base-Q4_K_M.gguf" },
-                "Q8_0": { "size_mb": 993, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-base-Q8_0.gguf" },
-                "BF16": { "size_mb": 1840, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-base-BF16.gguf" },
-                "F32": { "size_mb": 3660, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-base-F32.gguf" }
+                "Q4_K_M": {
+                  "size_mb": 629,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-base-Q4_K_M.gguf"
+                },
+                "Q8_0": {
+                  "size_mb": 993,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-base-Q8_0.gguf"
+                },
+                "BF16": {
+                  "size_mb": 1840,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-base-BF16.gguf"
+                },
+                "F32": {
+                  "size_mb": 3660,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-base-F32.gguf"
+                }
               }
             }
           ]
@@ -84,21 +110,45 @@
           "mode": "customvoice",
           "mode_label": "Custom Voice",
           "description": "9 preset voices with instruct control",
-          "supported_modes": ["Custom Voice"],
+          "supported_modes": [
+            "Custom Voice"
+          ],
           "char_limit_recommended": 800,
           "char_limit_max": 1000,
           "requires_speaker_encoder": false,
-          "preset_voices": ["Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric", "Ryan", "Aiden", "Ono_Anna", "Sohee"],
+          "preset_voices": [
+            "Vivian",
+            "Serena",
+            "Uncle_Fu",
+            "Dylan",
+            "Eric",
+            "Ryan",
+            "Aiden",
+            "Ono_Anna",
+            "Sohee"
+          ],
           "gguf_repo": "Serveurperso/Qwen3-TTS-GGUF",
           "files": [
             {
               "name": "talker",
               "filename_template": "qwen-talker-0.6b-customvoice-{quant}.gguf",
               "quants": {
-                "Q4_K_M": { "size_mb": 629, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-customvoice-Q4_K_M.gguf" },
-                "Q8_0": { "size_mb": 993, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-customvoice-Q8_0.gguf" },
-                "BF16": { "size_mb": 1840, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-customvoice-BF16.gguf" },
-                "F32": { "size_mb": 3660, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-customvoice-F32.gguf" }
+                "Q4_K_M": {
+                  "size_mb": 629,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-customvoice-Q4_K_M.gguf"
+                },
+                "Q8_0": {
+                  "size_mb": 993,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-customvoice-Q8_0.gguf"
+                },
+                "BF16": {
+                  "size_mb": 1840,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-customvoice-BF16.gguf"
+                },
+                "F32": {
+                  "size_mb": 3660,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-0.6b-customvoice-F32.gguf"
+                }
               }
             }
           ]
@@ -109,7 +159,9 @@
           "mode": "base",
           "mode_label": "Voice Clone",
           "description": "Zero-shot voice cloning, higher quality than 0.6B",
-          "supported_modes": ["Voice Clone"],
+          "supported_modes": [
+            "Voice Clone"
+          ],
           "char_limit_recommended": 800,
           "char_limit_max": 1000,
           "requires_speaker_encoder": true,
@@ -120,10 +172,22 @@
               "name": "talker",
               "filename_template": "qwen-talker-1.7b-base-{quant}.gguf",
               "quants": {
-                "Q4_K_M": { "size_mb": 1220, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-base-Q4_K_M.gguf" },
-                "Q8_0": { "size_mb": 2080, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-base-Q8_0.gguf" },
-                "BF16": { "size_mb": 3880, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-base-BF16.gguf" },
-                "F32": { "size_mb": 7720, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-base-F32.gguf" }
+                "Q4_K_M": {
+                  "size_mb": 1220,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-base-Q4_K_M.gguf"
+                },
+                "Q8_0": {
+                  "size_mb": 2080,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-base-Q8_0.gguf"
+                },
+                "BF16": {
+                  "size_mb": 3880,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-base-BF16.gguf"
+                },
+                "F32": {
+                  "size_mb": 7720,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-base-F32.gguf"
+                }
               }
             }
           ]
@@ -134,21 +198,45 @@
           "mode": "customvoice",
           "mode_label": "Custom Voice",
           "description": "9 preset voices with instruct control, higher quality",
-          "supported_modes": ["Custom Voice"],
+          "supported_modes": [
+            "Custom Voice"
+          ],
           "char_limit_recommended": 800,
           "char_limit_max": 1000,
           "requires_speaker_encoder": false,
-          "preset_voices": ["Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric", "Ryan", "Aiden", "Ono_Anna", "Sohee"],
+          "preset_voices": [
+            "Vivian",
+            "Serena",
+            "Uncle_Fu",
+            "Dylan",
+            "Eric",
+            "Ryan",
+            "Aiden",
+            "Ono_Anna",
+            "Sohee"
+          ],
           "gguf_repo": "Serveurperso/Qwen3-TTS-GGUF",
           "files": [
             {
               "name": "talker",
               "filename_template": "qwen-talker-1.7b-customvoice-{quant}.gguf",
               "quants": {
-                "Q4_K_M": { "size_mb": 1220, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-customvoice-Q4_K_M.gguf" },
-                "Q8_0": { "size_mb": 2080, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-customvoice-Q8_0.gguf" },
-                "BF16": { "size_mb": 3880, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-customvoice-BF16.gguf" },
-                "F32": { "size_mb": 7720, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-customvoice-F32.gguf" }
+                "Q4_K_M": {
+                  "size_mb": 1220,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-customvoice-Q4_K_M.gguf"
+                },
+                "Q8_0": {
+                  "size_mb": 2080,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-customvoice-Q8_0.gguf"
+                },
+                "BF16": {
+                  "size_mb": 3880,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-customvoice-BF16.gguf"
+                },
+                "F32": {
+                  "size_mb": 7720,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-customvoice-F32.gguf"
+                }
               }
             }
           ]
@@ -159,7 +247,9 @@
           "mode": "voicedesign",
           "mode_label": "Voice Design",
           "description": "Generate voice from natural-language description",
-          "supported_modes": ["Voice Design"],
+          "supported_modes": [
+            "Voice Design"
+          ],
           "char_limit_recommended": 800,
           "char_limit_max": 1000,
           "requires_speaker_encoder": false,
@@ -169,10 +259,22 @@
               "name": "talker",
               "filename_template": "qwen-talker-1.7b-voicedesign-{quant}.gguf",
               "quants": {
-                "Q4_K_M": { "size_mb": 1220, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-voicedesign-Q4_K_M.gguf" },
-                "Q8_0": { "size_mb": 2080, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-voicedesign-Q8_0.gguf" },
-                "BF16": { "size_mb": 3880, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-voicedesign-BF16.gguf" },
-                "F32": { "size_mb": 7720, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-voicedesign-F32.gguf" }
+                "Q4_K_M": {
+                  "size_mb": 1220,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-voicedesign-Q4_K_M.gguf"
+                },
+                "Q8_0": {
+                  "size_mb": 2080,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-voicedesign-Q8_0.gguf"
+                },
+                "BF16": {
+                  "size_mb": 3880,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-voicedesign-BF16.gguf"
+                },
+                "F32": {
+                  "size_mb": 7720,
+                  "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-talker-1.7b-voicedesign-F32.gguf"
+                }
               }
             }
           ]
@@ -184,37 +286,180 @@
           "description": "Qwen3-TTS-Tokenizer-12Hz codec (shared by all variants)",
           "filename_template": "qwen-tokenizer-12hz-{quant}.gguf",
           "quants": {
-            "Q4_K_M": { "size_mb": 255, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-tokenizer-12hz-Q4_K_M.gguf" },
-            "Q8_0": { "size_mb": 291, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-tokenizer-12hz-Q8_0.gguf" },
-            "BF16": { "size_mb": 359, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-tokenizer-12hz-BF16.gguf" },
-            "F32": { "size_mb": 647, "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-tokenizer-12hz-F32.gguf" }
+            "Q4_K_M": {
+              "size_mb": 255,
+              "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-tokenizer-12hz-Q4_K_M.gguf"
+            },
+            "Q8_0": {
+              "size_mb": 291,
+              "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-tokenizer-12hz-Q8_0.gguf"
+            },
+            "BF16": {
+              "size_mb": 359,
+              "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-tokenizer-12hz-BF16.gguf"
+            },
+            "F32": {
+              "size_mb": 647,
+              "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/main/qwen-tokenizer-12hz-F32.gguf"
+            }
           }
         }
       ],
       "parameters": {
-        "speed": { "type": "float", "default": 1.0, "min": 0.5, "max": 2.0, "step": 0.1, "description": "Speech speed multiplier (not yet in qwentts.cpp CLI — controlled via text pacing)" },
-        "temp": { "type": "float", "default": 0.9, "min": 0.0, "max": 2.0, "step": 0.05, "description": "Talker temperature (qwentts.cpp --temp). Official checkpoint default: 0.9", "cli_flag": "--temp" },
-        "top_k": { "type": "int", "default": 50, "min": 0, "max": 100, "step": 1, "description": "Talker top-k sampling (qwentts.cpp --top-k). Official checkpoint default: 50", "cli_flag": "--top-k" },
-        "top_p": { "type": "float", "default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05, "description": "Talker top-p sampling (qwentts.cpp --top-p). Official checkpoint default: 1.0", "cli_flag": "--top-p" },
-        "rep_pen": { "type": "float", "default": 1.05, "min": 1.0, "max": 2.0, "step": 0.01, "description": "Repetition penalty (qwentts.cpp --rep-pen). Official checkpoint default: 1.05", "cli_flag": "--rep-pen" },
-        "seed": { "type": "int", "default": null, "description": "Random seed, -1 = random (qwentts.cpp --seed)", "cli_flag": "--seed" },
-        "max_new": { "type": "int", "default": 8192, "description": "Max new audio tokens (qwentts.cpp --max-new). Official checkpoint default: 8192", "cli_flag": "--max-new" }
+        "speed": {
+          "type": "float",
+          "default": 1.0,
+          "min": 0.5,
+          "max": 2.0,
+          "step": 0.1,
+          "description": "Speech speed multiplier (not yet in qwentts.cpp CLI \u2014 controlled via text pacing)"
+        },
+        "temp": {
+          "type": "float",
+          "default": 0.9,
+          "min": 0.0,
+          "max": 2.0,
+          "step": 0.05,
+          "description": "Talker temperature (qwentts.cpp --temp). Official checkpoint default: 0.9",
+          "cli_flag": "--temp"
+        },
+        "top_k": {
+          "type": "int",
+          "default": 50,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "description": "Talker top-k sampling (qwentts.cpp --top-k). Official checkpoint default: 50",
+          "cli_flag": "--top-k"
+        },
+        "top_p": {
+          "type": "float",
+          "default": 1.0,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.05,
+          "description": "Talker top-p sampling (qwentts.cpp --top-p). Official checkpoint default: 1.0",
+          "cli_flag": "--top-p"
+        },
+        "rep_pen": {
+          "type": "float",
+          "default": 1.05,
+          "min": 1.0,
+          "max": 2.0,
+          "step": 0.01,
+          "description": "Repetition penalty (qwentts.cpp --rep-pen). Official checkpoint default: 1.05",
+          "cli_flag": "--rep-pen"
+        },
+        "seed": {
+          "type": "int",
+          "default": null,
+          "description": "Random seed, -1 = random (qwentts.cpp --seed)",
+          "cli_flag": "--seed"
+        },
+        "max_new": {
+          "type": "int",
+          "default": 8192,
+          "description": "Max new audio tokens (qwentts.cpp --max-new). Official checkpoint default: 8192",
+          "cli_flag": "--max-new"
+        }
       },
       "mode_specific_params": {
         "base": {
-          "language": { "type": "string", "default": "Italian", "options": ["Auto", "Chinese", "English", "German", "Italian", "Portuguese", "Spanish", "Japanese", "Korean", "French", "Russian"] },
-          "ref_audio": { "type": "file", "required": true, "description": "Reference audio (3-20s WAV)" },
-          "ref_text": { "type": "string", "required": false, "description": "Exact transcription of ref audio (required unless x_vector_only_mode)" },
-          "x_vector_only_mode": { "type": "bool", "default": false, "description": "Fast mode: no ref_text needed, lower quality" }
+          "language": {
+            "type": "string",
+            "default": "Italian",
+            "options": [
+              "Auto",
+              "Chinese",
+              "English",
+              "German",
+              "Italian",
+              "Portuguese",
+              "Spanish",
+              "Japanese",
+              "Korean",
+              "French",
+              "Russian"
+            ]
+          },
+          "ref_audio": {
+            "type": "file",
+            "required": true,
+            "description": "Reference audio (3-20s WAV)"
+          },
+          "ref_text": {
+            "type": "string",
+            "required": false,
+            "description": "Exact transcription of ref audio (required unless x_vector_only_mode)"
+          },
+          "x_vector_only_mode": {
+            "type": "bool",
+            "default": false,
+            "description": "Fast mode: no ref_text needed, lower quality"
+          }
         },
         "customvoice": {
-          "speaker": { "type": "string", "default": "Serena", "options": ["Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric", "Ryan", "Aiden", "Ono_Anna", "Sohee"], "description": "Preset voice name" },
-          "language": { "type": "string", "default": "Italian", "options": ["Auto", "Chinese", "English", "German", "Italian", "Portuguese", "Spanish", "Japanese", "Korean", "French", "Russian"] },
-          "instruct": { "type": "string", "default": "", "description": "Additional instructions (e.g. 'Speak slowly. With excitement.')" }
+          "speaker": {
+            "type": "string",
+            "default": "Serena",
+            "options": [
+              "Vivian",
+              "Serena",
+              "Uncle_Fu",
+              "Dylan",
+              "Eric",
+              "Ryan",
+              "Aiden",
+              "Ono_Anna",
+              "Sohee"
+            ],
+            "description": "Preset voice name"
+          },
+          "language": {
+            "type": "string",
+            "default": "Italian",
+            "options": [
+              "Auto",
+              "Chinese",
+              "English",
+              "German",
+              "Italian",
+              "Portuguese",
+              "Spanish",
+              "Japanese",
+              "Korean",
+              "French",
+              "Russian"
+            ]
+          },
+          "instruct": {
+            "type": "string",
+            "default": "",
+            "description": "Additional instructions (e.g. 'Speak slowly. With excitement.')"
+          }
         },
         "voicedesign": {
-          "instruct": { "type": "string", "required": true, "description": "Voice description in English (e.g. 'A calm middle-aged male announcer')" },
-          "language": { "type": "string", "default": "Italian", "options": ["Chinese", "English", "German", "Italian", "Portuguese", "Spanish", "Japanese", "Korean", "French", "Russian"] }
+          "instruct": {
+            "type": "string",
+            "required": true,
+            "description": "Voice description in English (e.g. 'A calm middle-aged male announcer')"
+          },
+          "language": {
+            "type": "string",
+            "default": "Italian",
+            "options": [
+              "Chinese",
+              "English",
+              "German",
+              "Italian",
+              "Portuguese",
+              "Spanish",
+              "Japanese",
+              "Korean",
+              "French",
+              "Russian"
+            ]
+          }
         }
       },
       "sources": [
@@ -227,7 +472,22 @@
     "outetts": {
       "display_name": "OuteTTS 0.6B",
       "license": "Apache-2.0",
-      "languages": ["English", "Chinese", "Dutch", "French", "Georgian", "German", "Hungarian", "Italian", "Japanese", "Korean", "Latvian", "Polish", "Russian", "Spanish"],
+      "languages": [
+        "English",
+        "Chinese",
+        "Dutch",
+        "French",
+        "Georgian",
+        "German",
+        "Hungarian",
+        "Italian",
+        "Japanese",
+        "Korean",
+        "Latvian",
+        "Polish",
+        "Russian",
+        "Spanish"
+      ],
       "voice_cloning": true,
       "voice_clone_min_seconds": 10,
       "runtime": "llama-server (stock, already in wizard) + DAC codec ONNX (ort)",
@@ -244,7 +504,9 @@
           "size": "0.6B",
           "mode": "voice_clone",
           "description": "One-shot voice cloning from ~10s reference audio",
-          "supported_modes": ["Voice Clone"],
+          "supported_modes": [
+            "Voice Clone"
+          ],
           "char_limit_recommended": 350,
           "char_limit_max": 450,
           "requires_speaker_reference": true,
@@ -254,10 +516,22 @@
               "name": "backbone",
               "filename_template": "OuteTTS-1.0-0.6B-{quant}.gguf",
               "quants": {
-                "Q4_K_M": { "size_mb": 402, "url": "https://huggingface.co/OuteAI/OuteTTS-1.0-0.6B-GGUF/resolve/main/OuteTTS-1.0-0.6B-Q4_K_M.gguf" },
-                "Q5_K_M": { "size_mb": 449, "url": "https://huggingface.co/OuteAI/OuteTTS-1.0-0.6B-GGUF/resolve/main/OuteTTS-1.0-0.6B-Q5_K_M.gguf" },
-                "Q6_K": { "size_mb": 500, "url": "https://huggingface.co/OuteAI/OuteTTS-1.0-0.6B-GGUF/resolve/main/OuteTTS-1.0-0.6B-Q6_K.gguf" },
-                "Q8_0": { "size_mb": 646, "url": "https://huggingface.co/OuteAI/OuteTTS-1.0-0.6B-GGUF/resolve/main/OuteTTS-1.0-0.6B-Q8_0.gguf" }
+                "Q4_K_M": {
+                  "size_mb": 402,
+                  "url": "https://huggingface.co/OuteAI/OuteTTS-1.0-0.6B-GGUF/resolve/main/OuteTTS-1.0-0.6B-Q4_K_M.gguf"
+                },
+                "Q5_K_M": {
+                  "size_mb": 449,
+                  "url": "https://huggingface.co/OuteAI/OuteTTS-1.0-0.6B-GGUF/resolve/main/OuteTTS-1.0-0.6B-Q5_K_M.gguf"
+                },
+                "Q6_K": {
+                  "size_mb": 500,
+                  "url": "https://huggingface.co/OuteAI/OuteTTS-1.0-0.6B-GGUF/resolve/main/OuteTTS-1.0-0.6B-Q6_K.gguf"
+                },
+                "Q8_0": {
+                  "size_mb": 646,
+                  "url": "https://huggingface.co/OuteAI/OuteTTS-1.0-0.6B-GGUF/resolve/main/OuteTTS-1.0-0.6B-Q8_0.gguf"
+                }
               }
             }
           ]
@@ -292,20 +566,98 @@
         }
       ],
       "parameters": {
-        "temperature": { "type": "float", "default": 0.4, "min": 0.0, "max": 2.0, "step": 0.05, "description": "Sampling temperature (official recommendation: 0.4)" },
-        "top_k": { "type": "int", "default": 40, "min": 1, "max": 100, "step": 1, "description": "Top-k sampling (official default: 40)" },
-        "top_p": { "type": "float", "default": 0.9, "min": 0.0, "max": 1.0, "step": 0.05, "description": "Top-p sampling (official default: 0.9)" },
-        "min_p": { "type": "float", "default": 0.05, "min": 0.0, "max": 1.0, "step": 0.01, "description": "Min-p sampling (official default: 0.05)" },
-        "repetition_penalty": { "type": "float", "default": 1.1, "min": 1.0, "max": 2.0, "step": 0.01, "description": "Repetition penalty (official default: 1.1)" },
-        "repetition_window": { "type": "int", "default": 64, "description": "Repetition penalty applied to last N tokens (CRITICAL: must be 64, not whole context)" },
-        "max_tokens": { "type": "int", "default": 8192, "min": 256, "max": 8192, "step": 256, "description": "Max generation tokens (n_predict). Official model max_length=8192. Best results up to 7000." },
-        "seed": { "type": "int", "default": -1, "description": "Random seed (-1 = random)" }
+        "temperature": {
+          "type": "float",
+          "default": 0.4,
+          "min": 0.0,
+          "max": 2.0,
+          "step": 0.05,
+          "description": "Sampling temperature (official recommendation: 0.4)"
+        },
+        "top_k": {
+          "type": "int",
+          "default": 40,
+          "min": 1,
+          "max": 100,
+          "step": 1,
+          "description": "Top-k sampling (official default: 40)"
+        },
+        "top_p": {
+          "type": "float",
+          "default": 0.9,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.05,
+          "description": "Top-p sampling (official default: 0.9)"
+        },
+        "min_p": {
+          "type": "float",
+          "default": 0.05,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.01,
+          "description": "Min-p sampling (official default: 0.05)"
+        },
+        "repetition_penalty": {
+          "type": "float",
+          "default": 1.1,
+          "min": 1.0,
+          "max": 2.0,
+          "step": 0.01,
+          "description": "Repetition penalty (official default: 1.1)"
+        },
+        "repetition_window": {
+          "type": "int",
+          "default": 64,
+          "description": "Repetition penalty applied to last N tokens (CRITICAL: must be 64, not whole context)"
+        },
+        "max_tokens": {
+          "type": "int",
+          "default": 8192,
+          "min": 256,
+          "max": 8192,
+          "step": 256,
+          "description": "Max generation tokens (n_predict). Official model max_length=8192. Best results up to 7000."
+        },
+        "seed": {
+          "type": "int",
+          "default": -1,
+          "description": "Random seed (-1 = random)"
+        }
       },
       "mode_specific_params": {
         "voice_clone": {
-          "ref_audio": { "type": "file", "required": true, "description": "Reference audio (10s WAV, mono, 16-44kHz)" },
-          "speaker_name": { "type": "string", "required": false, "description": "Save speaker profile as JSON for reuse" },
-          "language": { "type": "string", "default": "Italian", "options": ["Auto", "English", "Chinese", "Dutch", "French", "Georgian", "German", "Hungarian", "Italian", "Japanese", "Korean", "Latvian", "Polish", "Russian", "Spanish"] }
+          "ref_audio": {
+            "type": "file",
+            "required": true,
+            "description": "Reference audio (10s WAV, mono, 16-44kHz)"
+          },
+          "speaker_name": {
+            "type": "string",
+            "required": false,
+            "description": "Save speaker profile as JSON for reuse"
+          },
+          "language": {
+            "type": "string",
+            "default": "Italian",
+            "options": [
+              "Auto",
+              "English",
+              "Chinese",
+              "Dutch",
+              "French",
+              "Georgian",
+              "German",
+              "Hungarian",
+              "Italian",
+              "Japanese",
+              "Korean",
+              "Latvian",
+              "Polish",
+              "Russian",
+              "Spanish"
+            ]
+          }
         }
       },
       "install_requirements": {
@@ -317,14 +669,45 @@
         "https://huggingface.co/OuteAI/OuteTTS-1.0-0.6B-GGUF (official GGUF repo, 1.4k downloads/month, Apache-2.0)",
         "https://huggingface.co/OuteAI/DAC-speech-v1.0-ONNX (DAC codec decoder ONNX, CDLA-Permissive-2.0)",
         "https://github.com/edwko/OuteTTS (Python reference implementation)",
-        "https://huggingface.co/OuteAI/Llama-OuteTTS-1.0-1B-GGUF (1B sister model, CC-BY-NC-SA-4.0 NON-COMMERCIAL — NOT compatible with our distribution)"
+        "https://huggingface.co/OuteAI/Llama-OuteTTS-1.0-1B-GGUF (1B sister model, CC-BY-NC-SA-4.0 NON-COMMERCIAL \u2014 NOT compatible with our distribution)"
       ],
       "notes": "Italian is officially in the high-training-data list. CRITICAL: repetition_penalty must use rep_window=64, not whole context, otherwise broken output. Optimal audio length ~42s (8192 tokens), best results up to 7000 tokens."
     },
     "voxcpm2": {
       "display_name": "VoxCPM2",
       "license": "Apache-2.0",
-      "languages": ["Arabic", "Burmese", "Chinese", "Danish", "Dutch", "English", "Finnish", "French", "German", "Greek", "Hebrew", "Hindi", "Indonesian", "Italian", "Japanese", "Khmer", "Korean", "Lao", "Malay", "Norwegian", "Polish", "Portuguese", "Russian", "Spanish", "Swahili", "Swedish", "Tagalog", "Thai", "Turkish", "Vietnamese"],
+      "languages": [
+        "Arabic",
+        "Burmese",
+        "Chinese",
+        "Danish",
+        "Dutch",
+        "English",
+        "Finnish",
+        "French",
+        "German",
+        "Greek",
+        "Hebrew",
+        "Hindi",
+        "Indonesian",
+        "Italian",
+        "Japanese",
+        "Khmer",
+        "Korean",
+        "Lao",
+        "Malay",
+        "Norwegian",
+        "Polish",
+        "Portuguese",
+        "Russian",
+        "Spanish",
+        "Swahili",
+        "Swedish",
+        "Tagalog",
+        "Thai",
+        "Turkish",
+        "Vietnamese"
+      ],
       "voice_cloning": true,
       "runtime": "voxcpm2-cli (sidecar binary, compiled from unmodified upstream sources)",
       "runtime_repo": "https://github.com/tc-mb/llama.cpp-omni",
@@ -351,7 +734,7 @@
         "--cpu": "Use CPU backend (default: GPU)",
         "--n-gpu-layers": "Layers to offload to GPU (default: all)"
       },
-      "architecture": "Tokenizer-free Diffusion Autoregressive (LocEnc → TSLM → RALM → LocDiT), MiniCPM-4 backbone, 2B parameters, AudioVAE V2 (16kHz in → 48kHz out)",
+      "architecture": "Tokenizer-free Diffusion Autoregressive (LocEnc \u2192 TSLM \u2192 RALM \u2192 LocDiT), MiniCPM-4 backbone, 2B parameters, AudioVAE V2 (16kHz in \u2192 48kHz out)",
       "sample_rate": 48000,
       "lm_token_rate_hz": 6.25,
       "max_sequence_length": 8192,
@@ -362,7 +745,11 @@
           "size": "2B",
           "mode": "multi",
           "description": "Voice Design, Controllable Cloning and Ultimate Cloning in one model, 30 languages, 48kHz output",
-          "supported_modes": ["Voice Design", "Controllable Cloning", "Ultimate Cloning"],
+          "supported_modes": [
+            "Voice Design",
+            "Controllable Cloning",
+            "Ultimate Cloning"
+          ],
           "char_limit_recommended": 400,
           "char_limit_max": 450,
           "char_limit_note": "Verified 2026-07-19 with voxcpm2-cli (commit b9d15b8) on RTX 3090, Italian text, all 3 voice modes: the StopTokenPredictor misfires (early stop mid-text) on chunks above ~450 chars at every seed tested; chunks of ~400 chars complete reliably in base, -r clone and --prompt-wav modes. Official VoxCPM2 usage guide (https://voxcpm.readthedocs.io/en/latest/usage_guide.html) confirms long text triggers unstable behavior and recommends splitting into shorter segments; the Python pipeline compensates with retry_badcase=True, which the C++ CLI does not implement, so short chunks are mandatory here. Measured speech rate: ~15 chars/s Italian at 6.25 steps/s (160 ms per decode step).",
@@ -373,8 +760,14 @@
               "name": "base_lm",
               "filename_template": "VoxCPM2-BaseLM-{quant}.gguf",
               "quants": {
-                "Q8_0": { "size_mb": 1647, "url": "https://huggingface.co/DennisHuang648/VoxCPM2-GGUF/resolve/main/VoxCPM2-BaseLM-Q8_0.gguf" },
-                "F16": { "size_mb": 3097, "url": "https://huggingface.co/DennisHuang648/VoxCPM2-GGUF/resolve/main/VoxCPM2-BaseLM-F16.gguf" }
+                "Q8_0": {
+                  "size_mb": 1647,
+                  "url": "https://huggingface.co/DennisHuang648/VoxCPM2-GGUF/resolve/main/VoxCPM2-BaseLM-Q8_0.gguf"
+                },
+                "F16": {
+                  "size_mb": 3097,
+                  "url": "https://huggingface.co/DennisHuang648/VoxCPM2-GGUF/resolve/main/VoxCPM2-BaseLM-F16.gguf"
+                }
               }
             }
           ]
@@ -397,28 +790,85 @@
         }
       ],
       "parameters": {
-        "cfg": { "type": "float", "default": 2.0, "min": 1.0, "max": 5.0, "step": 0.1, "description": "CFG guidance scale (voxcpm2-cli --cfg). Official default: 2.0", "cli_flag": "--cfg" },
-        "timesteps": { "type": "int", "default": 10, "min": 4, "max": 30, "step": 1, "description": "CFM inference timesteps (voxcpm2-cli --timesteps). Official default: 10", "cli_flag": "--timesteps" },
-        "temperature": { "type": "float", "default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05, "description": "Noise temperature (voxcpm2-cli --temperature). CLI default: 1.0", "cli_flag": "--temperature" },
-        "steps": { "type": "int", "default": 600, "min": 50, "max": 1000, "step": 10, "description": "Max decode steps (voxcpm2-cli --steps, 160 ms of audio per step at 6.25 Hz). CLI default 200 caps audio at 32s and truncates chunks; 600 gives a 96s ceiling. Text-only mode auto-reduces to min(steps, text_tokens*3+15); clone/streaming modes use the value directly. 600 steps + prompt stay well below the 8192-token context even with a 30s reference (~187 prompt frames)", "cli_flag": "--steps" },
-        "seed": { "type": "int", "default": -1, "description": "Random seed, -1 = random (voxcpm2-cli --seed, CLI default: 42)", "cli_flag": "--seed" }
+        "cfg": {
+          "type": "float",
+          "default": 2.0,
+          "min": 1.0,
+          "max": 5.0,
+          "step": 0.1,
+          "description": "CFG guidance scale (voxcpm2-cli --cfg). Official default: 2.0",
+          "cli_flag": "--cfg"
+        },
+        "timesteps": {
+          "type": "int",
+          "default": 10,
+          "min": 4,
+          "max": 30,
+          "step": 1,
+          "description": "CFM inference timesteps (voxcpm2-cli --timesteps). Official default: 10",
+          "cli_flag": "--timesteps"
+        },
+        "temperature": {
+          "type": "float",
+          "default": 1.0,
+          "min": 0.0,
+          "max": 2.0,
+          "step": 0.05,
+          "description": "Noise temperature (voxcpm2-cli --temperature). CLI default: 1.0",
+          "cli_flag": "--temperature"
+        },
+        "steps": {
+          "type": "int",
+          "default": 600,
+          "min": 50,
+          "max": 1000,
+          "step": 10,
+          "description": "Max decode steps (voxcpm2-cli --steps, 160 ms of audio per step at 6.25 Hz). CLI default 200 caps audio at 32s and truncates chunks; 600 gives a 96s ceiling. Text-only mode auto-reduces to min(steps, text_tokens*3+15); clone/streaming modes use the value directly. 600 steps + prompt stay well below the 8192-token context even with a 30s reference (~187 prompt frames)",
+          "cli_flag": "--steps"
+        },
+        "seed": {
+          "type": "int",
+          "default": -1,
+          "description": "Random seed, -1 = random (voxcpm2-cli --seed, CLI default: 42)",
+          "cli_flag": "--seed"
+        }
       },
       "mode_specific_params": {
         "voice_design": {
-          "voice_description": { "type": "string", "required": true, "description": "Voice description in English, e.g. 'A calm middle-aged male narrator with a deep voice'" }
+          "voice_description": {
+            "type": "string",
+            "required": true,
+            "description": "Voice description in English, e.g. 'A calm middle-aged male narrator with a deep voice'"
+          }
         },
         "controllable_cloning": {
-          "ref_audio": { "type": "file", "required": true, "description": "Reference audio (WAV, 16-bit PCM, ~10-30s, 16kHz accepted)" },
-          "voice_description": { "type": "string", "required": false, "description": "Optional style guidance, e.g. 'slightly faster, cheerful tone'" }
+          "ref_audio": {
+            "type": "file",
+            "required": true,
+            "description": "Reference audio (WAV, 16-bit PCM, ~10-30s, 16kHz accepted)"
+          },
+          "voice_description": {
+            "type": "string",
+            "required": false,
+            "description": "Optional style guidance, e.g. 'slightly faster, cheerful tone'"
+          }
         },
         "ultimate_cloning": {
-          "ref_audio": { "type": "file", "required": true, "description": "Reference audio (WAV, 16-bit PCM, ~10-30s)" },
-          "ref_text": { "type": "string", "required": true, "description": "Exact transcription of the reference audio" }
+          "ref_audio": {
+            "type": "file",
+            "required": true,
+            "description": "Reference audio (WAV, 16-bit PCM, ~10-30s)"
+          },
+          "ref_text": {
+            "type": "string",
+            "required": true,
+            "description": "Exact transcription of the reference audio"
+          }
         }
       },
       "sources": [
-        "https://huggingface.co/openbmb/VoxCPM2 (official model card: cfg=2.0, timesteps=10, 8192 max sequence, 6.25 Hz LM token rate, 48kHz, 30 languages, Apache-2.0 — verified 2026-07-19)",
-        "https://voxcpm.readthedocs.io/ (official docs — verified 2026-07-19)",
+        "https://huggingface.co/openbmb/VoxCPM2 (official model card: cfg=2.0, timesteps=10, 8192 max sequence, 6.25 Hz LM token rate, 48kHz, 30 languages, Apache-2.0 \u2014 verified 2026-07-19)",
+        "https://voxcpm.readthedocs.io/ (official docs \u2014 verified 2026-07-19)",
         "https://github.com/tc-mb/llama.cpp-omni (official GGUF runtime fork, commit b9d15b8, compiled unmodified)",
         "https://huggingface.co/DennisHuang648/VoxCPM2-GGUF (GGUF conversion linked from the official README, URLs verified 2026-07-19)"
       ],
@@ -427,7 +877,9 @@
     "neuttsair": {
       "display_name": "NeuTTS Air",
       "license": "Apache-2.0",
-      "languages": ["English"],
+      "languages": [
+        "English"
+      ],
       "voice_cloning": true,
       "voice_clone_min_seconds": 3,
       "runtime": "llama-server (backbone) + NeuCodec ONNX (audio decoder) + espeak-ng (phonemizer)",
@@ -443,7 +895,9 @@
           "size": "0.5B",
           "mode": "voice_clone",
           "description": "On-device voice cloning from 3-second reference audio. English only.",
-          "supported_modes": ["Voice Clone"],
+          "supported_modes": [
+            "Voice Clone"
+          ],
           "char_limit_recommended": 400,
           "char_limit_max": 800,
           "requires_speaker_reference": true,
@@ -453,7 +907,10 @@
               "name": "backbone",
               "filename_template": "neutts-air-q4-{quant}.gguf",
               "quants": {
-                "Q4_0": { "size_mb": 365, "url": "https://huggingface.co/neuphonic/neutts-air-q4-gguf/resolve/main/neutts-air-q4-Q4_0.gguf" }
+                "Q4_0": {
+                  "size_mb": 365,
+                  "url": "https://huggingface.co/neuphonic/neutts-air-q4-gguf/resolve/main/neutts-air-q4-Q4_0.gguf"
+                }
               }
             }
           ]
@@ -463,7 +920,9 @@
           "size": "0.5B",
           "mode": "voice_clone",
           "description": "Higher quality Q8 quantization of NeuTTS Air",
-          "supported_modes": ["Voice Clone"],
+          "supported_modes": [
+            "Voice Clone"
+          ],
           "char_limit_recommended": 400,
           "char_limit_max": 800,
           "requires_speaker_reference": true,
@@ -473,7 +932,10 @@
               "name": "backbone",
               "filename_template": "neutts-air-q8-{quant}.gguf",
               "quants": {
-                "Q8_0": { "size_mb": 547, "url": "https://huggingface.co/neuphonic/neutts-air-q8-gguf/resolve/main/neutts-air-q8-Q8_0.gguf" }
+                "Q8_0": {
+                  "size_mb": 547,
+                  "url": "https://huggingface.co/neuphonic/neutts-air-q8-gguf/resolve/main/neutts-air-q8-Q8_0.gguf"
+                }
               }
             }
           ]
@@ -496,21 +958,54 @@
         }
       ],
       "parameters": {
-        "temperature": { "type": "float", "default": 0.8, "min": 0.0, "max": 2.0, "step": 0.05, "description": "Sampling temperature" },
-        "top_k": { "type": "int", "default": 50, "min": 1, "max": 100, "step": 1, "description": "Top-k sampling" },
-        "top_p": { "type": "float", "default": 0.95, "min": 0.0, "max": 1.0, "step": 0.05, "description": "Top-p sampling" },
-        "seed": { "type": "int", "default": -1, "description": "Random seed (-1 = random)" }
+        "temperature": {
+          "type": "float",
+          "default": 0.8,
+          "min": 0.0,
+          "max": 2.0,
+          "step": 0.05,
+          "description": "Sampling temperature"
+        },
+        "top_k": {
+          "type": "int",
+          "default": 50,
+          "min": 1,
+          "max": 100,
+          "step": 1,
+          "description": "Top-k sampling"
+        },
+        "top_p": {
+          "type": "float",
+          "default": 0.95,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.05,
+          "description": "Top-p sampling"
+        },
+        "seed": {
+          "type": "int",
+          "default": -1,
+          "description": "Random seed (-1 = random)"
+        }
       },
       "mode_specific_params": {
         "voice_clone": {
-          "ref_audio": { "type": "file", "required": true, "description": "Reference audio (3-15s WAV, mono, 16-44kHz, clean)" },
-          "ref_text": { "type": "string", "required": true, "description": "Exact transcription of reference audio" }
+          "ref_audio": {
+            "type": "file",
+            "required": true,
+            "description": "Reference audio (3-15s WAV, mono, 16-44kHz, clean)"
+          },
+          "ref_text": {
+            "type": "string",
+            "required": true,
+            "description": "Exact transcription of reference audio"
+          }
         }
       },
       "install_requirements": {
         "llama_server": "already bundled by first-run wizard",
         "ort_runtime": "already included for Kokoro (ONNX Runtime via Rust)",
-        "espeak_ng": "REQUIRED external dependency — must be on PATH or bundled. Windows: install via winget/choco/MSI; Linux: apt; macOS: brew",
+        "espeak_ng": "REQUIRED external dependency \u2014 must be on PATH or bundled. Windows: install via winget/choco/MSI; Linux: apt; macOS: brew",
         "additional_dlls": []
       },
       "sources": [
@@ -525,10 +1020,41 @@
     "voxtral": {
       "display_name": "Voxtral TTS 4B",
       "license": "Apache-2.0",
-      "languages": ["English", "French", "German", "Spanish", "Italian", "Portuguese", "Dutch", "Hindi", "Arabic"],
+      "languages": [
+        "English",
+        "French",
+        "German",
+        "Spanish",
+        "Italian",
+        "Portuguese",
+        "Dutch",
+        "Hindi",
+        "Arabic"
+      ],
       "voice_cloning": false,
       "voice_cloning_type": "preset_only",
-      "preset_voices": ["casual_female", "casual_male", "neutral_female", "neutral_male", "cheerful_female", "fr_female", "fr_male", "de_female", "de_male", "es_female", "es_male", "it_female", "it_male", "pt_female", "pt_male", "nl_female", "nl_male", "hi_female", "hi_male", "ar_male"],
+      "preset_voices": [
+        "casual_female",
+        "casual_male",
+        "neutral_female",
+        "neutral_male",
+        "cheerful_female",
+        "fr_female",
+        "fr_male",
+        "de_female",
+        "de_male",
+        "es_female",
+        "es_male",
+        "it_female",
+        "it_male",
+        "pt_female",
+        "pt_male",
+        "nl_female",
+        "nl_male",
+        "hi_female",
+        "hi_male",
+        "ar_male"
+      ],
       "runtime": "voxtral-mini-realtime-rs (custom Rust binary, ggml-based)",
       "runtime_repo": "https://github.com/TrevorS/voxtral-mini-realtime-rs",
       "runtime_help": "Single voxtral CLI binary: ./voxtral speak --text '...' --voice it_female --gguf model.gguf",
@@ -541,7 +1067,9 @@
           "size": "4B",
           "mode": "preset_voice",
           "description": "Mistral Voxtral 4B TTS with 20 preset voices across 9 languages (Italian: it_female, it_male)",
-          "supported_modes": ["Preset Voice"],
+          "supported_modes": [
+            "Preset Voice"
+          ],
           "char_limit_recommended": 500,
           "char_limit_max": 1000,
           "requires_speaker_reference": false,
@@ -551,7 +1079,10 @@
               "name": "model",
               "filename": "voxtral-tts-q4.gguf",
               "quants": {
-                "Q4_0": { "size_mb": 2670, "url": "https://huggingface.co/TrevorJS/voxtral-tts-q4-gguf/resolve/main/voxtral-tts-q4.gguf" }
+                "Q4_0": {
+                  "size_mb": 2670,
+                  "url": "https://huggingface.co/TrevorJS/voxtral-tts-q4-gguf/resolve/main/voxtral-tts-q4.gguf"
+                }
               }
             }
           ]
@@ -574,13 +1105,50 @@
         }
       ],
       "parameters": {
-        "euler_steps": { "type": "int", "default": 8, "min": 3, "max": 16, "step": 1, "description": "Flow-matching Euler steps. 8=high quality, 3=real-time" },
-        "voice": { "type": "string", "default": "it_female", "options": ["casual_female", "casual_male", "neutral_female", "neutral_male", "cheerful_female", "fr_female", "fr_male", "de_female", "de_male", "es_female", "es_male", "it_female", "it_male", "pt_female", "pt_male", "nl_female", "nl_male", "hi_female", "hi_male", "ar_male"], "description": "Preset voice name" },
-        "seed": { "type": "int", "default": -1, "description": "Random seed (-1 = random)" }
+        "euler_steps": {
+          "type": "int",
+          "default": 8,
+          "min": 3,
+          "max": 16,
+          "step": 1,
+          "description": "Flow-matching Euler steps. 8=high quality, 3=real-time"
+        },
+        "voice": {
+          "type": "string",
+          "default": "it_female",
+          "options": [
+            "casual_female",
+            "casual_male",
+            "neutral_female",
+            "neutral_male",
+            "cheerful_female",
+            "fr_female",
+            "fr_male",
+            "de_female",
+            "de_male",
+            "es_female",
+            "es_male",
+            "it_female",
+            "it_male",
+            "pt_female",
+            "pt_male",
+            "nl_female",
+            "nl_male",
+            "hi_female",
+            "hi_male",
+            "ar_male"
+          ],
+          "description": "Preset voice name"
+        },
+        "seed": {
+          "type": "int",
+          "default": -1,
+          "description": "Random seed (-1 = random)"
+        }
       },
       "mode_specific_params": {},
       "install_requirements": {
-        "voxtral_cli": "REQUIRED — custom Rust binary, no prebuilt releases. Must compile from source.",
+        "voxtral_cli": "REQUIRED \u2014 custom Rust binary, no prebuilt releases. Must compile from source.",
         "additional_dlls": []
       },
       "sources": [
@@ -588,7 +1156,7 @@
         "https://huggingface.co/mistralai/Voxtral-4B-TTS-2603 (upstream Mistral model)",
         "https://github.com/TrevorS/voxtral-mini-realtime-rs (custom Rust runtime, ggml-based)"
       ],
-      "notes": "Italian supported (it_female, it_male voices). No voice cloning — preset voices only. Custom Rust runtime (not llama.cpp). Larger model (4B, 2.7GB Q4). 9 languages including Italian. High quality but requires custom runtime compilation."
+      "notes": "Italian supported (it_female, it_male voices). No voice cloning \u2014 preset voices only. Custom Rust runtime (not llama.cpp). Larger model (4B, 2.7GB Q4). 9 languages including Italian. High quality but requires custom runtime compilation."
     }
   },
   "retired_engines": {
@@ -653,10 +1221,10 @@
     "repo_choice_rationale": "Serveurperso/Qwen3-TTS-GGUF chosen because it is the single repo covering all 5 variants with consistent quantization naming. It has the highest download count (28.9k/month). Official Qwen repos host the safetensors originals; the GGUF conversions are community-maintained but well-adopted.",
     "active_engines_2026-07-03": {
       "qwen3tts": "verified, working end-to-end with 0.6B-Base. 4 more variants registered.",
-      "outetts": "ready for integration — needs Rust plugin that uses llama-server + DAC ONNX",
-      "chatterbox": "ready for integration — needs codec.cpp compilation (same effort as qwentts.cpp)",
-      "neuttsair": "ready for integration — needs espeak-ng as bundled dependency (Windows) or system package (Linux/macOS)",
-      "voxtral": "lowest priority — needs custom Rust runtime compilation, larger 4B model, no voice cloning"
+      "outetts": "ready for integration \u2014 needs Rust plugin that uses llama-server + DAC ONNX",
+      "chatterbox": "ready for integration \u2014 needs codec.cpp compilation (same effort as qwentts.cpp)",
+      "neuttsair": "ready for integration \u2014 needs espeak-ng as bundled dependency (Windows) or system package (Linux/macOS)",
+      "voxtral": "lowest priority \u2014 needs custom Rust runtime compilation, larger 4B model, no voice cloning"
     }
   }
 }

@@ -264,14 +264,26 @@ fn oute_dac_dir(app: &AppHandle) -> PathBuf {
 
 /// Check if the qwen-tts binary is installed in resources/qwentts/.
 pub fn is_runtime_installed(app: &AppHandle) -> bool {
+    let exe_name = if cfg!(windows) {
+        "qwen-tts.exe"
+    } else {
+        "qwen-tts"
+    };
+
+    // 1. Check app_data resources (downloaded at runtime)
     if let Ok(res) = resources_dir(app) {
-        let exe_name = if cfg!(windows) {
-            "qwen-tts.exe"
-        } else {
-            "qwen-tts"
-        };
-        return res.join("qwentts").join(exe_name).exists();
+        if res.join("qwentts").join(exe_name).exists() {
+            return true;
+        }
     }
+
+    // 2. Check bundle resources (shipped with installer)
+    if let Ok(bundle_res) = app.path().resource_dir() {
+        if bundle_res.join("qwentts").join(exe_name).exists() {
+            return true;
+        }
+    }
+
     false
 }
 

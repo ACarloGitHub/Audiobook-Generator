@@ -1,0 +1,62 @@
+name: Build qwentts runtime
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag to attach the runtime asset to (e.g. v0.1.1)'
+        required: true
+        default: 'v0.1.1'
+      qwentts_ref:
+        description: 'Git ref of ServeurpersoCom/qwentts.cpp to build'
+        required: true
+        default: 'master'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build qwen-tts runtime (Windows x64)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout qwentts.cpp
+        uses: actions/checkout@v4
+        with:
+          repository: ServeurpersoCom/qwentts.cpp
+          submodules: recursive
+          ref: ${{ github.event.inputs.qwentts_ref }}
+          path: qwentts.cpp
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build qwen-tts (CPU, universal)
+        shell: cmd
+        run: |
+          cd qwentts.cpp
+          if not exist build mkdir build
+          cd build
+          cmake .. -A x64 -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=OFF -DGGML_VULKAN=OFF -DGGML_BACKEND_DL=ON
+          cmake --build . --config Release --target qwen-tts -j %NUMBER_OF_PROCESSORS%
+
+      - name: Package runtime
+        shell: powershell
+        run: |
+          $pkg = "qwen-tts-runtime-windows-x64"
+          New-Item -ItemType Directory -Path $pkg -Force
+          Copy-Item qwentts.cpp\build\Release\qwen-tts.exe $pkg\
+          # Bundle any ggml backend DLLs produced by the build
+          $dlls = Get-ChildItem -Path qwentts.cpp\build\Release -Filter "ggml*.dll" -ErrorAction SilentlyContinue
+          if ($dlls) {
+            Copy-Item $dlls.FullName $pkg\
+          }
+          Compress-Archive -Path "$pkg\*" -DestinationPath "$pkg.zip" -Force
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          files: qwen-tts-runtime-windows-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
