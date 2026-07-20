@@ -151,3 +151,6 @@ _engine_eval/
 
 # Root-level build/test output
 target/
+
+# Temporary sidecar download staging (local only)
+_sidecar_downloads/
