@@ -28,13 +28,10 @@
       },
       "runtime_binary": "qwen-tts",
       "runtime_help": "Usage: qwen-tts --model <talker.gguf> --codec <tokenizer.gguf> [options] -o <out.wav> < text.txt",
-      "runtime_download": {
-        "windows_cuda": {
-          "url": "https://github.com/ACarloGitHub/Audiobook-Generator/releases/latest/download/qwen-tts-runtime-windows-x64.zip",
-          "dest_dir": "resources/qwentts",
-          "size_mb": 15,
-          "note": "CUDA build produced by CI from unmodified upstream sources (GGML_BACKEND_DL=ON, CUDA archs 75;80;86;89;90). Bundles cudart/cublas/cublasLt and ggml-cpu.dll, so it falls back to CPU automatically on machines without an NVIDIA GPU. Vulkan variant and macOS/Linux builds still to do."
-        }
+      "runtime_bundle": {
+        "note": "The qwen-tts binary ships INSIDE the installer as a Tauri bundle resource (src-tauri/sidecars/bundled/qwentts/ -> <install>/resources/qwentts/). Windows: CUDA build from unmodified upstream sources (GGML_BACKEND_DL=ON, CUDA archs 75;80;86;89;90) with ggml-cpu.dll fallback for machines without an NVIDIA GPU, plus cudart/cublas/cublasLt DLLs. Built by CI (build-qwentts-runtime job in .github/workflows/release.yml). macOS/Linux builds: TODO.",
+        "sidecar_dir": "qwentts",
+        "last_updated": "2026-07-20"
       },
       "runtime_args": {
         "--model": "Talker LM GGUF (required)",

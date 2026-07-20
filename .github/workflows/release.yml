@@ -9,6 +9,36 @@ on:
 permissions:
   contents: write
 
+# Engine sidecar binaries are bundled INSIDE the installer (Carlo's decision,
+# 2026-07-20): the user installs once and has everything, fully offline.
+# Only GGUF model weights are downloaded at runtime from the Models panel.
+#
+# Each OS build job assembles src-tauri/sidecars/bundled/<name>/ BEFORE
+# tauri-action runs; tauri.conf.json maps that directory to the bundle
+# "resources/" dir, so the files land next to the installed executable.
+#
+# Bundled sidecars:
+#   qwentts/    qwen-tts[.exe] + ggml*.dll + CUDA runtime DLLs (built from
+#               unmodified ServeurpersoCom/qwentts.cpp sources)
+#   voxcpm2/    voxcpm2-cli[.exe] + ggml*.dll + CUDA runtime DLLs (built from
+#               unmodified tc-mb/llama.cpp-omni sources, commit b9d15b8)
+#   llama.cpp/  llama-server[.exe] + ggml*.dll (official llama.cpp release
+#               binaries, pinned to b9756) + cudart DLLs on Windows
+#   ffmpeg/     ffmpeg[.exe] (official static build)
+#
+# TODO (macOS/Linux engine builds):
+#   - qwentts: compile on macos-latest with -DGGML_METAL=ON and on
+#     ubuntu-latest with -DGGML_VULKAN=ON (or CUDA), same "unmodified
+#     upstream sources" rule, then copy into sidecars/bundled/qwentts/.
+#   - voxcpm2-cli: same, with -DGGML_METAL=ON / -DGGML_VULKAN=ON.
+#   Until those steps exist, the macOS/Linux bundles include only
+#   llama-server and ffmpeg; qwen-tts and voxcpm2-cli must be placed in the
+#   per-user resources dir manually (legacy dev fallback path).
+
+env:
+  LLAMACPP_VERSION: b9756
+  VOXCPM2_COMMIT: b9d15b8
+
 jobs:
   build:
     name: Build (${{ matrix.os }})
@@ -43,6 +73,215 @@ jobs:
             libxml2-utils \
             file \
             wget
+
+      # ------------------------------------------------------------------
+      # Sidecar assembly — Windows (full: qwen-tts, voxcpm2-cli,
+      # llama-server, ffmpeg)
+      # ------------------------------------------------------------------
+
+      - name: Checkout qwentts.cpp (unmodified upstream sources)
+        if: matrix.os == 'windows-latest'
+        uses: actions/checkout@v4
+        with:
+          repository: ServeurpersoCom/qwentts.cpp
+          submodules: recursive
+          ref: master
+          path: qwentts.cpp
+
+      - name: Setup MSVC (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Locate CUDA toolkit (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          $cudaRoot = Get-ChildItem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA" -Directory |
+            Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $cudaRoot) { throw "CUDA toolkit not found on runner" }
+          Write-Host "Using CUDA toolkit: $($cudaRoot.FullName)"
+          Write-Output "$($cudaRoot.FullName)\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          Write-Output "CUDA_BIN=$($cudaRoot.FullName)\bin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build qwen-tts sidecar (CUDA, dynamic backend loading)
+        if: matrix.os == 'windows-latest'
+        shell: cmd
+        run: |
+          cd qwentts.cpp
+          if not exist build mkdir build
+          cd build
+          cmake .. -A x64 -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90" -DGGML_BACKEND_DL=ON
+          cmake --build . --config Release --target qwen-tts -j %NUMBER_OF_PROCESSORS%
+
+      - name: Stage qwen-tts sidecar into the bundle
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          $dst = "src-tauri\sidecars\bundled\qwentts"
+          New-Item -ItemType Directory -Path $dst -Force | Out-Null
+          Copy-Item qwentts.cpp\build\Release\qwen-tts.exe $dst\
+          # Bundle every ggml backend DLL (cpu + cuda) produced by the build.
+          # With GGML_BACKEND_DL=ON, if ggml-cuda.dll fails to load (no NVIDIA
+          # GPU) the runtime falls back to ggml-cpu.dll automatically.
+          Get-ChildItem -Path qwentts.cpp\build\Release -Filter "ggml*.dll" -ErrorAction SilentlyContinue |
+            ForEach-Object { Copy-Item $_.FullName $dst\ }
+          # Bundle the CUDA runtime DLLs the CUDA backend links against
+          # (cudart64_*.dll, cublas64_*.dll, cublasLt64_*.dll) so end users
+          # do not need the CUDA toolkit installed.
+          foreach ($name in @("cudart64_*.dll", "cublas64_*.dll", "cublasLt64_*.dll")) {
+            Get-ChildItem -Path $env:CUDA_BIN -Filter $name -ErrorAction SilentlyContinue |
+              ForEach-Object { Copy-Item $_.FullName $dst\ }
+          }
+          Get-ChildItem $dst | Format-Table Name, Length
+          if (-not (Test-Path "$dst\qwen-tts.exe")) { throw "qwen-tts.exe missing from bundle staging" }
+
+      - name: Checkout llama.cpp-omni for voxcpm2-cli (unmodified upstream sources)
+        if: matrix.os == 'windows-latest'
+        uses: actions/checkout@v4
+        with:
+          repository: tc-mb/llama.cpp-omni
+          submodules: recursive
+          ref: ${{ env.VOXCPM2_COMMIT }}
+          path: llama.cpp-omni
+
+      - name: Build voxcpm2-cli sidecar (CUDA, dynamic backend loading)
+        if: matrix.os == 'windows-latest'
+        shell: cmd
+        run: |
+          cd llama.cpp-omni
+          if not exist build mkdir build
+          cd build
+          cmake .. -A x64 -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90" -DGGML_BACKEND_DL=ON
+          cmake --build . --config Release --target voxcpm2-cli -j %NUMBER_OF_PROCESSORS%
+
+      - name: Stage voxcpm2-cli sidecar into the bundle
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          $dst = "src-tauri\sidecars\bundled\voxcpm2"
+          New-Item -ItemType Directory -Path $dst -Force | Out-Null
+          $exe = Get-ChildItem -Path llama.cpp-omni\build -Recurse -Filter "voxcpm2-cli.exe" |
+            Where-Object { $_.FullName -match "Release" } | Select-Object -First 1
+          if (-not $exe) { throw "voxcpm2-cli.exe not found in build output" }
+          Copy-Item $exe.FullName $dst\
+          Get-ChildItem -Path $exe.DirectoryName -Filter "ggml*.dll" -ErrorAction SilentlyContinue |
+            ForEach-Object { Copy-Item $_.FullName $dst\ }
+          foreach ($name in @("cudart64_*.dll", "cublas64_*.dll", "cublasLt64_*.dll")) {
+            Get-ChildItem -Path $env:CUDA_BIN -Filter $name -ErrorAction SilentlyContinue |
+              ForEach-Object { Copy-Item $_.FullName $dst\ }
+          }
+          Get-ChildItem $dst | Format-Table Name, Length
+
+      - name: Download official llama.cpp binaries (Windows CUDA)
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          $ver = "${{ env.LLAMACPP_VERSION }}"
+          $base = "https://github.com/ggml-org/llama.cpp/releases/download/$ver"
+          Invoke-WebRequest -Uri "$base/llama-$ver-bin-win-cuda-12.4-x64.zip" -OutFile "llama-cuda.zip"
+          Invoke-WebRequest -Uri "$base/cudart-llama-bin-win-cuda-12.4-x64.zip" -OutFile "cudart.zip"
+          Expand-Archive llama-cuda.zip -DestinationPath llama-cuda -Force
+          Expand-Archive cudart.zip -DestinationPath cudart -Force
+          $dst = "src-tauri\sidecars\bundled\llama.cpp"
+          New-Item -ItemType Directory -Path $dst -Force | Out-Null
+          Copy-Item llama-cuda\llama-server.exe $dst\
+          Copy-Item llama-cuda\*.dll $dst\
+          Copy-Item cudart\*.dll $dst\
+          Set-Content -Path "$dst\variant.txt" -Value "cuda" -NoNewline
+          if (-not (Test-Path "$dst\llama-server.exe")) { throw "llama-server.exe missing from bundle staging" }
+          Get-ChildItem $dst | Format-Table Name, Length
+
+      - name: Download official ffmpeg static build (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: powershell
+        run: |
+          # BtbN/FFmpeg-Builds "latest" permalink (official ffmpeg.org-linked
+          # build source). TODO: pin to a dated release for reproducibility.
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -OutFile "ffmpeg.zip"
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg -Force
+          $dst = "src-tauri\sidecars\bundled\ffmpeg"
+          New-Item -ItemType Directory -Path $dst -Force | Out-Null
+          $exe = Get-ChildItem -Path ffmpeg -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
+          if (-not $exe) { throw "ffmpeg.exe not found in archive" }
+          Copy-Item $exe.FullName $dst\
+          Get-ChildItem $dst | Format-Table Name, Length
+
+      # ------------------------------------------------------------------
+      # Sidecar assembly — macOS (Apple Silicon): llama-server + ffmpeg.
+      # TODO: build qwen-tts (Metal) and voxcpm2-cli (Metal) from the
+      # unmodified upstream sources and stage them the same way.
+      # ------------------------------------------------------------------
+
+      - name: Download official llama.cpp binaries (macOS arm64)
+        if: matrix.os == 'macos-latest'
+        run: |
+          ver="${{ env.LLAMACPP_VERSION }}"
+          curl -sL -o llama.tar.gz "https://github.com/ggml-org/llama.cpp/releases/download/${ver}/llama-${ver}-bin-macos-arm64.tar.gz"
+          mkdir -p llama && tar -xzf llama.tar.gz -C llama
+          dst="src-tauri/sidecars/bundled/llama.cpp"
+          mkdir -p "$dst"
+          cp llama/llama-server "$dst/"
+          cp llama/*.dylib "$dst/" 2>/dev/null || true
+          cp llama/*.so "$dst/" 2>/dev/null || true
+          printf "metal" > "$dst/variant.txt"
+          chmod +x "$dst/llama-server"
+          ls -la "$dst"
+          test -x "$dst/llama-server"
+
+      - name: Download official ffmpeg static build (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          # evermeet.cx static build (linked from ffmpeg.org as the canonical
+          # macOS static build). TODO: pin to a fixed version.
+          curl -sL -o ffmpeg.zip "https://evermeet.cx/ffmpeg/ffmpeg-8.0.zip"
+          mkdir -p ffmpeg && unzip -o ffmpeg.zip -d ffmpeg
+          dst="src-tauri/sidecars/bundled/ffmpeg"
+          mkdir -p "$dst"
+          cp ffmpeg/ffmpeg "$dst/"
+          chmod +x "$dst/ffmpeg"
+          ls -la "$dst"
+          test -x "$dst/ffmpeg"
+
+      # ------------------------------------------------------------------
+      # Sidecar assembly — Linux: llama-server + ffmpeg.
+      # TODO: build qwen-tts (Vulkan or CUDA) and voxcpm2-cli (Vulkan or
+      # CUDA) from the unmodified upstream sources and stage them the same
+      # way. AppImage/deb bundling of the .so dependencies needs a local
+      # install verification pass.
+      # ------------------------------------------------------------------
+
+      - name: Download official llama.cpp binaries (Linux x64)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          ver="${{ env.LLAMACPP_VERSION }}"
+          curl -sL -o llama.tar.gz "https://github.com/ggml-org/llama.cpp/releases/download/${ver}/llama-${ver}-bin-ubuntu-x64.tar.gz"
+          mkdir -p llama && tar -xzf llama.tar.gz -C llama
+          dst="src-tauri/sidecars/bundled/llama.cpp"
+          mkdir -p "$dst"
+          cp llama/build/bin/llama-server "$dst/" 2>/dev/null || cp llama/llama-server "$dst/"
+          find llama -name "*.so*" -exec cp {} "$dst/" \; 2>/dev/null || true
+          printf "cpu" > "$dst/variant.txt"
+          chmod +x "$dst/llama-server"
+          ls -la "$dst"
+          test -x "$dst/llama-server"
+
+      - name: Download official ffmpeg static build (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          # johnvansickle.com static build (linked from ffmpeg.org as the
+          # canonical Linux static build). TODO: pin to a fixed version.
+          curl -sL -o ffmpeg.tar.xz "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+          mkdir -p ffmpeg && tar -xJf ffmpeg.tar.xz -C ffmpeg --strip-components=1
+          dst="src-tauri/sidecars/bundled/ffmpeg"
+          mkdir -p "$dst"
+          cp ffmpeg/ffmpeg "$dst/"
+          chmod +x "$dst/ffmpeg"
+          ls -la "$dst"
+          test -x "$dst/ffmpeg"
+
+      # ------------------------------------------------------------------
+      # Application build
+      # ------------------------------------------------------------------
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -88,81 +327,9 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  build-qwentts-runtime:
-    name: Build qwen-tts sidecar runtime (Windows x64)
-    runs-on: windows-latest
-    steps:
-      - name: Checkout qwentts.cpp (unmodified upstream sources)
-        uses: actions/checkout@v4
-        with:
-          repository: ServeurpersoCom/qwentts.cpp
-          submodules: recursive
-          ref: master
-          path: qwentts.cpp
-
-      - name: Record upstream commit
-        shell: bash
-        run: |
-          cd qwentts.cpp
-          echo "qwentts.cpp commit: $(git rev-parse HEAD)" | tee ../qwentts-commit.txt
-
-      - name: Setup MSVC
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Locate CUDA toolkit and add to PATH
-        shell: powershell
-        run: |
-          $cudaRoot = Get-ChildItem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA" -Directory |
-            Sort-Object Name -Descending | Select-Object -First 1
-          if (-not $cudaRoot) { throw "CUDA toolkit not found on runner" }
-          Write-Host "Using CUDA toolkit: $($cudaRoot.FullName)"
-          Write-Output "$($cudaRoot.FullName)\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          Write-Output "CUDA_BIN=$($cudaRoot.FullName)\bin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-
-      - name: Build qwen-tts (CUDA, dynamic backend loading)
-        shell: cmd
-        run: |
-          cd qwentts.cpp
-          if not exist build mkdir build
-          cd build
-          cmake .. -A x64 -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90" -DGGML_BACKEND_DL=ON
-          cmake --build . --config Release --target qwen-tts -j %NUMBER_OF_PROCESSORS%
-
-      - name: Package runtime zip
-        shell: powershell
-        run: |
-          $pkg = "qwen-tts-runtime-windows-x64"
-          New-Item -ItemType Directory -Path $pkg -Force | Out-Null
-          Copy-Item qwentts.cpp\build\Release\qwen-tts.exe $pkg\
-          # Bundle every ggml backend DLL (cpu + cuda) produced by the build.
-          # With GGML_BACKEND_DL=ON, if ggml-cuda.dll fails to load (no NVIDIA GPU)
-          # the runtime falls back to ggml-cpu.dll automatically.
-          $dlls = Get-ChildItem -Path qwentts.cpp\build\Release -Filter "ggml*.dll" -ErrorAction SilentlyContinue
-          if ($dlls) { Copy-Item $dlls.FullName $pkg\ }
-          # Bundle the CUDA runtime DLLs the CUDA backend links against
-          # (cudart64_*.dll, cublas64_*.dll, cublasLt64_*.dll) so end users
-          # do not need the CUDA toolkit installed.
-          foreach ($name in @("cudart64_*.dll", "cublas64_*.dll", "cublasLt64_*.dll")) {
-            Get-ChildItem -Path $env:CUDA_BIN -Filter $name -ErrorAction SilentlyContinue |
-              ForEach-Object { Copy-Item $_.FullName $pkg\ }
-          }
-          Get-ChildItem $pkg | Format-Table Name, Length
-          if (-not (Test-Path "$pkg\qwen-tts.exe")) { throw "qwen-tts.exe missing from package" }
-          Compress-Archive -Path "$pkg\*" -DestinationPath "$pkg.zip" -Force
-
-      - name: Upload runtime artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: qwen-tts-runtime
-          path: |
-            qwen-tts-runtime-windows-x64.zip
-            qwentts-commit.txt
-          if-no-files-found: error
-          retention-days: 7
-
   release:
     name: Publish release with all artifacts
-    needs: [build, build-qwentts-runtime]
+    needs: [build]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     steps:
@@ -251,9 +418,9 @@ jobs:
                 sections.push(fmt(breaking));
               }
               sections.push("## First run");
-              sections.push('- On first launch the built-in wizard downloads the native runtime components (`llama-server`, `voxcpm2-cli`, `ffmpeg`) for your platform. TTS models are then downloaded on demand from inside the app.');
+              sections.push('- Everything needed to run is bundled inside the installer (`llama-server`, `qwen-tts`, `voxcpm2-cli`, `ffmpeg`). No runtime downloads of engine binaries — the app works offline out of the box. Only the TTS model weights (GGUF) are downloaded on demand from the Models panel.');
               sections.push("## Notes");
-              sections.push('- **No Python required**: everything runs through native sidecar binaries.');
+              sections.push('- **No Python required**: everything runs through native sidecar binaries shipped in the installer.');
               sections.push('- **No code signing**: Audiobook Generator is open source (MIT) but not yet code-signed. You may see a SmartScreen warning on Windows or a Gatekeeper block on macOS.');
               sections.push("## Downloads");
               sections.push('- **Windows:** `.msi` (WiX) and `-setup.exe` (NSIS) installers');
@@ -339,6 +506,5 @@ jobs:
             artifacts/**/*.deb
             artifacts/**/*.rpm
             artifacts/**/*.AppImage
-            artifacts/**/qwen-tts-runtime-windows-x64.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
