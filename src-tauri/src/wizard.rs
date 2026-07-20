@@ -335,12 +335,8 @@ pub fn check_dependencies(app: AppHandle) -> DependencyStatus {
         .or_else(|| find_binary_in_dir(&llama_dir, llama_exe))
         .map(|p| p.to_string_lossy().to_string());
 
-    let ort_installed = {
-        let kokoro_models = app_data.join("models").join("kokoro").join("models");
-        kokoro_models.join("model_quantized.onnx").exists()
-            || kokoro_models.join("model_q8f16.onnx").exists()
-            || kokoro_models.join("model.onnx").exists()
-    };
+    // ONNX Runtime is a Rust dependency (ort crate); if the app is running it is available.
+    let ort_installed = true;
 
     let cudnn_installed = if cfg!(target_os = "windows") {
         let system32 = PathBuf::from("C:\\Windows\\System32");
@@ -387,13 +383,13 @@ pub fn get_wizard_steps() -> Vec<WizardStep> {
         WizardStep {
             id: "llama_server".into(),
             title: "llama-server".into(),
-            description: "llama-server is the inference engine for GGUF models (Qwen3-TTS, OuteTTS, NeuTTS Air, VibeVoice).".into(),
+            description: "llama-server is the inference engine for GGUF models (Qwen3-TTS, OuteTTS, VoxCPM2).".into(),
             completed: false,
         },
         WizardStep {
             id: "ort".into(),
             title: "ONNX Runtime + cuDNN".into(),
-            description: "ONNX Runtime and cuDNN are required for Kokoro (in-process synthesis via kokoro-en).".into(),
+            description: "ONNX Runtime is built into the app (used by OuteTTS). cuDNN is optional for GPU acceleration on NVIDIA.".into(),
             completed: false,
         },
         WizardStep {

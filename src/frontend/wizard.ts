@@ -127,8 +127,8 @@ function renderWelcome(): string {
     <p>Before you can use it, a few system components need to be installed:</p>
     <ul>
       <li><strong>FFmpeg</strong> — merges audio chunks into MP3</li>
-      <li><strong>llama-server</strong> — runs GGUF models (Qwen3-TTS, OuteTTS, etc.)</li>
-      <li><strong>ONNX Runtime + cuDNN</strong> — runs Kokoro in-process</li>
+      <li><strong>llama-server</strong> — runs GGUF models (Qwen3-TTS, OuteTTS, VoxCPM2)</li>
+      <li><strong>ONNX Runtime + cuDNN</strong> — accelerates ONNX inference (OuteTTS DAC decoder) on NVIDIA GPUs</li>
     </ul>
     <p>Models are downloaded separately from the <strong>Models</strong> panel after setup.</p>
   `;
@@ -182,7 +182,7 @@ function renderLlamaServer(): string {
   const path = deps?.llama_server_path ?? null;
   return `
     <h3>llama-server</h3>
-    <p>llama-server is the inference engine for GGUF models (Qwen3-TTS, OuteTTS, NeuTTS Air, VibeVoice). It is <strong>not</strong> needed for Kokoro (which uses ONNX Runtime).</p>
+    <p>llama-server is the inference engine for GGUF models (Qwen3-TTS, OuteTTS, VoxCPM2). It is required for all engines except VoxCPM2, which uses its own sidecar binary.</p>
     <p class="field-help">Status: ${installed ? "✅ installed" : "❌ not found"}${path ? ` at <code>${escapeHtml(path)}</code>` : ""}</p>
     ${!installed ? `
       <button class="btn-primary" id="wizard-download-llama">Download llama-server</button>
@@ -205,9 +205,9 @@ function renderOrt(): string {
   const cudnnOk = deps?.cudnn_installed ?? false;
   return `
     <h3>ONNX Runtime + cuDNN</h3>
-    <p>ONNX Runtime is required for Kokoro (in-process synthesis). cuDNN accelerates inference on NVIDIA GPUs.</p>
-    <p class="field-help">ONNX Runtime model: ${ortOk ? "✅ found" : "❌ not found (download Kokoro from the Models panel first)"}</p>
-    <p class="field-help">cuDNN 9: ${cudnnOk ? "✅ found" : "❌ not found (CPU-only mode will be used)"}</p>
+    <p>ONNX Runtime is built into the application and is used by OuteTTS for the DAC audio decoder. cuDNN accelerates ONNX inference on NVIDIA GPUs.</p>
+    <p class="field-help">ONNX Runtime: ${ortOk ? "✅ built-in" : "❌ not available"}</p>
+    <p class="field-help">cuDNN 9: ${cudnnOk ? "✅ found" : "❌ not found (CPU-only fallback will be used)"}</p>
     <details class="accordion">
       <summary>Manual cuDNN installation</summary>
       <p class="field-help">
@@ -223,7 +223,7 @@ function renderDone(): string {
     <h3>Setup Complete!</h3>
     <p>All system dependencies are in place. You can now:</p>
     <ol>
-      <li>Go to the <strong>Models</strong> panel to download TTS models (Kokoro, Qwen3-TTS, etc.)</li>
+      <li>Go to the <strong>Models</strong> panel to download TTS models (Qwen3-TTS, OuteTTS, VoxCPM2)</li>
       <li>Go to <strong>Configuration</strong> to select an engine and voice</li>
       <li>Go to <strong>EPUB & Options</strong> to load a book</li>
       <li>Go to <strong>Generate</strong> to create your audiobook</li>
