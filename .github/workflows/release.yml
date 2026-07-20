@@ -295,7 +295,10 @@ jobs:
           mkdir -p ffmpeg && tar -xJf ffmpeg.tar.xz -C ffmpeg --strip-components=1
           dst="src-tauri/sidecars/bundled/ffmpeg"
           mkdir -p "$dst"
-          cp ffmpeg/ffmpeg "$dst/"
+          # BtbN layout: bin/ffmpeg (johnvansickle had it at the root).
+          exe=$(find ffmpeg -name ffmpeg -type f | head -1)
+          [ -n "$exe" ] || { echo "ffmpeg binary not found in archive"; find ffmpeg -maxdepth 3 | head -30; exit 1; }
+          cp "$exe" "$dst/"
           chmod +x "$dst/ffmpeg"
           ls -la "$dst"
           test -x "$dst/ffmpeg"
