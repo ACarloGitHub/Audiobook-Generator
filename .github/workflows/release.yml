@@ -184,8 +184,11 @@ jobs:
           Expand-Archive cudart.zip -DestinationPath cudart -Force
           $dst = "src-tauri\sidecars\bundled\llama.cpp"
           New-Item -ItemType Directory -Path $dst -Force | Out-Null
-          Copy-Item llama-cuda\llama-server.exe $dst\
-          Copy-Item llama-cuda\*.dll $dst\
+          $srv = Get-ChildItem -Path llama-cuda -Recurse -Filter "llama-server.exe" | Select-Object -First 1
+          if (-not $srv) { throw "llama-server.exe not found in archive" }
+          Copy-Item $srv.FullName $dst\
+          Copy-Item llama-cuda\*.dll $dst\ -ErrorAction SilentlyContinue
+          Get-ChildItem -Path llama-cuda -Recurse -Filter "*.dll" | Copy-Item -Destination $dst -ErrorAction SilentlyContinue
           Copy-Item cudart\*.dll $dst\
           Set-Content -Path "$dst\variant.txt" -Value "cuda" -NoNewline
           if (-not (Test-Path "$dst\llama-server.exe")) { throw "llama-server.exe missing from bundle staging" }
@@ -220,9 +223,10 @@ jobs:
           mkdir -p llama && tar -xzf llama.tar.gz -C llama
           dst="src-tauri/sidecars/bundled/llama.cpp"
           mkdir -p "$dst"
-          cp llama/llama-server "$dst/"
-          cp llama/*.dylib "$dst/" 2>/dev/null || true
-          cp llama/*.so "$dst/" 2>/dev/null || true
+          srv=$(find llama -name "llama-server" -type f | head -1)
+          [ -n "$srv" ] || { echo "llama-server not found in archive"; find llama -maxdepth 3 | head -30; exit 1; }
+          cp "$srv" "$dst/"
+          find llama \( -name "*.dylib" -o -name "*.so" \) -exec cp {} "$dst/" \; 2>/dev/null || true
           printf "metal" > "$dst/variant.txt"
           chmod +x "$dst/llama-server"
           ls -la "$dst"
@@ -258,7 +262,9 @@ jobs:
           mkdir -p llama && tar -xzf llama.tar.gz -C llama
           dst="src-tauri/sidecars/bundled/llama.cpp"
           mkdir -p "$dst"
-          cp llama/build/bin/llama-server "$dst/" 2>/dev/null || cp llama/llama-server "$dst/"
+          srv=$(find llama -name "llama-server" -type f | head -1)
+          [ -n "$srv" ] || { echo "llama-server not found in archive"; find llama -maxdepth 3 | head -30; exit 1; }
+          cp "$srv" "$dst/"
           find llama -name "*.so*" -exec cp {} "$dst/" \; 2>/dev/null || true
           printf "cpu" > "$dst/variant.txt"
           chmod +x "$dst/llama-server"
