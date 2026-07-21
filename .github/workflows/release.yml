@@ -145,8 +145,8 @@ jobs:
           exe=$(find qwentts.cpp/build -name "qwen-tts" -type f -perm +111 | head -1)
           [ -n "$exe" ] || { echo "qwen-tts not found"; exit 1; }
           cp "$exe" "$dst/"
-          find qwentts.cpp/build -name "ggml*.dylib" -exec cp {} "$dst/" ; 2>/dev/null || true
-          find qwentts.cpp/build -name "libggml*.so" -exec cp {} "$dst/" ; 2>/dev/null || true
+          find qwentts.cpp/build -name "ggml*.dylib" -exec cp {} "$dst/" \; 2>/dev/null || true
+          find qwentts.cpp/build -name "libggml*.so" -exec cp {} "$dst/" \; 2>/dev/null || true
           ls -la "$dst"
 
       - name: Checkout llama.cpp-omni for voxcpm2-cli (macOS)
@@ -168,8 +168,8 @@ jobs:
           exe=$(find llama.cpp-omni/build -name "voxcpm2-cli" -type f -perm +111 | head -1)
           [ -n "$exe" ] || { echo "voxcpm2-cli not found"; exit 1; }
           cp "$exe" "$dst/"
-          find llama.cpp-omni/build -name "ggml*.dylib" -exec cp {} "$dst/" ; 2>/dev/null || true
-          find llama.cpp-omni/build -name "libggml*.so" -exec cp {} "$dst/" ; 2>/dev/null || true
+          find llama.cpp-omni/build -name "ggml*.dylib" -exec cp {} "$dst/" \; 2>/dev/null || true
+          find llama.cpp-omni/build -name "libggml*.so" -exec cp {} "$dst/" \; 2>/dev/null || true
           ls -la "$dst"
 
       - name: Download official llama.cpp binaries (macOS arm64)
@@ -217,7 +217,7 @@ jobs:
           [ -n "$exe" ] || { echo "qwen-tts not found"; exit 1; }
           cp "$exe" "$dst/"
           chmod +x "$dst/qwen-tts" || true
-          find qwentts.cpp/build -name "libggml*.so*" -exec cp {} "$dst/" ; 2>/dev/null || true
+          find qwentts.cpp/build -name "libggml*.so*" -exec cp {} "$dst/" \; 2>/dev/null || true
           ls -la "$dst"
 
       - name: Checkout llama.cpp-omni for voxcpm2-cli (Linux)
@@ -240,7 +240,7 @@ jobs:
           [ -n "$exe" ] || { echo "voxcpm2-cli not found"; exit 1; }
           cp "$exe" "$dst/"
           chmod +x "$dst/voxcpm2-cli" || true
-          find llama.cpp-omni/build -name "libggml*.so*" -exec cp {} "$dst/" ; 2>/dev/null || true
+          find llama.cpp-omni/build -name "libggml*.so*" -exec cp {} "$dst/" \; 2>/dev/null || true
           ls -la "$dst"
 
       - name: Download official llama.cpp binaries (Linux x64)
