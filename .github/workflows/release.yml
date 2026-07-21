@@ -122,7 +122,7 @@ jobs:
           cd qwentts.cpp
           if not exist build mkdir build
           cd build
-          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90" -DGGML_BACKEND_DL=ON -DGGML_NATIVE=OFF
+          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90" -DGGML_BACKEND_DL=ON -DGGML_NATIVE=OFF -DCMAKE_CUDA_FLAGS=-allow-unsupported-compiler
           cmake --build . --target qwen-tts -j %NUMBER_OF_PROCESSORS%
 
       - name: Stage qwen-tts sidecar into the bundle
@@ -165,7 +165,7 @@ jobs:
           cd llama.cpp-omni
           if not exist build mkdir build
           cd build
-          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90" -DGGML_BACKEND_DL=ON -DGGML_NATIVE=OFF
+          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90" -DGGML_BACKEND_DL=ON -DGGML_NATIVE=OFF -DCMAKE_CUDA_FLAGS=-allow-unsupported-compiler
           cmake --build . --target voxcpm2-cli -j %NUMBER_OF_PROCESSORS%
 
       - name: Stage voxcpm2-cli sidecar into the bundle
