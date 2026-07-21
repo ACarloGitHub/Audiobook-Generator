@@ -49,7 +49,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          - os: windows-2022
             args: ""
           - os: macos-latest
             # ort (ONNX Runtime) ships prebuilt binaries only for
@@ -82,7 +82,7 @@ jobs:
       # ------------------------------------------------------------------
 
       - name: Checkout qwentts.cpp (unmodified upstream sources)
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-2022'
         uses: actions/checkout@v4
         with:
           repository: ServeurpersoCom/qwentts.cpp
@@ -91,12 +91,12 @@ jobs:
           path: qwentts.cpp
 
       - name: Setup MSVC (Windows)
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-2022'
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install CUDA toolkit (Windows)
-        if: matrix.os == 'windows-latest'
-        # windows-latest runners do NOT ship the CUDA toolkit; install only
+        if: matrix.os == 'windows-2022'
+        # windows-2022 runners do NOT ship the CUDA toolkit; install only
         # the packages needed to compile (nvcc + cudart + cublas) to keep the
         # install time low.
         uses: Jimver/cuda-toolkit@v0.2.23
@@ -106,7 +106,7 @@ jobs:
           sub-packages: '["nvcc", "cudart", "cublas", "visual_studio_integration"]'
 
       - name: Locate CUDA toolkit (Windows)
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-2022'
         shell: powershell
         run: |
           $cudaRoot = Get-ChildItem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA" -Directory |
@@ -116,17 +116,17 @@ jobs:
           Write-Output "CUDA_BIN=$($cudaRoot.FullName)\bin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build qwen-tts sidecar (CUDA, dynamic backend loading)
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-2022'
         shell: cmd
         run: |
           cd qwentts.cpp
           if not exist build mkdir build
           cd build
-          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90" -DGGML_BACKEND_DL=ON -DGGML_NATIVE=OFF -DCMAKE_CUDA_FLAGS=-allow-unsupported-compiler
+          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90" -DGGML_BACKEND_DL=ON -DGGML_NATIVE=OFF
           cmake --build . --target qwen-tts -j %NUMBER_OF_PROCESSORS%
 
       - name: Stage qwen-tts sidecar into the bundle
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-2022'
         shell: powershell
         run: |
           $dst = "src-tauri\sidecars\bundled\qwentts"
@@ -150,7 +150,7 @@ jobs:
           if (-not (Test-Path "$dst\qwen-tts.exe")) { throw "qwen-tts.exe missing from bundle staging" }
 
       - name: Checkout llama.cpp-omni for voxcpm2-cli (unmodified upstream sources)
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-2022'
         uses: actions/checkout@v4
         with:
           repository: tc-mb/llama.cpp-omni
@@ -159,17 +159,17 @@ jobs:
           path: llama.cpp-omni
 
       - name: Build voxcpm2-cli sidecar (CUDA, dynamic backend loading)
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-2022'
         shell: cmd
         run: |
           cd llama.cpp-omni
           if not exist build mkdir build
           cd build
-          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90" -DGGML_BACKEND_DL=ON -DGGML_NATIVE=OFF -DCMAKE_CUDA_FLAGS=-allow-unsupported-compiler
+          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90" -DGGML_BACKEND_DL=ON -DGGML_NATIVE=OFF
           cmake --build . --target voxcpm2-cli -j %NUMBER_OF_PROCESSORS%
 
       - name: Stage voxcpm2-cli sidecar into the bundle
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-2022'
         shell: powershell
         run: |
           $dst = "src-tauri\sidecars\bundled\voxcpm2"
@@ -187,7 +187,7 @@ jobs:
           Get-ChildItem $dst | Format-Table Name, Length
 
       - name: Download official llama.cpp binaries (Windows CUDA)
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-2022'
         shell: powershell
         run: |
           $ver = "${{ env.LLAMACPP_VERSION }}"
