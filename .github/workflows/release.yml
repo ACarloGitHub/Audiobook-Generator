@@ -149,14 +149,13 @@ jobs:
           find qwentts.cpp/build -name "libggml*.so" -exec cp {} "$dst/" \; 2>/dev/null || true
           ls -la "$dst"
 
-      - name: Checkout llama.cpp-omni for voxcpm2-cli (macOS)
+      - name: Clone llama.cpp-omni for voxcpm2-cli (macOS)
         if: matrix.os == 'macos-latest'
-        uses: actions/checkout@v4
-        with:
-          repository: tc-mb/llama.cpp-omni
-          submodules: recursive
-          ref: ${{ env.VOXCPM2_COMMIT }}
-          path: llama.cpp-omni
+        run: |
+          git clone --recurse-submodules https://github.com/tc-mb/llama.cpp-omni
+          cd llama.cpp-omni
+          git checkout ${{ env.VOXCPM2_COMMIT }}
+          git submodule update --init --recursive
 
       - name: Build voxcpm2-cli sidecar (macOS, Metal)
         if: matrix.os == 'macos-latest'
@@ -220,14 +219,13 @@ jobs:
           find qwentts.cpp/build -name "libggml*.so*" -exec cp {} "$dst/" \; 2>/dev/null || true
           ls -la "$dst"
 
-      - name: Checkout llama.cpp-omni for voxcpm2-cli (Linux)
+      - name: Clone llama.cpp-omni for voxcpm2-cli (Linux)
         if: matrix.os == 'ubuntu-latest'
-        uses: actions/checkout@v4
-        with:
-          repository: tc-mb/llama.cpp-omni
-          submodules: recursive
-          ref: ${{ env.VOXCPM2_COMMIT }}
-          path: llama.cpp-omni
+        run: |
+          git clone --recurse-submodules https://github.com/tc-mb/llama.cpp-omni
+          cd llama.cpp-omni
+          git checkout ${{ env.VOXCPM2_COMMIT }}
+          git submodule update --init --recursive
 
       - name: Build voxcpm2-cli sidecar (Linux, CPU)
         if: matrix.os == 'ubuntu-latest'
