@@ -18,24 +18,23 @@ permissions:
 # "resources/" dir, so the files land next to the installed executable.
 #
 # Bundled sidecars:
-#   qwentts/    qwen-tts[.exe] + ggml*.dll + CUDA runtime DLLs (built from
-#               unmodified ServeurpersoCom/qwentts.cpp sources)
-#   voxcpm2/    voxcpm2-cli[.exe] + ggml*.dll + CUDA runtime DLLs (built from
-#               unmodified tc-mb/llama.cpp-omni sources, commit b9d15b8)
-#   llama.cpp/  llama-server[.exe] + ggml*.dll (official llama.cpp release
+#   qwentts/    qwen-tts + ggml libs. Windows: prebuilt zip downloaded from
+#               the stable "engine-bins" release (compiled ONCE locally from
+#               unmodified ServeurpersoCom/qwentts.cpp sources — no CUDA in
+#               CI). macOS: compiled in CI with Metal. Linux: CPU.
+#   voxcpm2/    voxcpm2-cli + ggml libs. Same scheme; upstream
+#               tc-mb/llama.cpp-omni, commit b9d15b8. Windows build uses
+#               CUDA archs 86;89;90 (older GPUs fall back to the bundled
+#               ggml-cpu backend).
+#   llama.cpp/  llama-server[.exe] + ggml libs (official llama.cpp release
 #               binaries, pinned to b9756) + cudart DLLs on Windows
 #
 # ffmpeg is NOT bundled (Carlo, 2026-07-20): it is downloaded per-user at
 # runtime, as before the bundling change.
 #
-# TODO (macOS/Linux engine builds):
-#   - qwentts: compile on macos-latest with -DGGML_METAL=ON and on
-#     ubuntu-latest with -DGGML_VULKAN=ON (or CUDA), same "unmodified
-#     upstream sources" rule, then copy into sidecars/bundled/qwentts/.
-#   - voxcpm2-cli: same, with -DGGML_METAL=ON / -DGGML_VULKAN=ON.
-#   Until those steps exist, the macOS/Linux bundles include only
-#   llama-server and ffmpeg; qwen-tts and voxcpm2-cli must be placed in the
-#   per-user resources dir manually (legacy dev fallback path).
+# Windows engine rebuild (when upstream changes): build locally with CUDA,
+# zip the qwentts/ and voxcpm2/ staging dirs, upload to the "engine-bins"
+# release. See wiki/concepts/release-procedure.md.
 
 env:
   LLAMACPP_VERSION: b9756
@@ -49,7 +48,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-2022
+          - os: windows-latest
             args: ""
           - os: macos-latest
             # ort (ONNX Runtime) ships prebuilt binaries only for
@@ -81,113 +80,26 @@ jobs:
       # llama-server, ffmpeg)
       # ------------------------------------------------------------------
 
-      - name: Checkout qwentts.cpp (unmodified upstream sources)
-        if: matrix.os == 'windows-2022'
-        uses: actions/checkout@v4
-        with:
-          repository: ServeurpersoCom/qwentts.cpp
-          submodules: recursive
-          ref: master
-          path: qwentts.cpp
-
-      - name: Setup MSVC (Windows)
-        if: matrix.os == 'windows-2022'
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Install CUDA toolkit (Windows)
-        if: matrix.os == 'windows-2022'
-        # windows-2022 runners do NOT ship the CUDA toolkit; install only
-        # the packages needed to compile (nvcc + cudart + cublas) to keep the
-        # install time low.
-        uses: Jimver/cuda-toolkit@v0.2.35
-        with:
-          cuda: "12.4.0"
-          method: network
-          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "visual_studio_integration"]'
-
-      - name: Locate CUDA toolkit (Windows)
-        if: matrix.os == 'windows-2022'
+      - name: Download prebuilt engine sidecars (Windows)
+        if: matrix.os == 'windows-latest'
         shell: powershell
         run: |
-          $cudaRoot = Get-ChildItem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA" -Directory |
-            Sort-Object Name -Descending | Select-Object -First 1
-          if (-not $cudaRoot) { throw "CUDA toolkit not found on runner" }
-          Write-Host "Using CUDA toolkit: $($cudaRoot.FullName)"
-          Write-Output "CUDA_BIN=$($cudaRoot.FullName)\bin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-
-      - name: Build qwen-tts sidecar (CUDA, dynamic backend loading)
-        if: matrix.os == 'windows-2022'
-        shell: cmd
-        run: |
-          cd qwentts.cpp
-          if not exist build mkdir build
-          cd build
-          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90" -DGGML_BACKEND_DL=ON -DGGML_NATIVE=OFF
-          cmake --build . --target qwen-tts -j %NUMBER_OF_PROCESSORS%
-
-      - name: Stage qwen-tts sidecar into the bundle
-        if: matrix.os == 'windows-2022'
-        shell: powershell
-        run: |
-          $dst = "src-tauri\sidecars\bundled\qwentts"
+          # Engine binaries are compiled ONCE locally from unmodified upstream
+          # sources and attached to the stable "engine-bins" release. CI only
+          # downloads them: no CUDA toolkit, no native compilation in CI.
+          # See wiki/concepts/release-procedure.md for the rebuild procedure.
+          $dst = "src-tauri\sidecars\bundled"
           New-Item -ItemType Directory -Path $dst -Force | Out-Null
-          $exe = Get-ChildItem -Path qwentts.cpp\build -Recurse -Filter "qwen-tts.exe" | Select-Object -First 1
-          if (-not $exe) { throw "qwen-tts.exe not found in build output" }
-          Copy-Item $exe.FullName $dst\
-          # Bundle every ggml backend DLL (cpu + cuda) produced by the build.
-          # With GGML_BACKEND_DL=ON, if ggml-cuda.dll fails to load (no NVIDIA
-          # GPU) the runtime falls back to ggml-cpu.dll automatically.
-          Get-ChildItem -Path $exe.DirectoryName -Filter "ggml*.dll" -ErrorAction SilentlyContinue |
-            ForEach-Object { Copy-Item $_.FullName $dst\ }
-          # Bundle the CUDA runtime DLLs the CUDA backend links against
-          # (cudart64_*.dll, cublas64_*.dll, cublasLt64_*.dll) so end users
-          # do not need the CUDA toolkit installed.
-          foreach ($name in @("cudart64_*.dll", "cublas64_*.dll", "cublasLt64_*.dll")) {
-            Get-ChildItem -Path $env:CUDA_BIN -Filter $name -ErrorAction SilentlyContinue |
-              ForEach-Object { Copy-Item $_.FullName $dst\ }
+          foreach ($n in @("qwentts", "voxcpm2")) {
+            Invoke-WebRequest -Uri "https://github.com/ACarloGitHub/Audiobook-Generator/releases/download/engine-bins/$n-windows-x64.zip" -OutFile "$n.zip"
+            Expand-Archive "$n.zip" -DestinationPath $dst -Force
           }
-          Get-ChildItem $dst | Format-Table Name, Length
-          if (-not (Test-Path "$dst\qwen-tts.exe")) { throw "qwen-tts.exe missing from bundle staging" }
-
-      - name: Checkout llama.cpp-omni for voxcpm2-cli (unmodified upstream sources)
-        if: matrix.os == 'windows-2022'
-        uses: actions/checkout@v4
-        with:
-          repository: tc-mb/llama.cpp-omni
-          submodules: recursive
-          ref: ${{ env.VOXCPM2_COMMIT }}
-          path: llama.cpp-omni
-
-      - name: Build voxcpm2-cli sidecar (CUDA, dynamic backend loading)
-        if: matrix.os == 'windows-2022'
-        shell: cmd
-        run: |
-          cd llama.cpp-omni
-          if not exist build mkdir build
-          cd build
-          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90" -DGGML_BACKEND_DL=ON -DGGML_NATIVE=OFF
-          cmake --build . --target voxcpm2-cli -j %NUMBER_OF_PROCESSORS%
-
-      - name: Stage voxcpm2-cli sidecar into the bundle
-        if: matrix.os == 'windows-2022'
-        shell: powershell
-        run: |
-          $dst = "src-tauri\sidecars\bundled\voxcpm2"
-          New-Item -ItemType Directory -Path $dst -Force | Out-Null
-          $exe = Get-ChildItem -Path llama.cpp-omni\build -Recurse -Filter "voxcpm2-cli.exe" |
-            Select-Object -First 1
-          if (-not $exe) { throw "voxcpm2-cli.exe not found in build output" }
-          Copy-Item $exe.FullName $dst\
-          Get-ChildItem -Path $exe.DirectoryName -Filter "ggml*.dll" -ErrorAction SilentlyContinue |
-            ForEach-Object { Copy-Item $_.FullName $dst\ }
-          foreach ($name in @("cudart64_*.dll", "cublas64_*.dll", "cublasLt64_*.dll")) {
-            Get-ChildItem -Path $env:CUDA_BIN -Filter $name -ErrorAction SilentlyContinue |
-              ForEach-Object { Copy-Item $_.FullName $dst\ }
-          }
-          Get-ChildItem $dst | Format-Table Name, Length
+          if (-not (Test-Path "$dst\qwentts\qwen-tts.exe")) { throw "qwen-tts.exe missing" }
+          if (-not (Test-Path "$dst\voxcpm2\voxcpm2-cli.exe")) { throw "voxcpm2-cli.exe missing" }
+          Get-ChildItem $dst -Recurse -File | Format-Table FullName, Length
 
       - name: Download official llama.cpp binaries (Windows CUDA)
-        if: matrix.os == 'windows-2022'
+        if: matrix.os == 'windows-latest'
         shell: powershell
         run: |
           $ver = "${{ env.LLAMACPP_VERSION }}"
@@ -214,6 +126,52 @@ jobs:
       # unmodified upstream sources and stage them the same way.
       # ------------------------------------------------------------------
 
+      - name: Checkout qwentts.cpp (unmodified upstream sources, macOS)
+        if: matrix.os == 'macos-latest'
+        uses: actions/checkout@v4
+        with:
+          repository: ServeurpersoCom/qwentts.cpp
+          submodules: recursive
+          ref: master
+          path: qwentts.cpp
+
+      - name: Build qwen-tts sidecar (macOS, Metal)
+        if: matrix.os == 'macos-latest'
+        run: |
+          cmake -S qwentts.cpp -B qwentts.cpp/build -DCMAKE_BUILD_TYPE=Release -DGGML_METAL=ON -DGGML_NATIVE=OFF
+          cmake --build qwentts.cpp/build --target qwen-tts -j 4
+          dst="src-tauri/sidecars/bundled/qwentts"
+          mkdir -p "$dst"
+          exe=$(find qwentts.cpp/build -name "qwen-tts" -type f -perm +111 | head -1)
+          [ -n "$exe" ] || { echo "qwen-tts not found"; exit 1; }
+          cp "$exe" "$dst/"
+          find qwentts.cpp/build -name "ggml*.dylib" -exec cp {} "$dst/" ; 2>/dev/null || true
+          find qwentts.cpp/build -name "libggml*.so" -exec cp {} "$dst/" ; 2>/dev/null || true
+          ls -la "$dst"
+
+      - name: Checkout llama.cpp-omni for voxcpm2-cli (macOS)
+        if: matrix.os == 'macos-latest'
+        uses: actions/checkout@v4
+        with:
+          repository: tc-mb/llama.cpp-omni
+          submodules: recursive
+          ref: ${{ env.VOXCPM2_COMMIT }}
+          path: llama.cpp-omni
+
+      - name: Build voxcpm2-cli sidecar (macOS, Metal)
+        if: matrix.os == 'macos-latest'
+        run: |
+          cmake -S llama.cpp-omni -B llama.cpp-omni/build -DCMAKE_BUILD_TYPE=Release -DGGML_METAL=ON -DGGML_NATIVE=OFF
+          cmake --build llama.cpp-omni/build --target voxcpm2-cli -j 4
+          dst="src-tauri/sidecars/bundled/voxcpm2"
+          mkdir -p "$dst"
+          exe=$(find llama.cpp-omni/build -name "voxcpm2-cli" -type f -perm +111 | head -1)
+          [ -n "$exe" ] || { echo "voxcpm2-cli not found"; exit 1; }
+          cp "$exe" "$dst/"
+          find llama.cpp-omni/build -name "ggml*.dylib" -exec cp {} "$dst/" ; 2>/dev/null || true
+          find llama.cpp-omni/build -name "libggml*.so" -exec cp {} "$dst/" ; 2>/dev/null || true
+          ls -la "$dst"
+
       - name: Download official llama.cpp binaries (macOS arm64)
         if: matrix.os == 'macos-latest'
         run: |
@@ -238,6 +196,52 @@ jobs:
       # way. AppImage/deb bundling of the .so dependencies needs a local
       # install verification pass.
       # ------------------------------------------------------------------
+
+      - name: Checkout qwentts.cpp (unmodified upstream sources, Linux)
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/checkout@v4
+        with:
+          repository: ServeurpersoCom/qwentts.cpp
+          submodules: recursive
+          ref: master
+          path: qwentts.cpp
+
+      - name: Build qwen-tts sidecar (Linux, CPU)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cmake -S qwentts.cpp -B qwentts.cpp/build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF
+          cmake --build qwentts.cpp/build --target qwen-tts -j 4
+          dst="src-tauri/sidecars/bundled/qwentts"
+          mkdir -p "$dst"
+          exe=$(find qwentts.cpp/build -name "qwen-tts" -type f | head -1)
+          [ -n "$exe" ] || { echo "qwen-tts not found"; exit 1; }
+          cp "$exe" "$dst/"
+          chmod +x "$dst/qwen-tts" || true
+          find qwentts.cpp/build -name "libggml*.so*" -exec cp {} "$dst/" ; 2>/dev/null || true
+          ls -la "$dst"
+
+      - name: Checkout llama.cpp-omni for voxcpm2-cli (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/checkout@v4
+        with:
+          repository: tc-mb/llama.cpp-omni
+          submodules: recursive
+          ref: ${{ env.VOXCPM2_COMMIT }}
+          path: llama.cpp-omni
+
+      - name: Build voxcpm2-cli sidecar (Linux, CPU)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cmake -S llama.cpp-omni -B llama.cpp-omni/build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF
+          cmake --build llama.cpp-omni/build --target voxcpm2-cli -j 4
+          dst="src-tauri/sidecars/bundled/voxcpm2"
+          mkdir -p "$dst"
+          exe=$(find llama.cpp-omni/build -name "voxcpm2-cli" -type f | head -1)
+          [ -n "$exe" ] || { echo "voxcpm2-cli not found"; exit 1; }
+          cp "$exe" "$dst/"
+          chmod +x "$dst/voxcpm2-cli" || true
+          find llama.cpp-omni/build -name "libggml*.so*" -exec cp {} "$dst/" ; 2>/dev/null || true
+          ls -la "$dst"
 
       - name: Download official llama.cpp binaries (Linux x64)
         if: matrix.os == 'ubuntu-latest'
