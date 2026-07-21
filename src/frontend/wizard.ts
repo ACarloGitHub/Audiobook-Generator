@@ -134,8 +134,8 @@ function renderComponents(): string {
         <td></td>
       </tr>
       <tr>
-        <td><strong>cuDNN 9 (optional)</strong></td>
-        <td>${deps?.cudnn_installed ? "✅ found" : "⚠ not found (CPU fallback)"}</td>
+        <td><strong>cuDNN 9</strong></td>
+        <td>not required</td>
         <td></td>
       </tr>
     </table>
