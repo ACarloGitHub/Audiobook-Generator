@@ -122,8 +122,8 @@ jobs:
           cd qwentts.cpp
           if not exist build mkdir build
           cd build
-          cmake .. -A x64 -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90" -DGGML_BACKEND_DL=ON -DGGML_NATIVE=OFF
-          cmake --build . --config Release --target qwen-tts -j %NUMBER_OF_PROCESSORS%
+          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90" -DGGML_BACKEND_DL=ON -DGGML_NATIVE=OFF
+          cmake --build . --target qwen-tts -j %NUMBER_OF_PROCESSORS%
 
       - name: Stage qwen-tts sidecar into the bundle
         if: matrix.os == 'windows-latest'
@@ -131,11 +131,13 @@ jobs:
         run: |
           $dst = "src-tauri\sidecars\bundled\qwentts"
           New-Item -ItemType Directory -Path $dst -Force | Out-Null
-          Copy-Item qwentts.cpp\build\Release\qwen-tts.exe $dst\
+          $exe = Get-ChildItem -Path qwentts.cpp\build -Recurse -Filter "qwen-tts.exe" | Select-Object -First 1
+          if (-not $exe) { throw "qwen-tts.exe not found in build output" }
+          Copy-Item $exe.FullName $dst\
           # Bundle every ggml backend DLL (cpu + cuda) produced by the build.
           # With GGML_BACKEND_DL=ON, if ggml-cuda.dll fails to load (no NVIDIA
           # GPU) the runtime falls back to ggml-cpu.dll automatically.
-          Get-ChildItem -Path qwentts.cpp\build\Release -Filter "ggml*.dll" -ErrorAction SilentlyContinue |
+          Get-ChildItem -Path $exe.DirectoryName -Filter "ggml*.dll" -ErrorAction SilentlyContinue |
             ForEach-Object { Copy-Item $_.FullName $dst\ }
           # Bundle the CUDA runtime DLLs the CUDA backend links against
           # (cudart64_*.dll, cublas64_*.dll, cublasLt64_*.dll) so end users
@@ -163,8 +165,8 @@ jobs:
           cd llama.cpp-omni
           if not exist build mkdir build
           cd build
-          cmake .. -A x64 -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90" -DGGML_BACKEND_DL=ON -DGGML_NATIVE=OFF
-          cmake --build . --config Release --target voxcpm2-cli -j %NUMBER_OF_PROCESSORS%
+          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="75;80;86;89;90" -DGGML_BACKEND_DL=ON -DGGML_NATIVE=OFF
+          cmake --build . --target voxcpm2-cli -j %NUMBER_OF_PROCESSORS%
 
       - name: Stage voxcpm2-cli sidecar into the bundle
         if: matrix.os == 'windows-latest'
@@ -173,7 +175,7 @@ jobs:
           $dst = "src-tauri\sidecars\bundled\voxcpm2"
           New-Item -ItemType Directory -Path $dst -Force | Out-Null
           $exe = Get-ChildItem -Path llama.cpp-omni\build -Recurse -Filter "voxcpm2-cli.exe" |
-            Where-Object { $_.FullName -match "Release" } | Select-Object -First 1
+            Select-Object -First 1
           if (-not $exe) { throw "voxcpm2-cli.exe not found in build output" }
           Copy-Item $exe.FullName $dst\
           Get-ChildItem -Path $exe.DirectoryName -Filter "ggml*.dll" -ErrorAction SilentlyContinue |
