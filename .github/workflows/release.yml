@@ -90,35 +90,18 @@ jobs:
           # See wiki/concepts/release-procedure.md for the rebuild procedure.
           $dst = "src-tauri\sidecars\bundled"
           New-Item -ItemType Directory -Path $dst -Force | Out-Null
-          foreach ($n in @("qwentts", "voxcpm2")) {
-            Invoke-WebRequest -Uri "https://github.com/ACarloGitHub/Audiobook-Generator/releases/download/engine-bins/$n-windows-x64.zip" -OutFile "$n.zip"
+          foreach ($n in @("qwentts", "voxcpm2", "llama.cpp", "cuda-shared")) {
+            $url = "https://github.com/ACarloGitHub/Audiobook-Generator/releases/download/engine-bins/$n-windows-x64.zip"
+            # curl.exe streams to disk: reliable for large files (unlike Invoke-WebRequest)
+            curl.exe -fL --retry 3 --retry-delay 10 -o "$n.zip" $url
+            if ($LASTEXITCODE -ne 0) { throw "download failed for $n.zip (curl exit $LASTEXITCODE)" }
             Expand-Archive "$n.zip" -DestinationPath $dst -Force
           }
           if (-not (Test-Path "$dst\qwentts\qwen-tts.exe")) { throw "qwen-tts.exe missing" }
           if (-not (Test-Path "$dst\voxcpm2\voxcpm2-cli.exe")) { throw "voxcpm2-cli.exe missing" }
+          if (-not (Test-Path "$dst\llama.cpp\llama-server.exe")) { throw "llama-server.exe missing" }
+          if (-not (Test-Path "$dst\cuda-shared\cublasLt64_12.dll")) { throw "cuda-shared DLLs missing" }
           Get-ChildItem $dst -Recurse -File | Format-Table FullName, Length
-
-      - name: Download official llama.cpp binaries (Windows CUDA)
-        if: matrix.os == 'windows-latest'
-        shell: powershell
-        run: |
-          $ver = "${{ env.LLAMACPP_VERSION }}"
-          $base = "https://github.com/ggml-org/llama.cpp/releases/download/$ver"
-          Invoke-WebRequest -Uri "$base/llama-$ver-bin-win-cuda-12.4-x64.zip" -OutFile "llama-cuda.zip"
-          Invoke-WebRequest -Uri "$base/cudart-llama-bin-win-cuda-12.4-x64.zip" -OutFile "cudart.zip"
-          Expand-Archive llama-cuda.zip -DestinationPath llama-cuda -Force
-          Expand-Archive cudart.zip -DestinationPath cudart -Force
-          $dst = "src-tauri\sidecars\bundled\llama.cpp"
-          New-Item -ItemType Directory -Path $dst -Force | Out-Null
-          $srv = Get-ChildItem -Path llama-cuda -Recurse -Filter "llama-server.exe" | Select-Object -First 1
-          if (-not $srv) { throw "llama-server.exe not found in archive" }
-          Copy-Item $srv.FullName $dst\
-          Copy-Item llama-cuda\*.dll $dst\ -ErrorAction SilentlyContinue
-          Get-ChildItem -Path llama-cuda -Recurse -Filter "*.dll" | Copy-Item -Destination $dst -ErrorAction SilentlyContinue
-          Copy-Item cudart\*.dll $dst\
-          Set-Content -Path "$dst\variant.txt" -Value "cuda" -NoNewline
-          if (-not (Test-Path "$dst\llama-server.exe")) { throw "llama-server.exe missing from bundle staging" }
-          Get-ChildItem $dst | Format-Table Name, Length
 
       # ------------------------------------------------------------------
       # Sidecar assembly — macOS (Apple Silicon): llama-server + ffmpeg.

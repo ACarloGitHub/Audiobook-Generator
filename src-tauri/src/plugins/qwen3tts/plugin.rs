@@ -73,9 +73,9 @@ impl QwenPlugin {
             .to_path_buf())
     }
 
-    /// Get the llama.cpp sidecar directory (extra CUDA runtime DLLs).
-    fn llamacpp_resources_dir() -> Option<PathBuf> {
-        crate::sidecars::sidecar_dir("llama.cpp")
+    /// Get the shared CUDA runtime DLL directory (single copy used by all engines).
+    fn cuda_shared_dir() -> Option<PathBuf> {
+        crate::sidecars::sidecar_dir("cuda-shared")
     }
 
     fn parse_variant_mode(&self) -> &'static str {
@@ -98,11 +98,11 @@ impl QwenPlugin {
         let binary = Self::find_qwen_tts_binary()?;
         let mut cmd = std::process::Command::new(&binary);
 
-        // Ensure the qwen-tts binary dir and llama.cpp resources dir
+        // Ensure the qwen-tts binary dir and the shared CUDA runtime dir
         // are on PATH so all DLLs (ggml-*.dll, CUDA runtime) are found.
         let mut path_dirs = vec![Self::binary_dir()?];
-        if let Some(llama_dir) = Self::llamacpp_resources_dir() {
-            path_dirs.push(llama_dir);
+        if let Some(cuda_dir) = Self::cuda_shared_dir() {
+            path_dirs.push(cuda_dir);
         }
         let current_path = std::env::var("PATH").unwrap_or_default();
         let extra_paths: Vec<String> = path_dirs

@@ -91,9 +91,9 @@ impl VoxCpm2Plugin {
             .to_path_buf())
     }
 
-    /// Get the llama.cpp sidecar directory (extra CUDA runtime DLLs).
-    fn llamacpp_resources_dir() -> Option<PathBuf> {
-        crate::sidecars::sidecar_dir("llama.cpp")
+    /// Get the shared CUDA runtime DLL directory (single copy used by all engines).
+    fn cuda_shared_dir() -> Option<PathBuf> {
+        crate::sidecars::sidecar_dir("cuda-shared")
     }
 
     /// Re-encode a UTF-8 string so it survives the Windows ANSI (CP1252)
@@ -160,10 +160,14 @@ impl VoxCpm2Plugin {
         let binary = Self::find_voxcpm2_binary()?;
         let mut cmd = std::process::Command::new(&binary);
 
-        // Ensure the voxcpm2-cli binary dir and llama.cpp resources dir
-        // are on PATH so all DLLs (ggml-*.dll, CUDA runtime) are found.
+        // PATH needs: the voxcpm2-cli binary dir (ggml-*.dll), the shared
+        // CUDA runtime dir (cudart/cublas), and the llama.cpp dir
+        // (llama.dll and llama-common.dll, used by voxcpm2-cli).
         let mut path_dirs = vec![Self::binary_dir()?];
-        if let Some(llama_dir) = Self::llamacpp_resources_dir() {
+        if let Some(cuda_dir) = Self::cuda_shared_dir() {
+            path_dirs.push(cuda_dir);
+        }
+        if let Some(llama_dir) = crate::sidecars::sidecar_dir("llama.cpp") {
             path_dirs.push(llama_dir);
         }
         let current_path = std::env::var("PATH").unwrap_or_default();

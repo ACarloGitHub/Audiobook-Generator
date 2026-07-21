@@ -152,6 +152,10 @@ impl OuteTTSPlugin {
         info!("[outetts] starting llama-server: {} -m {} (ctx-size={})", binary.display(), model.display(), ctx_size);
 
         let mut path_env = Self::binary_dir()?.to_string_lossy().to_string();
+        // Shared CUDA runtime DLLs (single copy used by all engines).
+        if let Some(cuda_dir) = crate::sidecars::sidecar_dir("cuda-shared") {
+            path_env = format!("{};{}", path_env, cuda_dir.to_string_lossy());
+        }
         if let Ok(existing) = std::env::var("PATH") {
             path_env = format!("{};{}", path_env, existing);
         }
