@@ -99,7 +99,7 @@ jobs:
         # windows-2022 runners do NOT ship the CUDA toolkit; install only
         # the packages needed to compile (nvcc + cudart + cublas) to keep the
         # install time low.
-        uses: Jimver/cuda-toolkit@v0.2.23
+        uses: Jimver/cuda-toolkit@v0.2.35
         with:
           cuda: "12.4.0"
           method: network
