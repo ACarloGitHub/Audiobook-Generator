@@ -21,13 +21,17 @@ permissions:
 #   qwentts/    qwen-tts + ggml libs. Windows: prebuilt zip downloaded from
 #               the stable "engine-bins" release (compiled ONCE locally from
 #               unmodified ServeurpersoCom/qwentts.cpp sources — no CUDA in
-#               CI). macOS: compiled in CI with Metal. Linux: CPU.
+#               CI). macOS: compiled in CI with Metal. Linux: compiled in CI
+#               with Vulkan (GPU-only app: no CPU builds are shipped).
 #   voxcpm2/    voxcpm2-cli + ggml libs. Same scheme; upstream
 #               tc-mb/llama.cpp-omni, commit b9d15b8. Windows build uses
 #               CUDA archs 86;89;90 (older GPUs fall back to the bundled
 #               ggml-cpu backend).
-#   llama.cpp/  llama-server[.exe] + ggml libs (official llama.cpp release
-#               binaries, pinned to b9756) + cudart DLLs on Windows
+#   llama.cpp/  llama-server[.exe] + ggml libs. Windows: custom multi-GPU
+#               build from the "engine-bins" release. macOS: official
+#               macos-arm64 binaries (Metal). Linux: official
+#               ubuntu-vulkan-x64 binaries (Vulkan, GPU-only).
+#               All pinned to b9756.
 #
 # ffmpeg is NOT bundled (Carlo, 2026-07-20): it is downloaded per-user at
 # runtime, as before the bundling change.
@@ -73,7 +77,10 @@ jobs:
             libssl-dev \
             libxml2-utils \
             file \
-            wget
+            wget \
+            libvulkan-dev \
+            glslc \
+            glslang-tools
 
       # ------------------------------------------------------------------
       # Sidecar assembly — Windows (full: qwen-tts, voxcpm2-cli,
@@ -104,9 +111,8 @@ jobs:
           Get-ChildItem $dst -Recurse -File | Format-Table FullName, Length
 
       # ------------------------------------------------------------------
-      # Sidecar assembly — macOS (Apple Silicon): llama-server + ffmpeg.
-      # TODO: build qwen-tts (Metal) and voxcpm2-cli (Metal) from the
-      # unmodified upstream sources and stage them the same way.
+      # Sidecar assembly — macOS (Apple Silicon): qwen-tts, voxcpm2-cli
+      # (compiled in CI with Metal) + official llama-server (Metal).
       # ------------------------------------------------------------------
 
       - name: Checkout qwentts.cpp (unmodified upstream sources, macOS)
@@ -172,11 +178,10 @@ jobs:
           test -x "$dst/llama-server"
 
       # ------------------------------------------------------------------
-      # Sidecar assembly — Linux: llama-server + ffmpeg.
-      # TODO: build qwen-tts (Vulkan or CUDA) and voxcpm2-cli (Vulkan or
-      # CUDA) from the unmodified upstream sources and stage them the same
-      # way. AppImage/deb bundling of the .so dependencies needs a local
-      # install verification pass.
+      # Sidecar assembly — Linux: qwen-tts and voxcpm2-cli compiled in CI
+      # with Vulkan (covers NVIDIA, AMD and Intel iGPUs with one binary),
+      # plus the official ubuntu-vulkan llama-server. GPU-only app: no CPU
+      # binaries are shipped.
       # ------------------------------------------------------------------
 
       - name: Checkout qwentts.cpp (unmodified upstream sources, Linux)
@@ -188,10 +193,10 @@ jobs:
           ref: master
           path: qwentts.cpp
 
-      - name: Build qwen-tts sidecar (Linux, CPU)
+      - name: Build qwen-tts sidecar (Linux, Vulkan)
         if: matrix.os == 'ubuntu-latest'
         run: |
-          cmake -S qwentts.cpp -B qwentts.cpp/build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF
+          cmake -S qwentts.cpp -B qwentts.cpp/build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_VULKAN=ON
           cmake --build qwentts.cpp/build --target qwen-tts -j 4
           dst="src-tauri/sidecars/bundled/qwentts"
           mkdir -p "$dst"
@@ -210,10 +215,10 @@ jobs:
           git checkout ${{ env.VOXCPM2_COMMIT }}
           git submodule update --init --recursive
 
-      - name: Build voxcpm2-cli sidecar (Linux, CPU)
+      - name: Build voxcpm2-cli sidecar (Linux, Vulkan)
         if: matrix.os == 'ubuntu-latest'
         run: |
-          cmake -S llama.cpp-omni -B llama.cpp-omni/build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF
+          cmake -S llama.cpp-omni -B llama.cpp-omni/build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DGGML_VULKAN=ON
           cmake --build llama.cpp-omni/build --target voxcpm2-cli -j 4
           dst="src-tauri/sidecars/bundled/voxcpm2"
           mkdir -p "$dst"
@@ -224,11 +229,11 @@ jobs:
           find llama.cpp-omni/build -name "libggml*.so*" -exec cp {} "$dst/" \; 2>/dev/null || true
           ls -la "$dst"
 
-      - name: Download official llama.cpp binaries (Linux x64)
+      - name: Download official llama.cpp binaries (Linux x64, Vulkan)
         if: matrix.os == 'ubuntu-latest'
         run: |
           ver="${{ env.LLAMACPP_VERSION }}"
-          curl -sL -o llama.tar.gz "https://github.com/ggml-org/llama.cpp/releases/download/${ver}/llama-${ver}-bin-ubuntu-x64.tar.gz"
+          curl -sL -o llama.tar.gz "https://github.com/ggml-org/llama.cpp/releases/download/${ver}/llama-${ver}-bin-ubuntu-vulkan-x64.tar.gz"
           mkdir -p llama && tar -xzf llama.tar.gz -C llama
           dst="src-tauri/sidecars/bundled/llama.cpp"
           mkdir -p "$dst"
@@ -236,7 +241,7 @@ jobs:
           [ -n "$srv" ] || { echo "llama-server not found in archive"; find llama -maxdepth 3 | head -30; exit 1; }
           cp "$srv" "$dst/"
           find llama -name "*.so*" -exec cp {} "$dst/" \; 2>/dev/null || true
-          printf "cpu" > "$dst/variant.txt"
+          printf "vulkan" > "$dst/variant.txt"
           chmod +x "$dst/llama-server"
           ls -la "$dst"
           test -x "$dst/llama-server"
@@ -380,7 +385,8 @@ jobs:
                 sections.push(fmt(breaking));
               }
               sections.push("## First run");
-              sections.push('- Everything needed to run is bundled inside the installer (`llama-server`, `qwen-tts`, `voxcpm2-cli`, `ffmpeg`). No runtime downloads of engine binaries — the app works offline out of the box. Only the TTS model weights (GGUF) are downloaded on demand from the Models panel.');
+              sections.push('- Everything needed to run is bundled inside the installer (`llama-server`, `qwen-tts`, `voxcpm2-cli`). No runtime downloads of engine binaries — the app works offline out of the box. Only the TTS model weights (GGUF) are downloaded on demand from the Models panel.');
+              sections.push('- **GPU required**: a dedicated GPU (NVIDIA, AMD) or an integrated GPU with unified memory (Apple Silicon, AMD AI Max+ and similar). CPU-only machines are not supported.');
               sections.push("## Notes");
               sections.push('- **No Python required**: everything runs through native sidecar binaries shipped in the installer.');
               sections.push('- **No code signing**: Audiobook Generator is open source (MIT) but not yet code-signed. You may see a SmartScreen warning on Windows or a Gatekeeper block on macOS.');

@@ -5,6 +5,7 @@ mod chunker;
 mod commands;
 pub mod config;
 mod epub;
+mod gpu_guard;
 mod merger;
 mod model_manager;
 pub mod plugin_manager;

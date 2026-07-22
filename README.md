@@ -19,7 +19,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platform">
-  <img src="https://img.shields.io/badge/Hardware-GPU%20%7C%20CPU-green?logo=nvidia&logoColor=green" alt="GPU/CPU">
+  <img src="https://img.shields.io/badge/Hardware-GPU%20Required-green?logo=nvidia&logoColor=green" alt="GPU required">
   <img src="https://img.shields.io/badge/Privacy-Local%20Only-red?logo=privacy-essentials" alt="Privacy">
   <img src="https://img.shields.io/badge/Python-Not%20Required-success" alt="No Python required">
 </p>
@@ -59,7 +59,7 @@ Each model has its own license. You are responsible for reviewing and accepting 
 - **Multilingual** — The TTS models auto-detect the language of the input text. No language picker in the UI
 - **Recovery Mode** — Resume interrupted generations from where they left off, with full manual control: retry failed chunks, split long chunks and retry, or merge chunks by hand
 - **User-chosen quantization** — Pick the model quantization that fits your hardware (e.g. VoxCPM2 Q8_0 vs F16)
-- **GPU Acceleration** — CUDA, Vulkan, Metal, DirectML supported through llama-server
+- **GPU-only by design** — Requires a GPU (dedicated, or integrated with unified memory such as Apple Silicon or AMD AI Max). CUDA, Vulkan and Metal supported through llama.cpp. CPU-only machines are not supported: the app refuses to fall back to CPU rather than offering a slow, frustrating experience
 - **One installer** — No Python, no virtual environment, no `pip install`. The installer is self-contained
 
 **Retired engines:** Kokoro (English-only pronunciation), NeuTTS Air (English-only, watermarked), Chatterbox (upstream GGUF incomplete — would require self-maintained converted model files), VibeVoice (removed by Microsoft), XTTSv2 (no GGUF export), Voxtral TTS (CC BY-NC license — non-commercial only), MOSS-TTS (requires Python at runtime).
@@ -67,6 +67,8 @@ Each model has its own license. You are responsible for reviewing and accepting 
 ---
 
 ## Quick Start
+
+**Hardware requirement:** a GPU is required — a dedicated card (NVIDIA, AMD) or an integrated GPU with unified memory (Apple Silicon, AMD AI Max+ and similar). CPU-only machines are not supported.
 
 Download the latest installer from the [GitHub Releases](https://github.com/ACarloGitHub/Audiobook-Generator/releases) page:
 
@@ -79,13 +81,12 @@ Then:
 ```bash
 # 1. Install and launch
 
-# 2. Follow the first-run wizard: it downloads the native runtime
-#    components (llama-server, ffmpeg) for your platform
+# 2. Pick a TTS engine, download a model from the Models panel
 
-# 3. Pick a TTS engine, download a model, drop in an EPUB, click Generate
+# 3. Drop in an EPUB, click Generate
 ```
 
-The installer bundles only the Tauri shell. The native runtime components (`llama-server`, `voxcpm2-cli`, `ffmpeg`) are downloaded on first run by the built-in wizard, and models are downloaded on demand from inside the app. There is no Python, no `pip install`, no virtual environment to manage.
+The installer bundles the app and all native engine binaries (`llama-server`, `qwen-tts`, `voxcpm2-cli`), so everything works offline out of the box. Only the TTS model weights (GGUF) are downloaded on demand from inside the app. There is no Python, no `pip install`, no virtual environment to manage.
 
 ---
 

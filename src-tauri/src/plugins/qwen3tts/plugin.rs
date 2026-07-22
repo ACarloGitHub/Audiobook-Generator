@@ -96,21 +96,19 @@ impl QwenPlugin {
         output_path: &Path,
     ) -> Result<std::process::Command> {
         let binary = Self::find_qwen_tts_binary()?;
+        // GPU-only rule: refuse to run when no GPU backend is visible
+        // (never fall back to CPU silently).
+        crate::gpu_guard::ensure_gpu()?;
         let mut cmd = std::process::Command::new(&binary);
 
         // Ensure the qwen-tts binary dir and the shared CUDA runtime dir
-        // are on PATH so all DLLs (ggml-*.dll, CUDA runtime) are found.
+        // are visible to the loader (PATH on Windows, LD_LIBRARY_PATH on
+        // Linux, DYLD_LIBRARY_PATH on macOS).
         let mut path_dirs = vec![Self::binary_dir()?];
         if let Some(cuda_dir) = Self::cuda_shared_dir() {
             path_dirs.push(cuda_dir);
         }
-        let current_path = std::env::var("PATH").unwrap_or_default();
-        let extra_paths: Vec<String> = path_dirs
-            .iter()
-            .map(|p| p.to_string_lossy().to_string())
-            .collect();
-        let new_path = format!("{};{}", extra_paths.join(";"), current_path);
-        cmd.env("PATH", &new_path);
+        crate::sidecars::apply_loader_path(&mut cmd, &path_dirs);
 
         cmd.arg("--model").arg(talker);
         cmd.arg("--codec").arg(tokenizer);

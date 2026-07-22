@@ -147,27 +147,32 @@ impl OuteTTSPlugin {
         }
 
         let binary = Self::find_llama_server()?;
+        // GPU-only rule: refuse to run when no GPU backend is visible
+        // (never fall back to CPU silently).
+        crate::gpu_guard::ensure_gpu()?;
         let model = self.backbone_gguf()?;
 
         info!("[outetts] starting llama-server: {} -m {} (ctx-size={})", binary.display(), model.display(), ctx_size);
 
-        let mut path_env = Self::binary_dir()?.to_string_lossy().to_string();
-        // Shared CUDA runtime DLLs (single copy used by all engines).
+        let mut path_dirs = vec![Self::binary_dir()?];
+        // Shared CUDA runtime DLLs (single copy used by all engines,
+        // present only in the Windows bundle).
         if let Some(cuda_dir) = crate::sidecars::sidecar_dir("cuda-shared") {
-            path_env = format!("{};{}", path_env, cuda_dir.to_string_lossy());
-        }
-        if let Ok(existing) = std::env::var("PATH") {
-            path_env = format!("{};{}", path_env, existing);
+            path_dirs.push(cuda_dir);
         }
 
-        let child = Command::new(&binary)
+        let mut command = Command::new(&binary);
+        // Loader path: PATH on Windows, LD_LIBRARY_PATH on Linux,
+        // DYLD_LIBRARY_PATH on macOS.
+        crate::sidecars::apply_loader_path(&mut command, &path_dirs);
+
+        let child = command
             .arg("-m").arg(&model)
             .arg("--port").arg(OUTE_SERVER_PORT.to_string())
             .arg("--host").arg("127.0.0.1")
             .arg("-ngl").arg("999")
             .arg("--ctx-size").arg(ctx_size.to_string())
             .arg("--no-webui")
-            .env("PATH", &path_env)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()

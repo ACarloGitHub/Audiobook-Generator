@@ -158,11 +158,15 @@ impl VoxCpm2Plugin {
         output_path: &Path,
     ) -> Result<std::process::Command> {
         let binary = Self::find_voxcpm2_binary()?;
+        // GPU-only rule: refuse to run when no GPU backend is visible
+        // (never fall back to CPU silently).
+        crate::gpu_guard::ensure_gpu()?;
         let mut cmd = std::process::Command::new(&binary);
 
-        // PATH needs: the voxcpm2-cli binary dir (ggml-*.dll), the shared
-        // CUDA runtime dir (cudart/cublas), and the llama.cpp dir
-        // (llama.dll and llama-common.dll, used by voxcpm2-cli).
+        // Loader path needs: the voxcpm2-cli binary dir (ggml libs), the
+        // shared CUDA runtime dir (Windows only), and the llama.cpp dir
+        // (llama libraries used by voxcpm2-cli). Windows uses PATH; Linux
+        // LD_LIBRARY_PATH; macOS DYLD_LIBRARY_PATH.
         let mut path_dirs = vec![Self::binary_dir()?];
         if let Some(cuda_dir) = Self::cuda_shared_dir() {
             path_dirs.push(cuda_dir);
@@ -170,13 +174,7 @@ impl VoxCpm2Plugin {
         if let Some(llama_dir) = crate::sidecars::sidecar_dir("llama.cpp") {
             path_dirs.push(llama_dir);
         }
-        let current_path = std::env::var("PATH").unwrap_or_default();
-        let extra_paths: Vec<String> = path_dirs
-            .iter()
-            .map(|p| p.to_string_lossy().to_string())
-            .collect();
-        let new_path = format!("{};{}", extra_paths.join(";"), current_path);
-        cmd.env("PATH", &new_path);
+        crate::sidecars::apply_loader_path(&mut cmd, &path_dirs);
 
         // Voice design / style control: prefix "(description)" to the text.
         let voice_description = request

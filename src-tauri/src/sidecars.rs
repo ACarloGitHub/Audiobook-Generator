@@ -70,3 +70,40 @@ pub fn sidecar_binary(name: &str, exe_name: &str) -> Option<PathBuf> {
         .map(|d| d.join(exe_name))
         .find(|p| p.exists())
 }
+
+/// Point the dynamic library loader of a child process at `extra_dirs`.
+///
+/// The bundled engine binaries need their sibling shared libraries
+/// (ggml backends, CUDA runtime, llama.dll) to be discoverable:
+/// - Windows: the loader searches `PATH` (separator `;`).
+/// - Linux: the loader searches `LD_LIBRARY_PATH` (separator `:`).
+/// - macOS: the loader searches `DYLD_LIBRARY_PATH` (separator `:`).
+///
+/// Prepending the sidecar dirs to the inherited variable keeps every
+/// other lookup working unchanged.
+pub fn apply_loader_path(cmd: &mut std::process::Command, extra_dirs: &[PathBuf]) {
+    #[cfg(windows)]
+    const VAR: &str = "PATH";
+    #[cfg(target_os = "macos")]
+    const VAR: &str = "DYLD_LIBRARY_PATH";
+    #[cfg(all(unix, not(target_os = "macos")))]
+    const VAR: &str = "LD_LIBRARY_PATH";
+
+    #[cfg(windows)]
+    const SEP: char = ';';
+    #[cfg(not(windows))]
+    const SEP: char = ':';
+
+    let mut value: String = extra_dirs
+        .iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect::<Vec<_>>()
+        .join(&SEP.to_string());
+    if let Ok(existing) = std::env::var(VAR) {
+        if !existing.is_empty() {
+            value.push(SEP);
+            value.push_str(&existing);
+        }
+    }
+    cmd.env(VAR, value);
+}
