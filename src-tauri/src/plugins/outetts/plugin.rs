@@ -162,6 +162,7 @@ impl OuteTTSPlugin {
         }
 
         let mut command = Command::new(&binary);
+        crate::utils::hide_console_window(&mut command);
         // Loader path: PATH on Windows, LD_LIBRARY_PATH on Linux,
         // DYLD_LIBRARY_PATH on macOS.
         crate::sidecars::apply_loader_path(&mut command, &path_dirs);

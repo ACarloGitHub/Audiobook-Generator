@@ -162,6 +162,7 @@ impl VoxCpm2Plugin {
         // (never fall back to CPU silently).
         crate::gpu_guard::ensure_gpu()?;
         let mut cmd = std::process::Command::new(&binary);
+        crate::utils::hide_console_window(&mut cmd);
 
         // Loader path needs: the voxcpm2-cli binary dir (ggml libs), the
         // shared CUDA runtime dir (Windows only), and the llama.cpp dir

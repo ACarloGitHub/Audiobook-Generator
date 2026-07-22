@@ -76,6 +76,7 @@ fn raw_devices_output() -> Result<String> {
     }
 
     let mut cmd = Command::new(&binary);
+    crate::utils::hide_console_window(&mut cmd);
     cmd.arg("--list-devices");
     crate::sidecars::apply_loader_path(&mut cmd, &dirs);
     let output = cmd

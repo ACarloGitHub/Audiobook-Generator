@@ -38,6 +38,22 @@ pub fn replace_guillemets_text(text: &str) -> String {
     text.replace('\u{00AB}', "\"").replace('\u{00BB}', "\"")
 }
 
+/// On Windows, prevent a console window from flashing open when spawning a
+/// console-subsystem helper (llama-server, ffmpeg, ...) from the GUI app.
+/// No-op on other platforms. Same flag as wizard::silent_command.
+pub fn hide_console_window(cmd: &mut std::process::Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = cmd;
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct DialogueLine {
     pub actor: String,

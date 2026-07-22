@@ -100,6 +100,7 @@ impl QwenPlugin {
         // (never fall back to CPU silently).
         crate::gpu_guard::ensure_gpu()?;
         let mut cmd = std::process::Command::new(&binary);
+        crate::utils::hide_console_window(&mut cmd);
 
         // Ensure the qwen-tts binary dir and the shared CUDA runtime dir
         // are visible to the loader (PATH on Windows, LD_LIBRARY_PATH on

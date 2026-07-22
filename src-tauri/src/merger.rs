@@ -39,7 +39,9 @@ pub fn merge_wavs_to_mp3(wavs: &[PathBuf], out_mp3: &Path, ffmpeg: &Path) -> Res
 
     debug!("ffmpeg concat list at {}", list_path.display());
 
-    let status = Command::new(ffmpeg)
+    let mut cmd = Command::new(ffmpeg);
+    crate::utils::hide_console_window(&mut cmd);
+    let status = cmd
         .arg("-y")
         .arg("-f")
         .arg("concat")
@@ -90,7 +92,9 @@ pub fn merge_wavs_to_wav(wavs: &[PathBuf], out_wav: &Path, ffmpeg: &Path) -> Res
     std::fs::write(&list_path, list_body)
         .with_context(|| format!("failed to write concat list {}", list_path.display()))?;
 
-    let status = Command::new(ffmpeg)
+    let mut cmd = Command::new(ffmpeg);
+    crate::utils::hide_console_window(&mut cmd);
+    let status = cmd
         .arg("-y")
         .arg("-f")
         .arg("concat")
