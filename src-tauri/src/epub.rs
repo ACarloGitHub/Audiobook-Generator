@@ -15,22 +15,11 @@ pub struct Chapter {
     pub text: String,
 }
 
-/// Book-level container returned by `parse_epub`. The title defaults
+/// Book-level container. The title defaults
 /// to the EPUB file stem if the OPF metadata has no `dc:title`.
 pub struct Book {
     pub title: String,
     pub chapters: Vec<Chapter>,
-}
-
-/// Convenience wrapper for the UI. Equivalent to
-/// `extract_chapters` plus a title.
-pub fn parse_epub(path: &Path) -> Result<Book> {
-    let chapters = extract_chapters(path)?;
-    let title = path
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "Untitled".to_string());
-    Ok(Book { title, chapters })
 }
 
 /// Open an EPUB, read its Table of Contents (toc.ncx or EPUB 3 NAV), and
@@ -196,14 +185,12 @@ fn parse_opf_manifest(opf: &str) -> Result<HashMap<String, ManifestItem>> {
                 if e.name().as_ref() == b"item" {
                     let mut id = None;
                     let mut href = None;
-                    let mut media_type = None;
                     let mut properties = None;
                     for attr in e.attributes() {
                         let attr = attr?;
                         match attr.key.as_ref() {
                             b"id" => id = Some(attr.unescape_value()?.into_owned()),
                             b"href" => href = Some(attr.unescape_value()?.into_owned()),
-                            b"media-type" => media_type = Some(attr.unescape_value()?.into_owned()),
                             b"properties" => properties = Some(attr.unescape_value()?.into_owned()),
                             _ => {}
                         }
@@ -213,7 +200,6 @@ fn parse_opf_manifest(opf: &str) -> Result<HashMap<String, ManifestItem>> {
                             id,
                             ManifestItem {
                                 href,
-                                media_type: media_type.unwrap_or_default(),
                                 properties: properties.unwrap_or_default(),
                             },
                         );
@@ -231,7 +217,6 @@ fn parse_opf_manifest(opf: &str) -> Result<HashMap<String, ManifestItem>> {
 
 struct ManifestItem {
     href: String,
-    media_type: String,
     properties: String,
 }
 

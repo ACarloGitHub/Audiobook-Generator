@@ -685,6 +685,9 @@ pub async fn start_generation(
     app: AppHandle,
 ) -> Result<usize, String> {
     let output_dir = resolve_output_path(&output_dir);
+    // `speed` is part of the command contract (the frontend always sends
+    // it) but no engine consumes it yet.
+    let _ = speed;
     let _ = app.emit("generation-progress", format!("Loading engine {}...", engine_id));
 
     let plugin = get_or_create_plugin(&engine_id, &pm)

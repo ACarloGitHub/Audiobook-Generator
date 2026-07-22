@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
-use crate::sidecars;
 use crate::wizard::download_to_file_async;
 
 /// Default quantization for downloads.
@@ -249,17 +248,6 @@ fn oute_dac_dir(app: &AppHandle) -> PathBuf {
     app_models_root(app)
         .join("outetts")
         .join("dac")
-}
-
-/// Check if the qwen-tts binary is available (bundled in the installer, or
-/// in the legacy per-user resources dir from older dev installs).
-pub fn is_runtime_installed(_app: &AppHandle) -> bool {
-    let exe_name = if cfg!(windows) {
-        "qwen-tts.exe"
-    } else {
-        "qwen-tts"
-    };
-    sidecars::sidecar_binary("qwentts", exe_name).is_some()
 }
 
 pub fn list_models(app: &AppHandle) -> Vec<ModelListEntry> {
