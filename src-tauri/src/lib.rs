@@ -5,7 +5,7 @@ mod chunker;
 mod commands;
 pub mod config;
 mod epub;
-mod gpu_guard;
+pub mod gpu_guard;
 mod merger;
 mod model_manager;
 pub mod plugin_manager;
@@ -87,6 +87,7 @@ pub fn run() {
             commands::get_models_path,
             commands::get_storage_dir,
             commands::set_storage_dir,
+            commands::get_gpu_memory,
             wizard::detect_hardware,
             wizard::check_dependencies,
             wizard::get_wizard_steps,

@@ -1,4 +1,4 @@
-//! GPU-only guard.
+//! GPU-only guard and GPU memory probing.
 //!
 //! Audiobook Generator requires a GPU — dedicated or integrated with
 //! unified memory (Apple Silicon, AMD AI Max+, etc.). CPU-only machines
@@ -7,11 +7,21 @@
 //! (Carlo's rule, 2026-07-22).
 //!
 //! All engines run on the same ggml backends as the bundled llama-server,
-//! so probing `llama-server --list-devices` once covers every engine.
+//! so probing `llama-server --list-devices` covers every engine and every
+//! GPU vendor (CUDA, Vulkan, Metal) with one command.
 
 use anyhow::{bail, Result};
 use std::process::Command;
 use std::sync::OnceLock;
+
+/// One GPU device as reported by ggml (`--list-devices`).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GpuDevice {
+    pub backend: String,
+    pub name: String,
+    pub total_mib: u64,
+    pub free_mib: u64,
+}
 
 /// Verify that at least one GPU backend device is visible.
 ///
@@ -26,7 +36,29 @@ pub fn ensure_gpu() -> Result<()> {
     }
 }
 
+/// Live GPU device list with memory figures (not cached: values change
+/// while an engine is loaded). Used by the VRAM bar in the UI.
+pub fn gpu_devices() -> Result<Vec<GpuDevice>> {
+    Ok(parse_devices(&raw_devices_output()?))
+}
+
 fn probe() -> Result<()> {
+    let text = raw_devices_output()?;
+    // ggml prints one line per GPU device, prefixed by the backend name
+    // (e.g. "CUDA0: NVIDIA GeForce RTX 3090", "Vulkan0: ...", "Metal: ...").
+    const GPU_BACKENDS: [&str; 6] = ["CUDA", "Vulkan", "Metal", "ROCm", "HIP", "SYCL"];
+    if GPU_BACKENDS.iter().any(|b| text.contains(b)) {
+        Ok(())
+    } else {
+        bail!(
+            "No compatible GPU detected. Audiobook Generator requires a GPU \
+             (dedicated, or integrated with unified memory such as Apple Silicon \
+             or AMD AI Max). CPU-only machines are not supported."
+        )
+    }
+}
+
+fn raw_devices_output() -> Result<String> {
     let exe_name = if cfg!(windows) {
         "llama-server.exe"
     } else {
@@ -50,22 +82,60 @@ fn probe() -> Result<()> {
         .output()
         .map_err(|e| anyhow::anyhow!("failed to run llama-server --list-devices: {}", e))?;
 
-    let text = format!(
+    Ok(format!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
-    );
+    ))
+}
 
-    // ggml prints one line per GPU device, prefixed by the backend name
-    // (e.g. "CUDA0: NVIDIA GeForce RTX 3090", "Vulkan0: ...", "Metal: ...").
+/// Parse lines like:
+/// `  CUDA0: NVIDIA GeForce RTX 3090 (24575 MiB, 23335 MiB free)`
+/// Output format varies slightly between ggml backends; lines that do
+/// not match are skipped.
+fn parse_devices(text: &str) -> Vec<GpuDevice> {
     const GPU_BACKENDS: [&str; 6] = ["CUDA", "Vulkan", "Metal", "ROCm", "HIP", "SYCL"];
-    if GPU_BACKENDS.iter().any(|b| text.contains(b)) {
-        Ok(())
-    } else {
-        bail!(
-            "No compatible GPU detected. Audiobook Generator requires a GPU \
-             (dedicated, or integrated with unified memory such as Apple Silicon \
-             or AMD AI Max). CPU-only machines are not supported."
-        )
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        let Some(backend) = GPU_BACKENDS.iter().find(|b| line.starts_with(*b)) else {
+            continue;
+        };
+        let Some(colon) = line.find(':') else { continue };
+        let rest = line[colon + 1..].trim();
+        // Name is everything before the parenthesised memory figures.
+        let (name, mem) = match rest.find('(') {
+            Some(p) => (rest[..p].trim().to_string(), &rest[p..]),
+            None => (rest.to_string(), ""),
+        };
+        let nums: Vec<u64> = mem
+            .split(|c: char| !c.is_ascii_digit())
+            .filter(|s| !s.is_empty())
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        let (total_mib, free_mib) = (nums.first().copied().unwrap_or(0), nums.get(1).copied().unwrap_or(0));
+        out.push(GpuDevice {
+            backend: backend.to_string(),
+            name,
+            total_mib,
+            free_mib,
+        });
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_cuda_line() {
+        let text = "Available devices:\n  CUDA0: NVIDIA GeForce RTX 3090 (24575 MiB, 23335 MiB free)\n";
+        let devs = parse_devices(text);
+        assert_eq!(devs.len(), 1);
+        assert_eq!(devs[0].backend, "CUDA");
+        assert_eq!(devs[0].name, "NVIDIA GeForce RTX 3090");
+        assert_eq!(devs[0].total_mib, 24575);
+        assert_eq!(devs[0].free_mib, 23335);
     }
 }

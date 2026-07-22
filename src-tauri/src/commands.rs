@@ -977,6 +977,14 @@ pub fn get_models_path() -> String {
         .to_string()
 }
 
+/// Live GPU devices with total/free memory, for the VRAM bar in the UI.
+/// Probed via `llama-server --list-devices` (same ggml backends for all
+/// engines, every GPU vendor). Empty vec when probing fails.
+#[tauri::command]
+pub fn get_gpu_memory() -> Vec<crate::gpu_guard::GpuDevice> {
+    crate::gpu_guard::gpu_devices().unwrap_or_default()
+}
+
 /// Current storage folder for heavy payloads (models, engines) and the
 /// default one, so the frontend can show both.
 #[tauri::command]

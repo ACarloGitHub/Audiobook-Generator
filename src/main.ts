@@ -11,6 +11,7 @@ import { renderGenerate, attachGenerateListeners } from "./frontend/generate";
 import { renderRecovery, attachRecoveryListeners } from "./frontend/recovery";
 import { renderDemo, attachDemoListeners } from "./frontend/demo";
 import { renderModels, attachModelsListeners, loadModels } from "./frontend/models";
+import { startVramMonitor } from "./frontend/engine-strip";
 import { initWizard, renderWizard, attachWizardListeners } from "./frontend/wizard";
 
 let engineStatus: EngineStatus = {
@@ -139,6 +140,8 @@ async function refreshAll(): Promise<void> {
 
 async function main(): Promise<void> {
   console.log("[main] starting Audiobook Generator UI");
+
+  startVramMonitor();
 
   const needsWizard = await initWizard();
   if (needsWizard) {
