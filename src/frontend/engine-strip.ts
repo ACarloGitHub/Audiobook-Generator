@@ -59,12 +59,17 @@ export function startVramMonitor(): void {
 
 const vramSlot = `<span id="vram-bar-slot" style="display:inline-flex;align-items:center;gap:6px;"></span>`;
 
+/// Persistent VRAM slot for the app layout (sidebar footer). Rendered once
+/// per layout, always visible regardless of the active panel.
+export function renderVramSlot(): string {
+  return vramSlot;
+}
+
 export function renderEngineStrip(status: EngineStatus): string {
   if (!status.active_engine) {
     return `
       <div class="engine-strip engine-strip-idle">
         <span class="engine-strip-msg">No engine loaded. Open <strong>Models</strong> to load one.</span>
-        ${vramSlot}
       </div>`;
   }
   return `
@@ -75,7 +80,6 @@ export function renderEngineStrip(status: EngineStatus): string {
         · ~${bytesToGB(status.vram_bytes)} GB VRAM
         ${status.loaded_at ? `· loaded ${escapeHtml(status.loaded_at)}` : ""}
       </span>
-      ${vramSlot}
       <button class="btn-secondary" id="release-engine-btn">⏏ Release engine</button>
     </div>`;
 }

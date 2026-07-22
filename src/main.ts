@@ -11,7 +11,7 @@ import { renderGenerate, attachGenerateListeners } from "./frontend/generate";
 import { renderRecovery, attachRecoveryListeners } from "./frontend/recovery";
 import { renderDemo, attachDemoListeners } from "./frontend/demo";
 import { renderModels, attachModelsListeners, loadModels } from "./frontend/models";
-import { startVramMonitor } from "./frontend/engine-strip";
+import { startVramMonitor, renderVramSlot } from "./frontend/engine-strip";
 import { renderAgents, attachAgentsListeners } from "./frontend/agents";
 import { initWizard, renderWizard, attachWizardListeners } from "./frontend/wizard";
 
@@ -49,6 +49,40 @@ function renderMainPanel(): string {
 
 let showWizard = false;
 
+// Snapshot every input/textarea/select value before a full re-render and
+// restore it afterwards: switching panels must not wipe what the user
+// typed (e.g. the Demo & Test text).
+function snapshotFormValues(): Map<string, string | boolean> {
+  const values = new Map<string, string | boolean>();
+  document
+    .querySelectorAll("#app input[id], #app textarea[id], #app select[id]")
+    .forEach((el) => {
+      if (el instanceof HTMLInputElement) {
+        if (el.type === "file") return;
+        values.set(el.id, el.type === "checkbox" || el.type === "radio" ? el.checked : el.value);
+      } else if (el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
+        values.set(el.id, el.value);
+      }
+    });
+  return values;
+}
+
+function restoreFormValues(values: Map<string, string | boolean>): void {
+  for (const [id, value] of values) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    if (el instanceof HTMLInputElement) {
+      if (el.type === "checkbox" || el.type === "radio") {
+        el.checked = Boolean(value);
+      } else if (el.type !== "file") {
+        el.value = String(value);
+      }
+    } else if (el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
+      el.value = String(value);
+    }
+  }
+}
+
 function render(): void {
   if (showWizard) {
     const app = $("#app");
@@ -61,6 +95,7 @@ function render(): void {
     return;
   }
 
+  const savedValues = snapshotFormValues();
   const app = $("#app");
   app.innerHTML = `
     <aside class="sidebar">
@@ -70,6 +105,7 @@ function render(): void {
       </div>
       <nav><ul class="nav-list">${renderSidebar(state.currentPanel)}</ul></nav>
       <div class="sidebar-footer">
+        <p class="sidebar-footer-vram">${renderVramSlot()}</p>
         <p class="sidebar-footer-label">${escapeHtml(hardwareLine(engineStatus))}</p>
         <details class="sidebar-about">
           <summary>About</summary>
@@ -80,6 +116,7 @@ function render(): void {
     <main class="main">${renderMainPanel()}</main>
   `;
   attachAllListeners();
+  restoreFormValues(savedValues);
 }
 
 function attachAllListeners(): void {
