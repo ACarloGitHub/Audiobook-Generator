@@ -80,6 +80,7 @@ export const PANEL_TITLES: Record<PanelId, string> = {
   recovery: "Error Recovery",
   demo: "Demo & Test",
   models: "Models",
+  agents: "AI Agents",
 };
 
 export const NAV_ITEMS: { id: PanelId; label: string }[] = [
@@ -89,4 +90,5 @@ export const NAV_ITEMS: { id: PanelId; label: string }[] = [
   { id: "recovery", label: "Error Recovery" },
   { id: "demo", label: "Demo & Test" },
   { id: "models", label: "Models" },
+  { id: "agents", label: "AI Agents" },
 ];

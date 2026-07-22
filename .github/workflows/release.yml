@@ -285,6 +285,16 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Build abg-cli companion binary
+        shell: bash
+        run: |
+          # The MCP/CLI companion ships in the installer resources.
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            cargo build --release --bin abg-cli --manifest-path src-tauri/Cargo.toml --target aarch64-apple-darwin
+          else
+            cargo build --release --bin abg-cli --manifest-path src-tauri/Cargo.toml
+          fi
+
       - name: Build application
         uses: tauri-apps/tauri-action@v0
         env:

@@ -12,6 +12,7 @@ import { renderRecovery, attachRecoveryListeners } from "./frontend/recovery";
 import { renderDemo, attachDemoListeners } from "./frontend/demo";
 import { renderModels, attachModelsListeners, loadModels } from "./frontend/models";
 import { startVramMonitor } from "./frontend/engine-strip";
+import { renderAgents, attachAgentsListeners } from "./frontend/agents";
 import { initWizard, renderWizard, attachWizardListeners } from "./frontend/wizard";
 
 let engineStatus: EngineStatus = {
@@ -34,6 +35,7 @@ function panelBody(): string {
     case "recovery": return renderRecovery();
     case "demo": return renderDemo(engineStatus);
     case "models": return renderModels(engineStatus, modelList);
+    case "agents": return renderAgents();
   }
 }
 
@@ -102,6 +104,7 @@ function attachAllListeners(): void {
     await refreshAll();
     render();
   });
+  attachAgentsListeners();
 }
 
 async function refreshEngineStatus(): Promise<EngineStatus> {

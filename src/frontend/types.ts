@@ -3,6 +3,7 @@ export type PanelId =
   | "epub"
   | "generate"
   | "recovery"
+  | "agents"
   | "demo"
   | "models";
 
