@@ -1,6 +1,6 @@
 [package]
 name = "audiobook-generator"
-version = "0.1.5"
+version = "0.1.6"
 description = "Audiobook Generator desktop app (Tauri + llama.cpp + native Rust)"
 authors = ["Carlo"]
 license = "MIT"
