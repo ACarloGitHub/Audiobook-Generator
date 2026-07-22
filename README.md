@@ -53,12 +53,15 @@ Each model has its own license. You are responsible for reviewing and accepting 
 
 ## Features
 
-- **EPUB Processing** — Reads and parses EPUB files automatically
+- **Multiple input formats** — EPUB, TXT, Markdown, DOCX and JSON books are all converted to chapters automatically
 - **Multiple TTS Engines** — Choose the best model for your needs, switch any time
 - **Voice Cloning** — Clone your own voice for a personal narrated audiobook (3-10 seconds of reference audio, depending on the engine)
 - **Multilingual** — The TTS models auto-detect the language of the input text. No language picker in the UI
 - **Recovery Mode** — Resume interrupted generations from where they left off, with full manual control: retry failed chunks, split long chunks and retry, or merge chunks by hand
 - **User-chosen quantization** — Pick the model quantization that fits your hardware (e.g. VoxCPM2 Q8_0 vs F16)
+- **Custom storage folder** — Move models and engines (several GB) to any drive you like, from the Models panel
+- **Live VRAM bar** — Per-GPU free/total memory in the status bar, works the same on NVIDIA, AMD, Intel and Apple Silicon
+- **CLI and MCP server** — `abg-cli` synthesizes speech and reports status from the command line, and doubles as an MCP server so AI agents (e.g. in LM Studio) can drive Audiobook Generator directly
 - **GPU-only by design** — Requires a GPU (dedicated, or integrated with unified memory such as Apple Silicon or AMD AI Max). CUDA, Vulkan and Metal supported through llama.cpp. CPU-only machines are not supported: the app refuses to fall back to CPU rather than offering a slow, frustrating experience
 - **One installer** — No Python, no virtual environment, no `pip install`. The installer is self-contained
 
