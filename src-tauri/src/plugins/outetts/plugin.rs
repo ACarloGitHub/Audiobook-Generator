@@ -577,6 +577,7 @@ pub fn synthesize_book(
     max_words: usize,
     max_chars: usize,
     ffmpeg: &Path,
+    only: Option<&[String]>,
     extra: &std::collections::HashMap<String, String>,
     mut progress: Option<Box<dyn FnMut(&str) + Send>>,
 ) -> Result<usize> {
@@ -584,6 +585,17 @@ pub fn synthesize_book(
         cb("Reading EPUB...");
     }
     let chapters = crate::input::extract_chapters_from(epub_path)?;
+    // Keep only the chapters selected in the Generate panel (None/empty = all).
+    let chapters: Vec<_> = match only {
+        Some(titles) if !titles.is_empty() => chapters
+            .into_iter()
+            .filter(|c| titles.iter().any(|t| t == &c.title))
+            .collect(),
+        _ => chapters,
+    };
+    if chapters.is_empty() {
+        anyhow::bail!("no chapters left after applying the chapter selection");
+    }
     let total_chapters = chapters.len();
     std::fs::create_dir_all(output_dir)?;
     let recovery_path = output_dir.join("failed_chunks.json");

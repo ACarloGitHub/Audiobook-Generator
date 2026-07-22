@@ -364,7 +364,7 @@ export function attachConfigurationListeners(render: () => void): void {
         const el = document.getElementById(id) as HTMLInputElement | null;
         if (el) {
             el.addEventListener("input", () => {
-                (el as any)._qwenParam = el.value;
+                state.engineParamOverrides[id] = el.value;
             });
         }
     }

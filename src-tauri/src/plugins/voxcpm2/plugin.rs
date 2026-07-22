@@ -254,6 +254,7 @@ pub fn synthesize_book(
     max_chars: usize,
     ffmpeg: &Path,
     reference_audio: Option<&str>,
+    only: Option<&[String]>,
     extra: &std::collections::HashMap<String, String>,
     mut progress: Option<Box<dyn FnMut(&str) + Send>>,
 ) -> Result<usize> {
@@ -261,7 +262,39 @@ pub fn synthesize_book(
         cb("Reading EPUB...");
     }
     let chapters = crate::input::extract_chapters_from(epub_path)?;
+    // Keep only the chapters selected in the Generate panel (None/empty = all).
+    let chapters: Vec<_> = match only {
+        Some(titles) if !titles.is_empty() => chapters
+            .into_iter()
+            .filter(|c| titles.iter().any(|t| t == &c.title))
+            .collect(),
+        _ => chapters,
+    };
+    if chapters.is_empty() {
+        anyhow::bail!("no chapters left after applying the chapter selection");
+    }
     let total_chapters = chapters.len();
+
+    // One seed per book: when the user did not set one, pick it here so
+    // every chunk of the same book shares it — otherwise each chunk gets
+    // a random seed and the voice changes from chunk to chunk.
+    let mut extra_owned = extra.clone();
+    let seed_missing = extra_owned
+        .get("seed")
+        .map(|s| s.trim().is_empty() || s.trim() == "-1")
+        .unwrap_or(true);
+    if seed_missing {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(42);
+        let seed = (nanos ^ (nanos >> 32)) % 9_999_999 + 1;
+        extra_owned.insert("seed".to_string(), seed.to_string());
+        if let Some(cb) = progress.as_deref_mut() {
+            cb(&format!("Auto seed for this book: {seed}"));
+        }
+    }
+    let extra = &extra_owned;
     std::fs::create_dir_all(output_dir)?;
     let recovery_path = output_dir.join("failed_chunks.json");
 
@@ -403,11 +436,10 @@ fn synthesize_chunk(plugin: &VoxCpm2Plugin, request: &SynthesizeRequest) -> Resu
         .with_context(|| "failed to spawn voxcpm2-cli")?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!(
             "voxcpm2-cli exited with status {}: {}",
             output.status,
-            stderr.lines().last().unwrap_or(&stderr.to_string())
+            crate::utils::process_error_detail(&output.stdout, &output.stderr)
         );
     }
 

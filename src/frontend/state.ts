@@ -22,6 +22,9 @@ export interface AppState {
   demoOutputPath: string | null;
   testOutputPath: string | null;
   generateOutputPath: string | null;
+  // Last generated audio, so the players survive panel switches.
+  demoAudioPath: string | null;
+  testAudioPath: string | null;
   engineVoices: import("./types").VoiceDescriptor[];
   engineSupportedLanguages: string[];
   engineVoiceCloning: boolean;
@@ -30,6 +33,10 @@ export interface AppState {
   voxMode: "design" | "clone" | "ultimate";
   voxVoiceDescription: string;
   engineGeneration: Record<string, GenerationParam>;
+  // User-edited advanced parameter values, keyed by input id
+  // (e.g. "vox-temperature"). Persisted across panel switches; without
+  // this, edits were stored on the DOM element and lost on re-render.
+  engineParamOverrides: Record<string, string>;
 }
 
 export const state: AppState = {
@@ -54,6 +61,8 @@ export const state: AppState = {
   demoOutputPath: null,
   testOutputPath: null,
   generateOutputPath: null,
+  demoAudioPath: null,
+  testAudioPath: null,
   engineVoices: [],
   engineSupportedLanguages: [],
   engineVoiceCloning: false,
@@ -62,6 +71,7 @@ export const state: AppState = {
   voxMode: "design",
   voxVoiceDescription: "",
   engineGeneration: {},
+  engineParamOverrides: {},
 };
 
 export const SEPARATOR_OPTIONS = [

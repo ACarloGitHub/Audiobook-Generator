@@ -680,6 +680,7 @@ pub async fn start_generation(
     max_chars: Option<usize>,
     extra: Option<std::collections::HashMap<String, String>>,
     reference_audio: Option<String>,
+    only_chapters: Option<Vec<String>>,
     pm: State<'_, Arc<PluginManager>>,
     app: AppHandle,
 ) -> Result<usize, String> {
@@ -715,6 +716,7 @@ pub async fn start_generation(
         let lang_task = language.clone();
         let ref_audio_task = reference_audio.clone();
         let extra_task = extra_map.clone();
+        let only_task = only_chapters.clone();
 
         let result = tokio::task::spawn_blocking(move || {
             let q = crate::plugins::qwen3tts::QwenPlugin::new(qwen_paths, &variant_name);
@@ -726,6 +728,7 @@ pub async fn start_generation(
                 voice_task.as_deref(),
                 lang_task.as_deref(),
                 ref_audio_task.as_deref(),
+                only_task.as_deref(),
                 &extra_task,
                 Some(cb),
             )
@@ -744,6 +747,7 @@ pub async fn start_generation(
         let vox_paths = vox_plugin.paths.clone();
         let ref_audio_task = reference_audio.clone();
         let extra_task = extra_map.clone();
+        let only_task = only_chapters.clone();
 
         let result = tokio::task::spawn_blocking(move || {
             let p = crate::plugins::voxcpm2::VoxCpm2Plugin::new(vox_paths, &variant_name);
@@ -753,6 +757,7 @@ pub async fn start_generation(
             crate::plugins::voxcpm2::synthesize_book(
                 &p, &epub, &out, max_words, max_chars_resolved, &ffmpeg,
                 ref_audio_task.as_deref(),
+                only_task.as_deref(),
                 &extra_task,
                 Some(cb),
             )
@@ -770,6 +775,7 @@ pub async fn start_generation(
         let models_dir = oute_plugin.models_dir.clone();
         let variant_name = oute_plugin.variant_name.clone();
         let extra_task = extra_map.clone();
+        let only_task = only_chapters.clone();
 
         let result = tokio::task::spawn_blocking(move || {
             let p = crate::plugins::outetts::OuteTTSPlugin::new(models_dir, &variant_name);
@@ -778,6 +784,7 @@ pub async fn start_generation(
             });
             crate::plugins::outetts::synthesize_book(
                 &p, &epub, &out, max_words, max_chars_resolved, &ffmpeg,
+                only_task.as_deref(),
                 &extra_task,
                 Some(cb),
             )

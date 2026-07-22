@@ -39,7 +39,52 @@ pub fn ensure_gpu() -> Result<()> {
 /// Live GPU device list with memory figures (not cached: values change
 /// while an engine is loaded). Used by the VRAM bar in the UI.
 pub fn gpu_devices() -> Result<Vec<GpuDevice>> {
+    // On Windows the ggml probe reports the static WDDM budget, which never
+    // moves (Carlo's bug, 2026-07-22). Performance counters give the real,
+    // Task-Manager-like usage; fall back to the probe if they fail.
+    #[cfg(windows)]
+    if let Some(devs) = windows_counters_devices() {
+        return Ok(devs);
+    }
     Ok(parse_devices(&raw_devices_output()?))
+}
+
+/// Real GPU memory usage on Windows from performance counters
+/// ("\GPU Process Memory(*)\Dedicated Usage", summed across processes).
+/// The device name/total come from the ggml probe, read once.
+#[cfg(windows)]
+fn windows_counters_devices() -> Option<Vec<GpuDevice>> {
+    static BASE: OnceLock<Option<GpuDevice>> = OnceLock::new();
+    let base = BASE
+        .get_or_init(|| {
+            parse_devices(&raw_devices_output().ok()?)
+                .into_iter()
+                .find(|d| d.total_mib > 0)
+        })
+        .clone()?;
+
+    let mut cmd = std::process::Command::new("powershell");
+    crate::utils::hide_console_window(&mut cmd);
+    let output = cmd
+        .args([
+            "-NoProfile",
+            "-Command",
+            "((Get-Counter '\\GPU Process Memory(*)\\Dedicated Usage' -ErrorAction SilentlyContinue).CounterSamples | Measure-Object -Property CookedValue -Sum).Sum",
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let used_bytes: f64 = text.trim().parse().ok()?;
+    let used_mib = (used_bytes / 1_048_576.0) as u64;
+    Some(vec![GpuDevice {
+        backend: base.backend,
+        name: base.name,
+        total_mib: base.total_mib,
+        free_mib: base.total_mib.saturating_sub(used_mib),
+    }])
 }
 
 fn probe() -> Result<()> {

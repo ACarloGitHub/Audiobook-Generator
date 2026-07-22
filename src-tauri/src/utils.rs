@@ -53,6 +53,28 @@ pub fn hide_console_window(cmd: &mut std::process::Command) {
     }
 }
 
+/// Build a useful error detail from a failed helper process: the last
+/// non-empty stderr lines, falling back to stdout when stderr says
+/// nothing. Taking only the very last line used to drop the actual
+/// reason (e.g. "[CLI] ERROR: <reason>" spans two lines).
+pub fn process_error_detail(stdout: &[u8], stderr: &[u8]) -> String {
+    let pick = |bytes: &[u8]| -> String {
+        let text = String::from_utf8_lossy(bytes);
+        let lines: Vec<&str> = text
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .collect();
+        let start = lines.len().saturating_sub(5);
+        lines[start..].join(" | ")
+    };
+    let err = pick(stderr);
+    if !err.is_empty() {
+        return err;
+    }
+    pick(stdout)
+}
+
 #[derive(Debug, Clone)]
 pub struct DialogueLine {
     pub actor: String,

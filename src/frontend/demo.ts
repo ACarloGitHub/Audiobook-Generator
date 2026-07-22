@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { escapeHtml, ts, appendLog, setLog } from "./helpers";
+import { escapeHtml, ts, appendLog, setLog, collectParamExtras } from "./helpers";
 import { state } from "./state";
 import type { EngineStatus } from "./types";
 
@@ -18,8 +18,8 @@ export function renderDemo(_status: EngineStatus): string {
       </div>
       <button class="btn-secondary btn-large" id="demo-generate-btn" disabled>Generate Demo</button>
       <label class="field-label">Status</label>
-      <textarea class="text-input" id="demo-status" rows="1" readonly placeholder="Status"></textarea>
-      <audio id="demo-audio" controls style="display:none; width:100%; margin-top:8px;"></audio>
+      <textarea class="text-input" id="demo-status" rows="3" readonly placeholder="Status"></textarea>
+      <audio id="demo-audio" controls style="${state.demoAudioPath ? "width:100%; margin-top:8px;" : "display:none; width:100%; margin-top:8px;"}"${state.demoAudioPath ? ` src="${convertFileSrc(state.demoAudioPath)}"` : ""}></audio>
     </div>
 
     <div class="card">
@@ -32,7 +32,7 @@ export function renderDemo(_status: EngineStatus): string {
       <button class="btn-secondary btn-large" id="test-file-btn">Run Test File Generation</button>
       <label class="field-label">Test Status</label>
       <textarea class="text-input log-area" id="test-status" rows="8" readonly placeholder="No test run yet."></textarea>
-      <audio id="test-audio" controls style="display:none; width:100%; margin-top:8px;"></audio>
+      <audio id="test-audio" controls style="${state.testAudioPath ? "width:100%; margin-top:8px;" : "display:none; width:100%; margin-top:8px;"}"${state.testAudioPath ? ` src="${convertFileSrc(state.testAudioPath)}"` : ""}></audio>
     </div>
   `;
 }
@@ -68,90 +68,9 @@ export function attachDemoListeners(): void {
       const out = `${outDir}/demo_${Date.now()}.wav`;
       setLog("demo-status", `[INFO] Synthesizing with ${state.selectedEngineId}...\n`);
 
-      // Build extra params for Qwen3-TTS — read from state (persists across panels)
-      // with DOM element as fallback for live edits
-      const extra: Record<string, string> = {};
-      const instructEl = document.getElementById("qwen-instruct-input") as HTMLInputElement | HTMLTextAreaElement | null;
-      const instructVal = instructEl?.value?.trim() || state.qwenInstruct?.trim();
-      if (instructVal) {
-        extra["instruct"] = instructVal;
-      }
-      const refTextEl = document.getElementById("qwen-ref-text") as HTMLTextAreaElement | null;
-      const refTextVal = refTextEl?.value?.trim() || state.referenceTranscript?.trim();
-      if (refTextVal) {
-        extra["ref_text"] = refTextVal;
-      }
-      // Advanced params (DOM fallback to state defaults via configuration values)
-      const tempEl = document.getElementById("qwen-temp") as HTMLInputElement | null;
-      if (tempEl && tempEl.value) extra["temp"] = tempEl.value;
-      const topKEl = document.getElementById("qwen-top-k") as HTMLInputElement | null;
-      if (topKEl && topKEl.value) extra["top_k"] = topKEl.value;
-      const topPEl = document.getElementById("qwen-top-p") as HTMLInputElement | null;
-      if (topPEl && topPEl.value) extra["top_p"] = topPEl.value;
-      const repPenEl = document.getElementById("qwen-rep-pen") as HTMLInputElement | null;
-      if (repPenEl && repPenEl.value) extra["rep_pen"] = repPenEl.value;
-      const maxNewEl = document.getElementById("qwen-max-new") as HTMLInputElement | null;
-      if (maxNewEl && maxNewEl.value) extra["max_new"] = maxNewEl.value;
-      const seedEl = document.getElementById("qwen-seed") as HTMLInputElement | null;
-      if (seedEl && seedEl.value) extra["seed"] = seedEl.value;
-
-      // OuteTTS params (different param names than Qwen)
-      const outeTemp = document.getElementById("oute-temperature") as HTMLInputElement | null;
-      if (outeTemp && outeTemp.value) extra["temperature"] = outeTemp.value;
-      const outeTopK = document.getElementById("oute-top-k") as HTMLInputElement | null;
-      if (outeTopK && outeTopK.value) extra["top_k"] = outeTopK.value;
-      const outeTopP = document.getElementById("oute-top-p") as HTMLInputElement | null;
-      if (outeTopP && outeTopP.value) extra["top_p"] = outeTopP.value;
-      const outeMinP = document.getElementById("oute-min-p") as HTMLInputElement | null;
-      if (outeMinP && outeMinP.value) extra["min_p"] = outeMinP.value;
-      const outeRepPen = document.getElementById("oute-rep-pen") as HTMLInputElement | null;
-      if (outeRepPen && outeRepPen.value) extra["repetition_penalty"] = outeRepPen.value;
-      const outeMaxTokens = document.getElementById("oute-max-tokens") as HTMLInputElement | null;
-      if (outeMaxTokens && outeMaxTokens.value) extra["max_tokens"] = outeMaxTokens.value;
-
-      if (state.selectedEngineId.startsWith("OuteTTS")) {
-        if (state.outeSpeakerJsonPath) {
-          extra["speaker_json"] = state.outeSpeakerJsonPath;
-        } else if (state.selectedVoiceId) {
-          extra["speaker"] = state.selectedVoiceId;
-        }
-        const ctxSize = state.engineGeneration["ctx_size"]?.default;
-        if (ctxSize !== undefined && ctxSize !== null) {
-          extra["ctx_size"] = String(ctxSize);
-        }
-      }
-
-      if (state.selectedEngineId.startsWith("VoxCPM2")) {
-        extra["voice_mode"] = state.voxMode;
-        if (state.voxMode === "design") {
-          const voxDescEl = document.getElementById("vox-voice-description") as HTMLTextAreaElement | null;
-          const voxDescVal = voxDescEl?.value?.trim() || state.voxVoiceDescription?.trim();
-          if (voxDescVal) {
-            extra["voice_description"] = voxDescVal;
-          }
-        }
-        if (state.voxMode === "ultimate") {
-          const voxRefEl = document.getElementById("vox-ref-text") as HTMLTextAreaElement | null;
-          const voxRefVal = voxRefEl?.value?.trim() || state.referenceTranscript?.trim();
-          if (voxRefVal) {
-            extra["prompt_text"] = voxRefVal;
-          }
-        }
-        // Advanced params: live DOM value, else registry default from state
-        for (const key of ["cfg", "timesteps", "temperature", "steps"]) {
-          const el = document.getElementById(`vox-${key}`) as HTMLInputElement | null;
-          if (el && el.value) {
-            extra[key] = el.value;
-          } else {
-            const def = state.engineGeneration[key]?.default;
-            if (def !== undefined && def !== null) {
-              extra[key] = String(def);
-            }
-          }
-        }
-        const voxSeedEl = document.getElementById("vox-seed") as HTMLInputElement | null;
-        if (voxSeedEl && voxSeedEl.value) extra["seed"] = voxSeedEl.value;
-      }
+      // Engine params: same shared resolver used by Test and Generate, so
+      // the values the user set in Configuration are the ones sent.
+      const extra = collectParamExtras();
 
       try {
         const resultPath = await invoke<string>("synthesize_demo", {
@@ -171,6 +90,7 @@ export function attachDemoListeners(): void {
         });
         setLog("demo-status", `[INFO] Saved to ${resultPath}\n`);
         if (audio) {
+          state.demoAudioPath = resultPath;
           audio.src = convertFileSrc(resultPath);
           audio.style.display = "block";
           audio.load();
@@ -204,7 +124,7 @@ export function attachDemoListeners(): void {
   if (testBtn && testStatus) {
     testBtn.addEventListener("click", async () => {
       testBtn.disabled = true;
-      if (testAudio) { testAudio.style.display = "none"; testAudio.src = ""; }
+      if (testAudio) { testAudio.style.display = "none"; testAudio.src = ""; state.testAudioPath = null; }
       setLog("test-status", `[${ts()}] [INFO] Resolving test EPUB...\n`);
 
       try {
@@ -230,72 +150,8 @@ export function attachDemoListeners(): void {
         appendLog("test-status", `[${ts()}] [INFO] Engine: ${state.selectedEngineId}\n`);
         appendLog("test-status", `[${ts()}] [INFO] --- starting test generation ---\n`);
 
-        const extra: Record<string, string> = {};
-        const instructEl = document.getElementById("qwen-instruct-input") as HTMLInputElement | HTMLTextAreaElement | null;
-        const instructVal = instructEl?.value?.trim() || state.qwenInstruct?.trim();
-        if (instructVal) {
-          extra["instruct"] = instructVal;
-        }
-        const refTextEl = document.getElementById("qwen-ref-text") as HTMLTextAreaElement | null;
-        const refTextVal = refTextEl?.value?.trim() || state.referenceTranscript?.trim();
-        if (refTextVal) {
-          extra["ref_text"] = refTextVal;
-        }
-        const tempEl = document.getElementById("qwen-temp") as HTMLInputElement | null;
-        if (tempEl && tempEl.value) extra["temp"] = tempEl.value;
-        const topKEl = document.getElementById("qwen-top-k") as HTMLInputElement | null;
-        if (topKEl && topKEl.value) extra["top_k"] = topKEl.value;
-        const topPEl = document.getElementById("qwen-top-p") as HTMLInputElement | null;
-        if (topPEl && topPEl.value) extra["top_p"] = topPEl.value;
-        const repPenEl = document.getElementById("qwen-rep-pen") as HTMLInputElement | null;
-        if (repPenEl && repPenEl.value) extra["rep_pen"] = repPenEl.value;
-        const maxNewEl = document.getElementById("qwen-max-new") as HTMLInputElement | null;
-        if (maxNewEl && maxNewEl.value) extra["max_new"] = maxNewEl.value;
-        const seedEl = document.getElementById("qwen-seed") as HTMLInputElement | null;
-        if (seedEl && seedEl.value) extra["seed"] = seedEl.value;
-
-        const outeTemp = document.getElementById("oute-temperature") as HTMLInputElement | null;
-        if (outeTemp && outeTemp.value) extra["temperature"] = outeTemp.value;
-        const outeTopK = document.getElementById("oute-top-k") as HTMLInputElement | null;
-        if (outeTopK && outeTopK.value) extra["top_k"] = outeTopK.value;
-        const outeTopP = document.getElementById("oute-top-p") as HTMLInputElement | null;
-        if (outeTopP && outeTopP.value) extra["top_p"] = outeTopP.value;
-        const outeMinP = document.getElementById("oute-min-p") as HTMLInputElement | null;
-        if (outeMinP && outeMinP.value) extra["min_p"] = outeMinP.value;
-        const outeRepPen = document.getElementById("oute-rep-pen") as HTMLInputElement | null;
-        if (outeRepPen && outeRepPen.value) extra["repetition_penalty"] = outeRepPen.value;
-        const outeMaxTokens = document.getElementById("oute-max-tokens") as HTMLInputElement | null;
-        if (outeMaxTokens && outeMaxTokens.value) extra["max_tokens"] = outeMaxTokens.value;
-
-        if (state.selectedEngineId.startsWith("OuteTTS")) {
-          if (state.outeSpeakerJsonPath) {
-            extra["speaker_json"] = state.outeSpeakerJsonPath;
-          } else if (state.selectedVoiceId) {
-            extra["speaker"] = state.selectedVoiceId;
-          }
-        }
-
-        if (state.selectedEngineId.startsWith("VoxCPM2")) {
-          extra["voice_mode"] = state.voxMode;
-          if (state.voxMode === "design") {
-            const voxDescVal = state.voxVoiceDescription?.trim();
-            if (voxDescVal) {
-              extra["voice_description"] = voxDescVal;
-            }
-          }
-          if (state.voxMode === "ultimate") {
-            const voxRefVal = state.referenceTranscript?.trim();
-            if (voxRefVal) {
-              extra["prompt_text"] = voxRefVal;
-            }
-          }
-          for (const key of ["cfg", "timesteps", "temperature", "steps"]) {
-            const def = state.engineGeneration[key]?.default;
-            if (def !== undefined && def !== null) {
-              extra[key] = String(def);
-            }
-          }
-        }
+        // Engine params: shared resolver (Configuration values included).
+        const extra = collectParamExtras();
 
         const maxCharsForLang =
           state.chunkMaxCharsByLang[state.selectedLanguage] ?? state.chunkMaxChars;
@@ -326,6 +182,7 @@ export function attachDemoListeners(): void {
             maxWords: effectiveMaxWords,
             maxChars: maxCharsForLang,
             extra,
+            onlyChapters: null,
             referenceAudio:
               state.selectedEngineId.startsWith("VoxCPM2") && state.voxMode === "design"
                 ? null
@@ -335,6 +192,7 @@ export function attachDemoListeners(): void {
           try {
             const mp3s = await invoke<string[]>("list_mp3s_in_dir", { dir: outputDir });
             if (mp3s.length > 0 && testAudio) {
+              state.testAudioPath = mp3s[0];
               testAudio.src = convertFileSrc(mp3s[0]);
               testAudio.style.display = "block";
               testAudio.load();

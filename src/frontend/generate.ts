@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { escapeHtml, ts, pickOutputDir, appendLog, setLog } from "./helpers";
+import { escapeHtml, ts, pickOutputDir, appendLog, setLog, collectParamExtras } from "./helpers";
 import { renderEngineStrip } from "./engine-strip";
 import { state } from "./state";
 import type { BookInfo, EngineStatus } from "./types";
@@ -152,79 +152,8 @@ export function attachGenerateListeners(
         const maxCharsForLang =
           state.chunkMaxCharsByLang[state.selectedLanguage] ?? state.chunkMaxChars;
 
-        // Build extra params from Configuration panel — use state as fallback
-        // because Configuration panel DOM elements don't exist when on Generate tab
-        const extra: Record<string, string> = {};
-        const instructEl = document.getElementById("qwen-instruct-input") as HTMLInputElement | HTMLTextAreaElement | null;
-        const instructVal = instructEl?.value?.trim() || state.qwenInstruct?.trim();
-        if (instructVal) {
-          extra["instruct"] = instructVal;
-        }
-        const refTextEl = document.getElementById("qwen-ref-text") as HTMLTextAreaElement | null;
-        const refTextVal = refTextEl?.value?.trim() || state.referenceTranscript?.trim();
-        if (refTextVal) {
-          extra["ref_text"] = refTextVal;
-        }
-        const tempEl = document.getElementById("qwen-temp") as HTMLInputElement | null;
-        if (tempEl && tempEl.value) extra["temp"] = tempEl.value;
-        const topKEl = document.getElementById("qwen-top-k") as HTMLInputElement | null;
-        if (topKEl && topKEl.value) extra["top_k"] = topKEl.value;
-        const topPEl = document.getElementById("qwen-top-p") as HTMLInputElement | null;
-        if (topPEl && topPEl.value) extra["top_p"] = topPEl.value;
-        const repPenEl = document.getElementById("qwen-rep-pen") as HTMLInputElement | null;
-        if (repPenEl && repPenEl.value) extra["rep_pen"] = repPenEl.value;
-        const maxNewEl = document.getElementById("qwen-max-new") as HTMLInputElement | null;
-        if (maxNewEl && maxNewEl.value) extra["max_new"] = maxNewEl.value;
-        const seedEl = document.getElementById("qwen-seed") as HTMLInputElement | null;
-        if (seedEl && seedEl.value) extra["seed"] = seedEl.value;
-
-        const outeTemp = document.getElementById("oute-temperature") as HTMLInputElement | null;
-        if (outeTemp && outeTemp.value) extra["temperature"] = outeTemp.value;
-        const outeTopK = document.getElementById("oute-top-k") as HTMLInputElement | null;
-        if (outeTopK && outeTopK.value) extra["top_k"] = outeTopK.value;
-        const outeTopP = document.getElementById("oute-top-p") as HTMLInputElement | null;
-        if (outeTopP && outeTopP.value) extra["top_p"] = outeTopP.value;
-        const outeMinP = document.getElementById("oute-min-p") as HTMLInputElement | null;
-        if (outeMinP && outeMinP.value) extra["min_p"] = outeMinP.value;
-        const outeRepPen = document.getElementById("oute-rep-pen") as HTMLInputElement | null;
-        if (outeRepPen && outeRepPen.value) extra["repetition_penalty"] = outeRepPen.value;
-        const outeMaxTokens = document.getElementById("oute-max-tokens") as HTMLInputElement | null;
-        if (outeMaxTokens && outeMaxTokens.value) extra["max_tokens"] = outeMaxTokens.value;
-
-        if (state.selectedEngineId.startsWith("OuteTTS")) {
-          if (state.outeSpeakerJsonPath) {
-            extra["speaker_json"] = state.outeSpeakerJsonPath;
-          } else if (state.selectedVoiceId) {
-            extra["speaker"] = state.selectedVoiceId;
-          }
-          const ctxSize = state.engineGeneration["ctx_size"]?.default;
-          if (ctxSize !== undefined && ctxSize !== null) {
-            extra["ctx_size"] = String(ctxSize);
-          }
-        }
-
-        if (state.selectedEngineId.startsWith("VoxCPM2")) {
-          extra["voice_mode"] = state.voxMode;
-          if (state.voxMode === "design") {
-            const voxDescVal = state.voxVoiceDescription?.trim();
-            if (voxDescVal) {
-              extra["voice_description"] = voxDescVal;
-            }
-          }
-          if (state.voxMode === "ultimate") {
-            const voxRefVal = state.referenceTranscript?.trim();
-            if (voxRefVal) {
-              extra["prompt_text"] = voxRefVal;
-            }
-          }
-          for (const key of ["cfg", "timesteps", "temperature", "steps"]) {
-            const def = state.engineGeneration[key]?.default;
-            if (def !== undefined && def !== null) {
-              extra[key] = String(def);
-            }
-          }
-        }
-
+        // Engine params: shared resolver (Configuration values included).
+        const extra = collectParamExtras();
         // When using Character Limit strategy, disable word count limit
         const effectiveMaxWords =
           state.chunkStrategy === "Character Limit" ? 999999 : state.chunkMaxWords;
@@ -239,6 +168,7 @@ export function attachGenerateListeners(
           maxWords: effectiveMaxWords,
           maxChars: maxCharsForLang,
           extra,
+          onlyChapters: Array.from(state.selectedChapters),
           referenceAudio:
             state.selectedEngineId.startsWith("VoxCPM2") && state.voxMode === "design"
               ? null
