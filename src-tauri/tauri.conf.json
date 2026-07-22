@@ -38,21 +38,6 @@
     "resources": {
       "sidecars/bundled/": "resources/"
     },
-    "windows": {
-      "resources": {
-        "../target/release/abg-cli.exe": "resources/cli/"
-      }
-    },
-    "linux": {
-      "resources": {
-        "../target/release/abg-cli": "resources/cli/"
-      }
-    },
-    "macOS": {
-      "resources": {
-        "../target/aarch64-apple-darwin/release/abg-cli": "resources/cli/"
-      }
-    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

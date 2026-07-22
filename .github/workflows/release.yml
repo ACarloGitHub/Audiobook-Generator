@@ -288,12 +288,22 @@ jobs:
       - name: Build abg-cli companion binary
         shell: bash
         run: |
-          # The MCP/CLI companion ships in the installer resources.
+          # The MCP/CLI companion ships in the installer resources: it is
+          # staged in sidecars/bundled/cli/, which tauri.conf maps into the
+          # bundle resources/ directory.
+          dst="src-tauri/sidecars/bundled/cli"
+          mkdir -p "$dst"
           if [ "${{ matrix.os }}" = "macos-latest" ]; then
             cargo build --release --bin abg-cli --manifest-path src-tauri/Cargo.toml --target aarch64-apple-darwin
+            cp src-tauri/target/aarch64-apple-darwin/release/abg-cli "$dst/"
+          elif [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cargo build --release --bin abg-cli --manifest-path src-tauri/Cargo.toml
+            cp src-tauri/target/release/abg-cli.exe "$dst/"
           else
             cargo build --release --bin abg-cli --manifest-path src-tauri/Cargo.toml
+            cp src-tauri/target/release/abg-cli "$dst/"
           fi
+          ls -la "$dst"
 
       - name: Build application
         uses: tauri-apps/tauri-action@v0
