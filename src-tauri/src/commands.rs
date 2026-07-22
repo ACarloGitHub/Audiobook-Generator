@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::base_plugin::{EngineHandle, SynthesizeRequest, BaseTTSPlugin};
 use crate::merger;
@@ -566,14 +566,14 @@ fn get_or_create_plugin(
     if let Some(p) = pm.get_plugin(engine_id) {
         return Some(p);
     }
-    let qwen_paths = plugin_manager::QwenPaths::from_app_data(pm.app_data_dir());
+    let qwen_paths = plugin_manager::QwenPaths::from_app_data(&crate::config::paths::storage_dir());
     let qwen_plugin = crate::plugins::qwen3tts::QwenPlugin::new(qwen_paths, engine_id);
     if qwen_plugin.is_installed() {
         eprintln!("[commands] creating qwen plugin on-the-fly for {}", engine_id);
         return Some(Arc::new(qwen_plugin));
     }
     if engine_id.starts_with("VoxCPM2") {
-        let vox_paths = plugin_manager::VoxCpm2Paths::from_app_data(pm.app_data_dir());
+        let vox_paths = plugin_manager::VoxCpm2Paths::from_app_data(&crate::config::paths::storage_dir());
         let vox_plugin = crate::plugins::voxcpm2::VoxCpm2Plugin::new(vox_paths, engine_id);
         if vox_plugin.is_installed() {
             eprintln!("[commands] creating voxcpm2 plugin on-the-fly for {}", engine_id);
@@ -581,7 +581,7 @@ fn get_or_create_plugin(
         }
     }
     if engine_id.starts_with("OuteTTS") {
-        let oute_dir = pm.app_data_dir().join("models").join("outetts");
+        let oute_dir = crate::config::paths::models_dir().join("outetts");
         let oute_plugin = crate::plugins::outetts::OuteTTSPlugin::new(oute_dir, engine_id);
         if oute_plugin.is_installed() {
             eprintln!("[commands] creating outetts plugin on-the-fly for {}", engine_id);
@@ -971,11 +971,100 @@ pub fn remove_model(
 }
 
 #[tauri::command]
-pub fn get_models_path(app: AppHandle) -> String {
-    app.path()
-        .app_data_dir()
-        .unwrap_or_else(|_| std::path::PathBuf::from("."))
-        .join("models")
+pub fn get_models_path() -> String {
+    crate::config::paths::models_dir()
         .to_string_lossy()
         .to_string()
+}
+
+/// Current storage folder for heavy payloads (models, engines) and the
+/// default one, so the frontend can show both.
+#[tauri::command]
+pub fn get_storage_dir() -> serde_json::Value {
+    let current = crate::config::paths::storage_dir();
+    let default = crate::config::paths::app_data_dir();
+    serde_json::json!({
+        "current": current.to_string_lossy(),
+        "default": default.to_string_lossy(),
+        "is_custom": current != default,
+    })
+}
+
+/// Recursively copy a directory tree, then delete the source.
+/// Used when the user asks to move existing files to the new storage
+/// folder (rename does not work across drives on Windows).
+fn move_dir_contents(src: &std::path::Path, dst: &std::path::Path) -> Result<u64, String> {
+    let mut moved: u64 = 0;
+    if !src.exists() {
+        return Ok(0);
+    }
+    for entry in std::fs::read_dir(src).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if from.is_dir() {
+            std::fs::create_dir_all(&to).map_err(|e| e.to_string())?;
+            moved += move_dir_contents(&from, &to)?;
+        } else {
+            if to.exists() {
+                // Never overwrite a file that already exists at destination:
+                // skip it and keep the source copy for manual resolution.
+                eprintln!("[storage] skipping {} (already exists at destination)", from.display());
+                continue;
+            }
+            std::fs::create_dir_all(dst).map_err(|e| e.to_string())?;
+            std::fs::copy(&from, &to).map_err(|e| format!("copy {}: {e}", from.display()))?;
+            std::fs::remove_file(&from).map_err(|e| e.to_string())?;
+            moved += 1;
+        }
+    }
+    // Remove the source dir if it is now empty (skipped files keep it).
+    let _ = std::fs::remove_dir(src);
+    Ok(moved)
+}
+
+/// Change the storage folder for heavy payloads (models, engines).
+///
+/// `path`: new folder, or `None` to reset to the default app data dir.
+/// `move_existing`: when true, `models/` and `resources/` are moved from
+/// the old location to the new one (files already present at destination
+/// are never overwritten).
+#[tauri::command]
+pub fn set_storage_dir(path: Option<String>, move_existing: bool) -> Result<String, String> {
+    let old_storage = crate::config::paths::storage_dir();
+    let new_storage = match path.as_deref().map(str::trim) {
+        Some(p) if !p.is_empty() => std::path::PathBuf::from(p),
+        _ => crate::config::paths::app_data_dir(),
+    };
+
+    if new_storage == old_storage {
+        return Ok(new_storage.to_string_lossy().to_string());
+    }
+
+    // Validate: create the folder and check it is writable.
+    std::fs::create_dir_all(&new_storage)
+        .map_err(|e| format!("cannot create {}: {e}", new_storage.display()))?;
+    let probe = new_storage.join(".abg_write_test");
+    std::fs::write(&probe, b"ok")
+        .map_err(|e| format!("folder {} is not writable: {e}", new_storage.display()))?;
+    let _ = std::fs::remove_file(&probe);
+
+    if move_existing {
+        for sub in ["models", "resources"] {
+            let from = old_storage.join(sub);
+            let to = new_storage.join(sub);
+            let n = move_dir_contents(&from, &to)?;
+            if n > 0 {
+                eprintln!("[storage] moved {} file(s) from {} to {}", n, from.display(), to.display());
+            }
+        }
+    }
+
+    // Resetting to the default clears the override entirely.
+    let default = crate::config::paths::app_data_dir();
+    let override_value = if new_storage == default { None } else { Some(new_storage.clone()) };
+    crate::config::paths::save_storage_override(override_value)
+        .map_err(|e| format!("cannot save settings: {e}"))?;
+
+    Ok(new_storage.to_string_lossy().to_string())
 }

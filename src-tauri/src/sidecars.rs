@@ -22,6 +22,14 @@ use std::path::PathBuf;
 pub fn sidecar_dir_candidates(name: &str) -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = Vec::new();
 
+    // 0. User-chosen storage folder (setting "Engines and models folder"),
+    //    engines live under <storage>/resources/<name>.
+    let storage = crate::config::paths::storage_dir();
+    let default_storage = crate::config::paths::app_data_dir();
+    if storage != default_storage {
+        dirs.push(storage.join("resources").join(name));
+    }
+
     // 1. Bundled resources, next to the installed executable.
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { escapeHtml, hardwareLine } from "./helpers";
 import { renderEngineStrip } from "./engine-strip";
 import type { EngineStatus, ModelListEntry } from "./types";
@@ -55,6 +56,14 @@ Not installed: ${missingCount}</textarea>
     <div class="card">
       <h2>Models</h2>
       <p class="field-help" id="models-path-display">Loading models path...</p>
+      <div class="row" style="align-items: center; gap: 8px; margin-bottom: 8px;">
+        <button class="btn-secondary" id="storage-change-btn">📁 Change storage folder…</button>
+        <button class="btn-secondary" id="storage-reset-btn" hidden>Reset to default</button>
+        <label class="field-help" style="display: inline-flex; align-items: center; gap: 4px;">
+          <input type="checkbox" id="storage-move-check" checked /> Move existing files
+        </label>
+      </div>
+      <p class="field-help" id="storage-status"></p>
       <table class="models-table">
         <thead>
           <tr>
@@ -195,16 +204,49 @@ export function attachModelsListeners(refresh: () => Promise<void>): void {
     }
   );
 
-  // Show models directory path
-  invoke<string>("get_models_path")
-    .then((path) => {
+  // Show models directory path + storage folder controls
+  const refreshStorageDisplay = async () => {
+    try {
+      const info = await invoke<{ current: string; default: string; is_custom: boolean }>("get_storage_dir");
       const el = document.getElementById("models-path-display");
-      if (el) el.textContent = `Models directory: ${path}`;
-    })
-    .catch(() => {
+      if (el) el.textContent = `Storage folder (models + engines): ${info.current}`;
+      const resetBtn = document.getElementById("storage-reset-btn") as HTMLButtonElement | null;
+      if (resetBtn) resetBtn.hidden = !info.is_custom;
+    } catch {
       const el = document.getElementById("models-path-display");
-      if (el) el.textContent = "Models directory: unknown";
-    });
+      if (el) el.textContent = "Storage folder: unknown";
+    }
+  };
+
+  const setStorageStatus = (msg: string) => {
+    const el = document.getElementById("storage-status");
+    if (el) el.textContent = msg;
+  };
+
+  const applyStorageChange = async (path: string | null) => {
+    const move = (document.getElementById("storage-move-check") as HTMLInputElement | null)?.checked ?? true;
+    setStorageStatus("Applying… (moving large files can take a while)");
+    try {
+      const newPath = await invoke<string>("set_storage_dir", { path, moveExisting: move });
+      setStorageStatus(`Storage folder is now: ${newPath}`);
+      await refreshStorageDisplay();
+    } catch (e) {
+      setStorageStatus(`Failed to change storage folder: ${e}`);
+    }
+  };
+
+  document.getElementById("storage-change-btn")?.addEventListener("click", async () => {
+    const chosen = await openDialog({ directory: true, title: "Choose the storage folder for models and engines" });
+    if (typeof chosen === "string" && chosen.length > 0) {
+      await applyStorageChange(chosen);
+    }
+  });
+
+  document.getElementById("storage-reset-btn")?.addEventListener("click", async () => {
+    await applyStorageChange(null);
+  });
+
+  void refreshStorageDisplay();
 
   // Initial runtime check
   refreshRuntimeStatus();

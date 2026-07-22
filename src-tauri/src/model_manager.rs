@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 
 use crate::sidecars;
 use crate::wizard::download_to_file_async;
@@ -762,11 +762,8 @@ async fn download_outetts_model(
 }
 
 
-fn app_models_root(app: &AppHandle) -> PathBuf {
-    app.path()
-        .app_data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("models")
+fn app_models_root(_app: &AppHandle) -> PathBuf {
+    crate::config::paths::models_dir()
 }
 
 

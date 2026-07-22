@@ -53,6 +53,7 @@ pub fn run() {
                 );
             }
             config::paths::set_app_data_dir(app_data_dir.clone());
+            config::paths::load_storage_override();
             let pm = Arc::new(plugin_manager::PluginManager::new(app_data_dir));
             eprintln!(
                 "[setup] plugin manager ready: {} engine(s) registered",
@@ -84,6 +85,8 @@ pub fn run() {
             commands::download_model,
             commands::remove_model,
             commands::get_models_path,
+            commands::get_storage_dir,
+            commands::set_storage_dir,
             wizard::detect_hardware,
             wizard::check_dependencies,
             wizard::get_wizard_steps,

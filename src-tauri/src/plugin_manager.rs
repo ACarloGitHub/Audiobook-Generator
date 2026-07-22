@@ -82,7 +82,7 @@ impl PluginManager {
     fn discover_installed_engines(&mut self) {
         // Qwen3-TTS (external process: llama.cpp + codec.cpp)
         // Register when the model files are on disk.
-        let qwen_paths = QwenPaths::from_app_data(&self.app_data_dir);
+        let qwen_paths = QwenPaths::from_app_data(&crate::config::paths::storage_dir());
         for variant in &self.registry {
             if variant.engine_id == "qwen3tts" {
                 let plugin = crate::plugins::qwen3tts::QwenPlugin::new(
@@ -101,7 +101,7 @@ impl PluginManager {
         }
 
         // OuteTTS (llama-server backbone + DAC ONNX decoder)
-        let oute_models_dir = self.app_data_dir.join("models").join("outetts");
+        let oute_models_dir = crate::config::paths::models_dir().join("outetts");
         for variant in &self.registry {
             if variant.engine_id == "outetts" {
                 let plugin = crate::plugins::outetts::OuteTTSPlugin::new(
@@ -119,7 +119,7 @@ impl PluginManager {
             }
         }
         // VoxCPM2 (external process: voxcpm2-cli sidecar)
-        let vox_paths = VoxCpm2Paths::from_app_data(&self.app_data_dir);
+        let vox_paths = VoxCpm2Paths::from_app_data(&crate::config::paths::storage_dir());
         for variant in &self.registry {
             if variant.engine_id == "voxcpm2" {
                 let plugin = crate::plugins::voxcpm2::VoxCpm2Plugin::new(
@@ -157,7 +157,7 @@ impl PluginManager {
         let configs = models::tts_model_config();
         let qwen_voices = qwen_preset_voices();
 
-        let models_base = self.app_data_dir.join("models").join("qwen3tts");
+        let models_base = crate::config::paths::models_dir().join("qwen3tts");
         let tokenizer_path = models_base
             .join("tokenizer")
             .join("tokenizer-Q4_K_M.gguf");
@@ -219,7 +219,7 @@ impl PluginManager {
                 continue;
             }
 
-            let oute_base = self.app_data_dir.join("models").join("outetts");
+            let oute_base = crate::config::paths::models_dir().join("outetts");
             let variant_dir = oute_base.join(&entry.name);
             let backbone_exists = ["backbone-Q4_K_M.gguf", "backbone-Q8_0.gguf"]
                 .iter()
@@ -251,7 +251,7 @@ impl PluginManager {
                 continue;
             }
 
-            let vox_base = self.app_data_dir.join("models").join("voxcpm2");
+            let vox_base = crate::config::paths::models_dir().join("voxcpm2");
             let Some(quant_file) = voxcpm2_quant_for_engine(&entry.name) else {
                 continue;
             };
