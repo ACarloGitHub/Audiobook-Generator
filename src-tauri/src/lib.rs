@@ -6,6 +6,7 @@ mod commands;
 pub mod config;
 mod epub;
 pub mod gpu_guard;
+mod input;
 mod merger;
 mod model_manager;
 pub mod plugin_manager;

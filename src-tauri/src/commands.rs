@@ -111,8 +111,10 @@ pub struct ChapterSummary {
 
 #[tauri::command]
 pub fn load_epub(path: PathBuf) -> Result<BookInfo, String> {
-    let book = crate::epub::parse_epub(&path)
-        .map_err(|e| format!("failed to parse EPUB: {e:#}"))?;
+    // Despite the historical name, this loads any supported document
+    // (EPUB, TXT, Markdown, DOCX, JSON) via the input dispatcher.
+    let book = crate::input::parse_document(&path)
+        .map_err(|e| format!("failed to load document: {e:#}"))?;
     Ok(BookInfo {
         title: book.title,
         chapters: book

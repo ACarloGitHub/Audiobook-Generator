@@ -197,7 +197,7 @@ pub fn synthesize_book(
     if let Some(cb) = progress.as_deref_mut() {
         cb("Reading EPUB...");
     }
-    let chapters = crate::epub::extract_chapters(epub_path)?;
+    let chapters = crate::input::extract_chapters_from(epub_path)?;
     let total_chapters = chapters.len();
     std::fs::create_dir_all(output_dir)?;
     let recovery_path = output_dir.join("failed_chunks.json");

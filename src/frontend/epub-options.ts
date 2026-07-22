@@ -16,7 +16,7 @@ export function renderEpub(): string {
     <div class="card">
       <h2>Upload EPUB</h2>
       <button class="btn-secondary btn-large" id="pick-epub-btn">Drop File Here / Click to Upload</button>
-      <p class="field-help" id="epub-path">${state.epubPath ? escapeHtml(state.epubPath) : "No EPUB selected."}</p>
+      <p class="field-help" id="epub-path">${state.epubPath ? escapeHtml(state.epubPath) : "No document selected (EPUB, TXT, Markdown, DOCX, JSON)."}</p>
     </div>
 
     <div class="card">
@@ -68,7 +68,7 @@ export function attachEpubListeners(render: () => void, onEpubLoaded: (info: Boo
   if (pickEpubBtn) {
     pickEpubBtn.addEventListener("click", async () => {
       try {
-        const path = await open({ multiple: false, filters: [{ name: "EPUB", extensions: ["epub"] }] });
+        const path = await open({ multiple: false, filters: [{ name: "Book or text document", extensions: ["epub", "txt", "md", "docx", "json"] }] });
         if (typeof path === "string") {
           state.epubPath = path;
           const info = await invoke<BookInfo>("load_epub", { path });
