@@ -193,18 +193,27 @@ impl VoxCpm2Plugin {
         cmd.arg("-o").arg(output_path);
 
         // Voice cloning modes. Ultimate cloning takes priority when the
-        // reference transcript is provided.
-        if let Some(ref_wav) = request.reference_audio.as_ref() {
-            let prompt_text = request
-                .extra
-                .get("prompt_text")
-                .map(|s| s.trim().to_string())
-                .unwrap_or_default();
-            if !prompt_text.is_empty() {
-                cmd.arg("--prompt-wav").arg(ref_wav);
-                cmd.arg("--prompt-text").arg(Self::to_ansi_argv(&prompt_text));
-            } else {
-                cmd.arg("-r").arg(ref_wav);
+        // reference transcript is provided. In Voice Design mode, never
+        // clone: ignore any reference audio, even a stale path passed by
+        // mistake (Carlo's bug, 2026-07-22).
+        let design_mode = request
+            .extra
+            .get("voice_mode")
+            .map(|m| m.trim() == "design")
+            .unwrap_or(false);
+        if !design_mode {
+            if let Some(ref_wav) = request.reference_audio.as_ref() {
+                let prompt_text = request
+                    .extra
+                    .get("prompt_text")
+                    .map(|s| s.trim().to_string())
+                    .unwrap_or_default();
+                if !prompt_text.is_empty() {
+                    cmd.arg("--prompt-wav").arg(ref_wav);
+                    cmd.arg("--prompt-text").arg(Self::to_ansi_argv(&prompt_text));
+                } else {
+                    cmd.arg("-r").arg(ref_wav);
+                }
             }
         }
 

@@ -211,14 +211,14 @@ function renderVoxControls(): string {
         .map((m) => `<option value="${m.id}" ${mode === m.id ? "selected" : ""}>${m.label}</option>`)
         .join("");
 
-    const descLabel =
-        mode === "design"
-            ? "Voice Description (in English, required)"
-            : "Style Guidance (optional, in English)";
-    const descPlaceholder =
-        mode === "design"
-            ? "A calm middle-aged male narrator with a deep voice"
-            : "slightly faster, cheerful tone";
+    let descControls = "";
+    if (mode === "design") {
+        descControls = `
+      <div class="field-row">
+        <label class="field-label">Voice Description (in English, required)</label>
+        <textarea class="text-input" rows="2" id="vox-voice-description" placeholder="A calm middle-aged male narrator with a deep voice">${escapeHtml(state.voxVoiceDescription || "")}</textarea>
+      </div>`;
+    }
 
     let cloneControls = "";
     if (mode === "clone" || mode === "ultimate") {
@@ -244,10 +244,7 @@ function renderVoxControls(): string {
         <label class="field-label">Voice Mode</label>
         <select class="select" id="vox-mode-select">${modeOptions}</select>
       </div>
-      <div class="field-row">
-        <label class="field-label">${descLabel}</label>
-        <textarea class="text-input" rows="2" id="vox-voice-description" placeholder="${descPlaceholder}">${escapeHtml(state.voxVoiceDescription || "")}</textarea>
-      </div>
+      ${descControls}
       ${cloneControls}
       <details class="accordion">
         <summary>Advanced Settings</summary>

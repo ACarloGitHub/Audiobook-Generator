@@ -35,3 +35,22 @@ export function hardwareLine(status: import("./types").EngineStatus): string {
   if (!gpu) return `${hw.os} · ${hw.arch} · no GPU detected`;
   return `${hw.os} · ${gpu.vendor} ${gpu.model} · ${bytesToGB(gpu.vram_bytes)} GB VRAM`;
 }
+
+// Log textareas are re-created on every full re-render (e.g. when the
+// engine loads mid-generation). Always look the element up fresh: writing
+// to a stale reference would silently swallow the log lines.
+export function appendLog(id: string, line: string): void {
+  const el = document.getElementById(id) as HTMLTextAreaElement | null;
+  if (el) {
+    el.value += line;
+    el.scrollTop = el.scrollHeight;
+  }
+}
+
+export function setLog(id: string, text: string): void {
+  const el = document.getElementById(id) as HTMLTextAreaElement | null;
+  if (el) {
+    el.value = text;
+    el.scrollTop = el.scrollHeight;
+  }
+}

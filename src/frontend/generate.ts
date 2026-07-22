@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { escapeHtml, ts, pickOutputDir } from "./helpers";
+import { escapeHtml, ts, pickOutputDir, appendLog, setLog } from "./helpers";
 import { renderEngineStrip } from "./engine-strip";
 import { state } from "./state";
 import type { BookInfo, EngineStatus } from "./types";
@@ -133,23 +133,21 @@ export function attachGenerateListeners(
       generateBtn.disabled = true;
       stopBtn.disabled = false;
       const t0 = Date.now();
-      progressLog.value = `[INFO] Book: ${bookInfo.title}\n`;
-      progressLog.value += `[INFO] Selected engine: ${engine.display_name}\n`;
-      progressLog.value += `[INFO] Chapters: ${state.selectedChapters.size}\n`;
-      progressLog.value += `[INFO] Output: ${outputDir}\n`;
-      progressLog.value += `[INFO] --- starting generation ---\n`;
+      setLog("progress-log", `[INFO] Book: ${bookInfo.title}\n`);
+      appendLog("progress-log", `[INFO] Selected engine: ${engine.display_name}\n`);
+      appendLog("progress-log", `[INFO] Chapters: ${state.selectedChapters.size}\n`);
+      appendLog("progress-log", `[INFO] Output: ${outputDir}\n`);
+      appendLog("progress-log", `[INFO] --- starting generation ---\n`);
 
       let unlistenProgress: (() => void) | null = null;
       let unlistenComplete: (() => void) | null = null;
       try {
         unlistenProgress = await listen<string>("generation-progress", (e) => {
-          progressLog.value += `[${ts()}] ${e.payload}\n`;
-          progressLog.scrollTop = progressLog.scrollHeight;
+          appendLog("progress-log", `[${ts()}] ${e.payload}\n`);
         });
         unlistenComplete = await listen("generation-complete", () => {
           const secs = ((Date.now() - t0) / 1000).toFixed(1);
-          progressLog.value += `[${ts()}] [INFO] Generation finished in ${secs}s\n`;
-          progressLog.scrollTop = progressLog.scrollHeight;
+          appendLog("progress-log", `[${ts()}] [INFO] Generation finished in ${secs}s\n`);
         });
         const maxCharsForLang =
           state.chunkMaxCharsByLang[state.selectedLanguage] ?? state.chunkMaxChars;
@@ -206,9 +204,12 @@ export function attachGenerateListeners(
         }
 
         if (state.selectedEngineId.startsWith("VoxCPM2")) {
-          const voxDescVal = state.voxVoiceDescription?.trim();
-          if (voxDescVal) {
-            extra["voice_description"] = voxDescVal;
+          extra["voice_mode"] = state.voxMode;
+          if (state.voxMode === "design") {
+            const voxDescVal = state.voxVoiceDescription?.trim();
+            if (voxDescVal) {
+              extra["voice_description"] = voxDescVal;
+            }
           }
           if (state.voxMode === "ultimate") {
             const voxRefVal = state.referenceTranscript?.trim();
@@ -238,10 +239,13 @@ export function attachGenerateListeners(
           maxWords: effectiveMaxWords,
           maxChars: maxCharsForLang,
           extra,
-          referenceAudio: state.referenceWavPath,
+          referenceAudio:
+            state.selectedEngineId.startsWith("VoxCPM2") && state.voxMode === "design"
+              ? null
+              : state.referenceWavPath,
         });
       } catch (e) {
-        progressLog.value += `[${ts()}] [ERROR] ${e}\n`;
+        appendLog("progress-log", `[${ts()}] [ERROR] ${e}\n`);
       } finally {
         if (unlistenProgress) unlistenProgress();
         if (unlistenComplete) unlistenComplete();

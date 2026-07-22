@@ -34,8 +34,7 @@ pub fn sanitize_filename(name: &str) -> String {
     }
 }
 
-pub fn replace_guillemets_text(text: &str) -> String {
-    text.replace('\u{00AB}', "\"").replace('\u{00BB}', "\"")
+pub fn replace_guillemets_text(text: &str) -> String {    text.replace('\u{00AB}', "\"").replace('\u{00BB}', "\"")
 }
 
 /// On Windows, prevent a console window from flashing open when spawning a

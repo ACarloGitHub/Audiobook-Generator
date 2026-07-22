@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { escapeHtml, ts } from "./helpers";
+import { escapeHtml, ts, appendLog, setLog } from "./helpers";
 import { state } from "./state";
 import type { EngineStatus } from "./types";
 
@@ -63,11 +63,10 @@ export function attachDemoListeners(): void {
         alert("Type some text first.");
         return;
       }
-      const status = document.getElementById("demo-status") as HTMLTextAreaElement | null;
       const audio = document.getElementById("demo-audio") as HTMLAudioElement | null;
       const outDir = state.demoOutputPath ?? "Demo_Outputs";
       const out = `${outDir}/demo_${Date.now()}.wav`;
-      if (status) status.value = `[INFO] Synthesizing with ${state.selectedEngineId}...\n`;
+      setLog("demo-status", `[INFO] Synthesizing with ${state.selectedEngineId}...\n`);
 
       // Build extra params for Qwen3-TTS — read from state (persists across panels)
       // with DOM element as fallback for live edits
@@ -123,10 +122,13 @@ export function attachDemoListeners(): void {
       }
 
       if (state.selectedEngineId.startsWith("VoxCPM2")) {
-        const voxDescEl = document.getElementById("vox-voice-description") as HTMLTextAreaElement | null;
-        const voxDescVal = voxDescEl?.value?.trim() || state.voxVoiceDescription?.trim();
-        if (voxDescVal) {
-          extra["voice_description"] = voxDescVal;
+        extra["voice_mode"] = state.voxMode;
+        if (state.voxMode === "design") {
+          const voxDescEl = document.getElementById("vox-voice-description") as HTMLTextAreaElement | null;
+          const voxDescVal = voxDescEl?.value?.trim() || state.voxVoiceDescription?.trim();
+          if (voxDescVal) {
+            extra["voice_description"] = voxDescVal;
+          }
         }
         if (state.voxMode === "ultimate") {
           const voxRefEl = document.getElementById("vox-ref-text") as HTMLTextAreaElement | null;
@@ -160,18 +162,21 @@ export function attachDemoListeners(): void {
           speed: state.speed,
           outputWav: out,
           extra,
-          referenceAudio: state.referenceWavPath,
+          referenceAudio:
+            state.selectedEngineId.startsWith("VoxCPM2") && state.voxMode === "design"
+              ? null
+              : state.referenceWavPath,
           maxChars: state.chunkMaxCharsByLang[state.selectedLanguage] ?? state.chunkMaxChars,
           maxWords: state.chunkStrategy === "Character Limit" ? 999999 : state.chunkMaxWords,
         });
-        if (status) status.value = `[INFO] Saved to ${resultPath}\n`;
+        setLog("demo-status", `[INFO] Saved to ${resultPath}\n`);
         if (audio) {
           audio.src = convertFileSrc(resultPath);
           audio.style.display = "block";
           audio.load();
         }
       } catch (e) {
-        if (status) status.value = `[ERROR] ${e}\n`;
+        setLog("demo-status", `[ERROR] ${e}\n`);
       }
     });
   }
@@ -200,7 +205,7 @@ export function attachDemoListeners(): void {
     testBtn.addEventListener("click", async () => {
       testBtn.disabled = true;
       if (testAudio) { testAudio.style.display = "none"; testAudio.src = ""; }
-      testStatus.value = `[${ts()}] [INFO] Resolving test EPUB...\n`;
+      setLog("test-status", `[${ts()}] [INFO] Resolving test EPUB...\n`);
 
       try {
         const langForTest = state.selectedLanguage || "en";
@@ -220,10 +225,10 @@ export function attachDemoListeners(): void {
           ? `${state.testOutputPath}/${safeTitle}`
           : `Generated_Audiobooks/${safeTitle}`;
 
-        testStatus.value += `[${ts()}] [INFO] Test EPUB: ${testEpubPath}\n`;
-        testStatus.value += `[${ts()}] [INFO] Output dir: ${outputDir}\n`;
-        testStatus.value += `[${ts()}] [INFO] Engine: ${state.selectedEngineId}\n`;
-        testStatus.value += `[${ts()}] [INFO] --- starting test generation ---\n`;
+        appendLog("test-status", `[${ts()}] [INFO] Test EPUB: ${testEpubPath}\n`);
+        appendLog("test-status", `[${ts()}] [INFO] Output dir: ${outputDir}\n`);
+        appendLog("test-status", `[${ts()}] [INFO] Engine: ${state.selectedEngineId}\n`);
+        appendLog("test-status", `[${ts()}] [INFO] --- starting test generation ---\n`);
 
         const extra: Record<string, string> = {};
         const instructEl = document.getElementById("qwen-instruct-input") as HTMLInputElement | HTMLTextAreaElement | null;
@@ -271,9 +276,12 @@ export function attachDemoListeners(): void {
         }
 
         if (state.selectedEngineId.startsWith("VoxCPM2")) {
-          const voxDescVal = state.voxVoiceDescription?.trim();
-          if (voxDescVal) {
-            extra["voice_description"] = voxDescVal;
+          extra["voice_mode"] = state.voxMode;
+          if (state.voxMode === "design") {
+            const voxDescVal = state.voxVoiceDescription?.trim();
+            if (voxDescVal) {
+              extra["voice_description"] = voxDescVal;
+            }
           }
           if (state.voxMode === "ultimate") {
             const voxRefVal = state.referenceTranscript?.trim();
@@ -301,13 +309,11 @@ export function attachDemoListeners(): void {
 
         try {
           unlistenProgress = await listen<string>("generation-progress", (e) => {
-            testStatus.value += `[${ts()}] ${e.payload}\n`;
-            testStatus.scrollTop = testStatus.scrollHeight;
+            appendLog("test-status", `[${ts()}] ${e.payload}\n`);
           });
           unlistenComplete = await listen("generation-complete", () => {
             const secs = ((Date.now() - t0) / 1000).toFixed(1);
-            testStatus.value += `[${ts()}] [INFO] Test generation finished in ${secs}s\n`;
-            testStatus.scrollTop = testStatus.scrollHeight;
+            appendLog("test-status", `[${ts()}] [INFO] Test generation finished in ${secs}s\n`);
           });
 
           await invoke("start_generation", {
@@ -320,7 +326,10 @@ export function attachDemoListeners(): void {
             maxWords: effectiveMaxWords,
             maxChars: maxCharsForLang,
             extra,
-            referenceAudio: state.referenceWavPath,
+            referenceAudio:
+              state.selectedEngineId.startsWith("VoxCPM2") && state.voxMode === "design"
+                ? null
+                : state.referenceWavPath,
           });
 
           try {
@@ -329,17 +338,17 @@ export function attachDemoListeners(): void {
               testAudio.src = convertFileSrc(mp3s[0]);
               testAudio.style.display = "block";
               testAudio.load();
-              testStatus.value += `[${ts()}] [INFO] Playing: ${mp3s[0]}\n`;
+              appendLog("test-status", `[${ts()}] [INFO] Playing: ${mp3s[0]}\n`);
             }
           } catch (e) {
-            testStatus.value += `[${ts()}] [WARN] Could not load audio player: ${e}\n`;
+            appendLog("test-status", `[${ts()}] [WARN] Could not load audio player: ${e}\n`);
           }
         } finally {
           if (unlistenProgress) unlistenProgress();
           if (unlistenComplete) unlistenComplete();
         }
       } catch (e) {
-        testStatus.value += `[${ts()}] [ERROR] ${e}\n`;
+        appendLog("test-status", `[${ts()}] [ERROR] ${e}\n`);
       } finally {
         testBtn.disabled = false;
       }
