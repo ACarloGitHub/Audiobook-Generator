@@ -136,8 +136,12 @@ jobs:
           exe=$(find qwentts.cpp/build -name "qwen-tts" -type f -perm +111 | head -1)
           [ -n "$exe" ] || { echo "qwen-tts not found"; exit 1; }
           cp "$exe" "$dst/"
-          find qwentts.cpp/build -name "ggml*.dylib" -exec cp {} "$dst/" \; 2>/dev/null || true
-          find qwentts.cpp/build -name "libggml*.so" -exec cp {} "$dst/" \; 2>/dev/null || true
+          # Copy ALL shared libraries from the build tree (ggml backends,
+          # llama/llama-common): qwen-tts links them dynamically.
+          # cp -a preserves the SONAME symlinks (libggml.so.0 -> ...).
+          find qwentts.cpp/build -name "*.dylib" -exec cp -a {} "$dst/" \; 2>/dev/null || true
+          # Fail loudly if no dylib was staged: a bare executable is broken.
+          ls "$dst"/*.dylib >/dev/null 2>&1 || { echo "no dylib staged for qwen-tts"; exit 1; }
           ls -la "$dst"
 
       - name: Clone llama.cpp-omni for voxcpm2-cli (macOS)
@@ -158,8 +162,11 @@ jobs:
           exe=$(find llama.cpp-omni/build -name "voxcpm2-cli" -type f -perm +111 | head -1)
           [ -n "$exe" ] || { echo "voxcpm2-cli not found"; exit 1; }
           cp "$exe" "$dst/"
-          find llama.cpp-omni/build -name "ggml*.dylib" -exec cp {} "$dst/" \; 2>/dev/null || true
-          find llama.cpp-omni/build -name "libggml*.so" -exec cp {} "$dst/" \; 2>/dev/null || true
+          # Copy ALL shared libraries from the build tree: voxcpm2-cli
+          # needs its own libllama/libllama-common (the omni fork ABI
+          # differs from stock llama.cpp), not just the ggml backends.
+          find llama.cpp-omni/build -name "*.dylib" -exec cp -a {} "$dst/" \; 2>/dev/null || true
+          ls "$dst"/*.dylib >/dev/null 2>&1 || { echo "no dylib staged for voxcpm2-cli"; exit 1; }
           ls -la "$dst"
 
       - name: Download official llama.cpp binaries (macOS arm64)
@@ -173,7 +180,7 @@ jobs:
           srv=$(find llama -name "llama-server" -type f | head -1)
           [ -n "$srv" ] || { echo "llama-server not found in archive"; find llama -maxdepth 3 | head -30; exit 1; }
           cp "$srv" "$dst/"
-          find llama \( -name "*.dylib" -o -name "*.so" \) -exec cp {} "$dst/" \; 2>/dev/null || true
+          find llama \( -name "*.dylib" -o -name "*.so" \) -exec cp -a {} "$dst/" \; 2>/dev/null || true
           printf "metal" > "$dst/variant.txt"
           chmod +x "$dst/llama-server"
           ls -la "$dst"
@@ -206,7 +213,11 @@ jobs:
           [ -n "$exe" ] || { echo "qwen-tts not found"; exit 1; }
           cp "$exe" "$dst/"
           chmod +x "$dst/qwen-tts" || true
-          find qwentts.cpp/build -name "libggml*.so*" -exec cp {} "$dst/" \; 2>/dev/null || true
+          # Copy ALL shared libraries from the build tree (ggml backends,
+          # llama/llama-common): qwen-tts links them dynamically.
+          # cp -a preserves the SONAME symlinks (libggml.so.0 -> ...).
+          find qwentts.cpp/build -name "*.so*" -exec cp -a {} "$dst/" \; 2>/dev/null || true
+          ls "$dst"/*.so >/dev/null 2>&1 || { echo "no shared library staged for qwen-tts"; exit 1; }
           ls -la "$dst"
 
       - name: Clone llama.cpp-omni for voxcpm2-cli (Linux)
@@ -228,7 +239,11 @@ jobs:
           [ -n "$exe" ] || { echo "voxcpm2-cli not found"; exit 1; }
           cp "$exe" "$dst/"
           chmod +x "$dst/voxcpm2-cli" || true
-          find llama.cpp-omni/build -name "libggml*.so*" -exec cp {} "$dst/" \; 2>/dev/null || true
+          # Copy ALL shared libraries from the build tree: voxcpm2-cli
+          # needs its own libllama/libllama-common (the omni fork ABI
+          # differs from stock llama.cpp), not just the ggml backends.
+          find llama.cpp-omni/build -name "*.so*" -exec cp -a {} "$dst/" \; 2>/dev/null || true
+          ls "$dst"/*.so >/dev/null 2>&1 || { echo "no shared library staged for voxcpm2-cli"; exit 1; }
           ls -la "$dst"
 
       - name: Download official llama.cpp binaries (Linux x64, Vulkan)
@@ -242,7 +257,7 @@ jobs:
           srv=$(find llama -name "llama-server" -type f | head -1)
           [ -n "$srv" ] || { echo "llama-server not found in archive"; find llama -maxdepth 3 | head -30; exit 1; }
           cp "$srv" "$dst/"
-          find llama -name "*.so*" -exec cp {} "$dst/" \; 2>/dev/null || true
+          find llama -name "*.so*" -exec cp -a {} "$dst/" \; 2>/dev/null || true
           printf "vulkan" > "$dst/variant.txt"
           chmod +x "$dst/llama-server"
           ls -la "$dst"
