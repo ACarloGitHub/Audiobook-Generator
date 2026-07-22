@@ -363,6 +363,12 @@ export function attachConfigurationListeners(render: () => void): void {
     for (const id of advIds) {
         const el = document.getElementById(id) as HTMLInputElement | null;
         if (el) {
+            // Re-apply the saved override: the HTML template renders the
+            // registry default, which would otherwise mask the user's value
+            // after every panel switch (and win over the override when the
+            // panel is open during generation).
+            const saved = state.engineParamOverrides[id];
+            if (saved !== undefined) el.value = saved;
             el.addEventListener("input", () => {
                 state.engineParamOverrides[id] = el.value;
             });

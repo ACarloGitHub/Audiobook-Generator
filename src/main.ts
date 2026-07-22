@@ -69,6 +69,10 @@ function snapshotFormValues(): Map<string, string | boolean> {
 
 function restoreFormValues(values: Map<string, string | boolean>): void {
   for (const [id, value] of values) {
+    // Advanced engine params are restored from state.engineParamOverrides
+    // by the Configuration panel itself; the snapshot may hold a stale
+    // registry default and must not overwrite the user's saved value.
+    if (state.engineParamOverrides[id] !== undefined) continue;
     const el = document.getElementById(id);
     if (!el) continue;
     if (el instanceof HTMLInputElement) {
