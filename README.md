@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <strong>Status: active development — v0.1.1</strong> — the project has migrated from Python + Gradio to Tauri + llama.cpp. Qwen3-TTS, OuteTTS and VoxCPM2 are working end-to-end. v0.1.1: fixes Qwen3-TTS runtime download, wizard roster, Models panel path display, uninstaller docs. See <a href="AudiobookGenerator-Wiki/todo.md">todo.md</a> for the roadmap.
+  <strong>Status: active development — v0.1.5</strong> — the project has migrated from Python + Gradio to Tauri + llama.cpp. Qwen3-TTS, OuteTTS and VoxCPM2 are working end-to-end on Windows, macOS and Linux. v0.1.5: GPU-only runtime guard, custom storage folder, TXT/Markdown/DOCX/JSON input, live VRAM bar, and `abg-cli` (CLI + MCP server for AI agents) bundled in the installer. See <a href="AudiobookGenerator-Wiki/todo.md">todo.md</a> for the roadmap.
 </p>
 
 <p align="center">
@@ -86,10 +86,10 @@ Then:
 
 # 2. Pick a TTS engine, download a model from the Models panel
 
-# 3. Drop in an EPUB, click Generate
+# 3. Drop in a book (EPUB, TXT, Markdown or DOCX), click Generate
 ```
 
-The installer bundles the app and all native engine binaries (`llama-server`, `qwen-tts`, `voxcpm2-cli`), so everything works offline out of the box. Only the TTS model weights (GGUF) are downloaded on demand from inside the app. There is no Python, no `pip install`, no virtual environment to manage.
+The installer bundles the app, all native engine binaries (`llama-server`, `qwen-tts`, `voxcpm2-cli`) and the `abg-cli` companion (command-line tool and MCP server — see the "AI Agents" panel in the app), so everything works offline out of the box. Only the TTS model weights (GGUF) are downloaded on demand from inside the app. There is no Python, no `pip install`, no virtual environment to manage.
 
 ---
 
