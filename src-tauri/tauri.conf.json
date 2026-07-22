@@ -3,6 +3,7 @@
   "productName": "Audiobook Generator",
   "version": "0.1.5",
   "identifier": "com.patata.audiobookgenerator",
+  "mainBinaryName": "audiobook-generator",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
