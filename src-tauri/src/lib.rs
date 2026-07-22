@@ -1,13 +1,13 @@
 use tauri::Manager;
 
-mod base_plugin;
-mod chunker;
+pub mod base_plugin;
+pub mod chunker;
 mod commands;
 pub mod config;
 mod epub;
 pub mod gpu_guard;
-mod input;
-mod merger;
+pub mod input;
+pub mod merger;
 mod model_manager;
 pub mod plugin_manager;
 pub mod plugins;
