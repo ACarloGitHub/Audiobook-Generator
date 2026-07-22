@@ -80,7 +80,9 @@ jobs:
             wget \
             libvulkan-dev \
             glslc \
-            glslang-tools
+            glslang-tools \
+            spirv-headers \
+            spirv-tools
 
       # ------------------------------------------------------------------
       # Sidecar assembly — Windows (full: qwen-tts, voxcpm2-cli,
