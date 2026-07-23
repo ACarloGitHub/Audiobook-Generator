@@ -39,13 +39,7 @@ fn init_paths() {
     config::paths::load_storage_override();
 }
 
-fn get_or_create_plugin(
-    engine_id: &str,
-    pm: &PluginManager,
-) -> Option<Arc<dyn audiobook_generator_lib::base_plugin::BaseTTSPlugin>> {
-    if let Some(p) = pm.get_plugin(engine_id) {
-        return Some(p);
-    }
+fn create_plugin(engine_id: &str) -> Option<Arc<dyn audiobook_generator_lib::base_plugin::BaseTTSPlugin>> {
     use audiobook_generator_lib::plugins;
     let qwen = plugins::qwen3tts::QwenPlugin::new(
         QwenPaths::from_app_data(&config::paths::storage_dir()),
@@ -157,6 +151,85 @@ fn merge_params(extra: &mut HashMap<String, String>, obj: &serde_json::Map<Strin
             .map(|s| s.to_string())
             .unwrap_or_else(|| v.to_string());
         extra.insert(k.clone(), val);
+    }
+}
+
+// ---------------------------------------------------------------------
+// Background job state (long-running generate / recover)
+// ---------------------------------------------------------------------
+
+/// State of a background job, persisted to `<app_data>/jobs/<job_id>.json`
+/// so an MCP client (LM Studio) can poll progress without blocking the
+/// server's request loop.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct JobState {
+    job_id: String,
+    tool: String,
+    status: String,
+    started_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    finished_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    progress: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    result: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    book_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    engine: Option<String>,
+}
+
+fn jobs_dir() -> PathBuf {
+    config::paths::app_data_dir().join("jobs")
+}
+
+fn generate_job_id(prefix: &str) -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    format!("{prefix}_{secs}")
+}
+
+fn job_file_path(job_id: &str) -> PathBuf {
+    jobs_dir().join(format!("{job_id}.json"))
+}
+
+fn save_job_state(state: &JobState) {
+    let _ = std::fs::create_dir_all(jobs_dir());
+    if let Ok(body) = serde_json::to_string(state) {
+        let _ = std::fs::write(job_file_path(&state.job_id), body);
+    }
+}
+
+fn load_job_state(job_id: &str) -> Option<JobState> {
+    let body = std::fs::read_to_string(job_file_path(job_id)).ok()?;
+    serde_json::from_str(&body).ok()
+}
+
+fn update_job_progress(job_id: &str, msg: &str) {
+    if let Some(mut state) = load_job_state(job_id) {
+        state.progress = Some(msg.to_string());
+        save_job_state(&state);
+    }
+}
+
+fn finish_job(job_id: &str, outcome: Result<String, String>) {
+    if let Some(mut state) = load_job_state(job_id) {
+        state.finished_at = Some(recovery::now_stamp());
+        match outcome {
+            Ok(msg) => {
+                state.status = "done".to_string();
+                state.result = Some(msg);
+            }
+            Err(err) => {
+                state.status = "failed".to_string();
+                state.error = Some(err);
+            }
+        }
+        save_job_state(&state);
     }
 }
 
@@ -293,7 +366,7 @@ struct SynthArgs {
     extra: HashMap<String, String>,
 }
 
-async fn run_synthesize(pm: &PluginManager, args: SynthArgs) -> Result<PathBuf> {
+async fn run_synthesize(args: SynthArgs) -> Result<PathBuf> {
     let text = match (args.text, args.text_file) {
         (Some(t), _) => t,
         (None, Some(f)) => std::fs::read_to_string(&f)
@@ -307,7 +380,7 @@ async fn run_synthesize(pm: &PluginManager, args: SynthArgs) -> Result<PathBuf> 
     // GPU-only rule: same guard as the desktop app.
     gpu_guard::ensure_gpu()?;
 
-    let plugin = get_or_create_plugin(&args.engine, pm)
+    let plugin = create_plugin(&args.engine)
         .ok_or_else(|| anyhow::anyhow!("engine '{}' is not installed or model files missing", args.engine))?;
     let handle = plugin.load_model(&args.engine).await?;
 
@@ -354,7 +427,7 @@ async fn run_synthesize(pm: &PluginManager, args: SynthArgs) -> Result<PathBuf> 
     Ok(args.out.canonicalize().unwrap_or(args.out))
 }
 
-async fn tool_synthesize(pm: &PluginManager, args: &serde_json::Value) -> Result<String> {
+async fn tool_synthesize(args: &serde_json::Value) -> Result<String> {
     let s = session_load();
     let engine = args
         .get("engine")
@@ -378,7 +451,6 @@ async fn tool_synthesize(pm: &PluginManager, args: &serde_json::Value) -> Result
             .or_else(|| fallback.clone())
     };
     let path = run_synthesize(
-        pm,
         SynthArgs {
             engine,
             text: args.get("text").and_then(|v| v.as_str()).map(String::from),
@@ -488,196 +560,318 @@ fn cleanup_cli(out: &Path) -> String {
     format!("\nIntermediate chunks deleted for '{book}' (no failed chunks).")
 }
 
-async fn tool_generate(pm: &PluginManager, args: &serde_json::Value) -> Result<String> {
-    let s = session_load();
-    let engine = args
-        .get("engine")
-        .and_then(|v| v.as_str())
-        .map(String::from)
-        .or(s.engine.clone())
-        .context("missing engine; configure one first (configure action=set)")?;
-    let book_path = args
-        .get("book_path")
-        .and_then(|v| v.as_str())
-        .map(String::from)
-        .or(s.book_path.clone())
-        .context("no book loaded; use the book tool first")?;
-    let title = s.book_title.clone().unwrap_or_else(|| "audiobook".to_string());
-    let output_dir = args
-        .get("output_dir")
-        .and_then(|v| v.as_str())
-        .map(PathBuf::from)
-        .or_else(|| s.output_dir.as_ref().map(PathBuf::from))
-        .unwrap_or_else(|| {
-            PathBuf::from(config::paths::output_base_dir())
-                .join(utils::sanitize_filename(&title))
-        });
-    let only: Option<Vec<String>> = args
-        .get("chapters")
-        .and_then(|v| v.as_array())
-        .map(|a| {
-            a.iter()
-                .filter_map(|t| t.as_str().map(String::from))
-                .collect()
-        });
-    let delete_chunks = args
-        .get("delete_intermediate_chunks")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let defaults = defaults_for(&engine);
-    let max_chars = args
-        .get("max_chars")
-        .and_then(|v| v.as_u64())
-        .map(|n| n as usize)
-        .unwrap_or(defaults.chunk_max_chars as usize);
-    let max_words = args
-        .get("max_words")
-        .and_then(|v| v.as_u64())
-        .map(|n| n as usize)
-        .unwrap_or(1000);
-    let mut extra = s.params.clone();
-    if let Some(obj) = args.get("extra").and_then(|v| v.as_object()) {
-        merge_params(&mut extra, obj);
-    }
-    inject_transcript(&engine, s.reference_transcript.as_deref(), &mut extra);
-    let voice = args
-        .get("voice")
-        .and_then(|v| v.as_str())
-        .map(String::from)
-        .or(s.voice.clone());
-    let language = args
-        .get("language")
-        .and_then(|v| v.as_str())
-        .map(String::from)
-        .or(s.language.clone());
-    let reference = args
-        .get("reference_audio")
-        .and_then(|v| v.as_str())
-        .map(String::from)
-        .or(s.reference_audio.clone());
+/// Run book generation in the background, updating job state as it goes.
+/// Run book generation in the background, updating job state as it goes.
+/// Spawned via `tokio::spawn` so the MCP request loop stays responsive.
+async fn run_generation(
+    engine: String,
+    epub: PathBuf,
+    out: PathBuf,
+    max_words: usize,
+    max_chars: usize,
+    ffmpeg: PathBuf,
+    voice: Option<String>,
+    language: Option<String>,
+    reference: Option<String>,
+    only: Option<Vec<String>>,
+    extra: HashMap<String, String>,
+    delete_chunks: bool,
+    job_id: String,
+) -> Result<String> {
+    let job_id_cb = job_id.clone();
+    let cb: Box<dyn FnMut(&str) + Send> =
+        Box::new(move |msg: &str| update_job_progress(&job_id_cb, msg));
 
-    // GPU-only rule: same guard as the desktop app.
-    gpu_guard::ensure_gpu()?;
+    let out_msg = out.clone();
 
-    get_or_create_plugin(&engine, pm)
-        .ok_or_else(|| anyhow::anyhow!("engine '{engine}' is not installed or model files missing"))?;
-    let ffmpeg = merger::find_ffmpeg()?;
-    std::fs::create_dir_all(&output_dir)?;
-
-    let epub = PathBuf::from(&book_path);
-    let out = output_dir.clone();
-
-    // Progress goes to stderr so MCP stdout stays protocol-clean.
-    let cb: Box<dyn FnMut(&str) + Send> = Box::new(|msg: &str| eprintln!("[generate] {msg}"));
-
-    let result: Result<usize> = if engine.starts_with("Qwen3-TTS") {
+    let n: usize = if engine.starts_with("Qwen3-TTS") {
         let paths = QwenPaths::from_app_data(&config::paths::storage_dir());
         let engine_c = engine.clone();
         tokio::task::spawn_blocking(move || {
             let q = audiobook_generator_lib::plugins::qwen3tts::QwenPlugin::new(paths, &engine_c);
             audiobook_generator_lib::plugins::qwen3tts::synthesize_book(
-                &q,
-                &epub,
-                &out,
-                max_words,
-                max_chars,
-                &ffmpeg,
-                voice.as_deref(),
-                language.as_deref(),
-                reference.as_deref(),
-                only.as_deref(),
-                &extra,
-                Some(cb),
+                &q, &epub, &out, max_words, max_chars, &ffmpeg,
+                voice.as_deref(), language.as_deref(), reference.as_deref(),
+                only.as_deref(), &extra, Some(cb),
             )
         })
         .await
-        .context("synthesis task panicked")?
+        .context("synthesis task panicked")??
     } else if engine.starts_with("VoxCPM2") {
         let paths = VoxCpm2Paths::from_app_data(&config::paths::storage_dir());
         let engine_c = engine.clone();
         tokio::task::spawn_blocking(move || {
             let p = audiobook_generator_lib::plugins::voxcpm2::VoxCpm2Plugin::new(paths, &engine_c);
             audiobook_generator_lib::plugins::voxcpm2::synthesize_book(
-                &p,
-                &epub,
-                &out,
-                max_words,
-                max_chars,
-                &ffmpeg,
-                reference.as_deref(),
-                only.as_deref(),
-                &extra,
-                Some(cb),
+                &p, &epub, &out, max_words, max_chars, &ffmpeg,
+                reference.as_deref(), only.as_deref(), &extra, Some(cb),
             )
         })
         .await
-        .context("synthesis task panicked")?
+        .context("synthesis task panicked")??
     } else if engine.starts_with("OuteTTS") {
         let models_dir = config::paths::models_dir().join("outetts");
         let engine_c = engine.clone();
         tokio::task::spawn_blocking(move || {
             let p = audiobook_generator_lib::plugins::outetts::OuteTTSPlugin::new(models_dir, &engine_c);
             audiobook_generator_lib::plugins::outetts::synthesize_book(
-                &p,
-                &epub,
-                &out,
-                max_words,
-                max_chars,
-                &ffmpeg,
-                only.as_deref(),
-                &extra,
-                Some(cb),
+                &p, &epub, &out, max_words, max_chars, &ffmpeg,
+                only.as_deref(), &extra, Some(cb),
             )
         })
         .await
-        .context("synthesis task panicked")?
+        .context("synthesis task panicked")??
     } else {
         bail!("engine '{engine}' does not support book generation");
     };
 
-    match result {
-        Ok(n) => {
-            let mut msg = format!(
-                "Done: {n} chunks synthesized into {}",
-                output_dir.display()
-            );
-            // Failed chunks are kept in failed_chunks.json even on Ok:
-            // report them so the agent can run the recover tool.
-            if let Ok(state) = recovery::RecoveryState::load(&output_dir) {
-                if !state.failed.is_empty() {
-                    let mut ch: Vec<String> = state.failed.keys().cloned().collect();
-                    ch.sort();
-                    msg.push_str(&format!(
-                        "\nWARNING: failed chunks in chapters: {}. Use recover action=retry with book_dir '{}' to fix them, then action=merge.",
-                        ch.join(", "),
-                        output_dir.display()
-                    ));
-                }
-            }
-            if delete_chunks {
-                msg.push_str(&cleanup_cli(&output_dir));
-            }
-            Ok(msg)
+    let mut msg = format!("Done: {n} chunks synthesized into {}", out_msg.display());
+    if let Ok(state) = recovery::RecoveryState::load(&out_msg) {
+        if !state.failed.is_empty() {
+            let mut ch: Vec<String> = state.failed.keys().cloned().collect();
+            ch.sort();
+            msg.push_str(&format!(
+                "\nWARNING: failed chunks in chapters: {}. Use recover action=retry with book_dir '{}' to fix them, then action=merge.",
+                ch.join(", "),
+                out_msg.display()
+            ));
         }
-        Err(e) => {
-            let mut msg = format!("generation failed: {e:#}");
-            if let Ok(state) = recovery::RecoveryState::load(&output_dir) {
-                if !state.failed.is_empty() {
-                    let mut ch: Vec<String> = state.failed.keys().cloned().collect();
-                    ch.sort();
-                    msg.push_str(&format!(
-                        "\nFailed chapters: {}. Use recover action=retry with book_dir '{}' to resume.",
-                        ch.join(", "),
-                        output_dir.display()
-                    ));
-                }
-            }
-            bail!(msg)
+    }
+    if delete_chunks {
+        msg.push_str(&cleanup_cli(&out_msg));
+    }
+    Ok(msg)
+}
+
+async fn tool_generate(args: &serde_json::Value) -> Result<String> {
+    let action = args
+        .get("action")
+        .and_then(|v| v.as_str())
+        .unwrap_or("start");
+    match action {
+        "status" => {
+            let job_id = args
+                .get("job_id")
+                .and_then(|v| v.as_str())
+                .context("missing 'job_id'")?;
+            let state = load_job_state(job_id)
+                .with_context(|| format!("job '{job_id}' not found"))?;
+            Ok(serde_json::to_string_pretty(&state)?)
         }
+        "start" => {
+            let s = session_load();
+            let engine = args
+                .get("engine")
+                .and_then(|v| v.as_str())
+                .map(String::from)
+                .or(s.engine.clone())
+                .context("missing engine; configure one first (configure action=set)")?;
+            let book_path = args
+                .get("book_path")
+                .and_then(|v| v.as_str())
+                .map(String::from)
+                .or(s.book_path.clone())
+                .context("no book loaded; use the book tool first")?;
+            let title =
+                s.book_title.clone().unwrap_or_else(|| "audiobook".to_string());
+            let output_dir = args
+                .get("output_dir")
+                .and_then(|v| v.as_str())
+                .map(PathBuf::from)
+                .or_else(|| s.output_dir.as_ref().map(PathBuf::from))
+                .unwrap_or_else(|| {
+                    PathBuf::from(config::paths::output_base_dir())
+                        .join(utils::sanitize_filename(&title))
+                });
+            let only: Option<Vec<String>> = args
+                .get("chapters")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|t| t.as_str().map(String::from))
+                        .collect()
+                });
+            let delete_chunks = args
+                .get("delete_intermediate_chunks")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let defaults = defaults_for(&engine);
+            let max_chars = args
+                .get("max_chars")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize)
+                .unwrap_or(defaults.chunk_max_chars as usize);
+            let max_words = args
+                .get("max_words")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize)
+                .unwrap_or(1000);
+            let mut extra = s.params.clone();
+            if let Some(obj) = args.get("extra").and_then(|v| v.as_object()) {
+                merge_params(&mut extra, obj);
+            }
+            inject_transcript(&engine, s.reference_transcript.as_deref(), &mut extra);
+            let voice = args
+                .get("voice")
+                .and_then(|v| v.as_str())
+                .map(String::from)
+                .or(s.voice.clone());
+            let language = args
+                .get("language")
+                .and_then(|v| v.as_str())
+                .map(String::from)
+                .or(s.language.clone());
+            let reference = args
+                .get("reference_audio")
+                .and_then(|v| v.as_str())
+                .map(String::from)
+                .or(s.reference_audio.clone());
+
+            // Validate before spawning the background task.
+            gpu_guard::ensure_gpu()?;
+            create_plugin(&engine)
+                .ok_or_else(|| anyhow::anyhow!("engine '{engine}' is not installed or model files missing"))?;
+            let ffmpeg = merger::find_ffmpeg()?;
+            std::fs::create_dir_all(&output_dir)?;
+
+            let job_id = generate_job_id("gen");
+            let job = JobState {
+                job_id: job_id.clone(),
+                tool: "generate".to_string(),
+                status: "running".to_string(),
+                started_at: recovery::now_stamp(),
+                finished_at: None,
+                progress: Some("Starting…".to_string()),
+                result: None,
+                error: None,
+                book_dir: Some(output_dir.to_string_lossy().to_string()),
+                engine: Some(engine.clone()),
+            };
+            save_job_state(&job);
+
+            let job_id_resp = job_id.clone();
+            let output_dir_resp = output_dir.clone();
+            tokio::spawn(async move {
+                let result = run_generation(
+                    engine,
+                    PathBuf::from(&book_path),
+                    output_dir.clone(),
+                    max_words,
+                    max_chars,
+                    ffmpeg,
+                    voice,
+                    language,
+                    reference,
+                    only,
+                    extra,
+                    delete_chunks,
+                    job_id.clone(),
+                )
+                .await;
+                finish_job(&job_id, result.map_err(|e| format!("{e:#}")));
+            });
+
+            Ok(format!(
+                "Generation started (job_id: {job_id_resp}). Output: {}. Poll with: generate action=status, job_id=\"{job_id_resp}\".",
+                output_dir_resp.display()
+            ))
+        }
+        other => bail!("unknown generate action '{other}'"),
     }
 }
 
-async fn tool_recover(pm: &PluginManager, args: &serde_json::Value) -> Result<String> {
+/// Run chunk retry in the background, updating job state as it goes.
+async fn run_retry(book_dir: PathBuf, chapter_filter: Option<String>, job_id: String) {
+    let result: Result<String> = async {
+        let mut state = recovery::RecoveryState::load(&book_dir)
+            .with_context(|| format!("loading recovery state from {}", book_dir.display()))?;
+        if state.failed.is_empty() {
+            bail!("nothing to recover in {}", book_dir.display());
+        }
+        let s = session_load();
+        let engine = state
+            .meta
+            .engine_id
+            .clone()
+            .or(s.engine.clone())
+            .context("no engine recorded in the recovery file and none configured")?;
+        let mut extra = if state.meta.extra.is_empty() {
+            s.params.clone()
+        } else {
+            state.meta.extra.clone()
+        };
+        inject_transcript(&engine, s.reference_transcript.as_deref(), &mut extra);
+        let reference = state
+            .meta
+            .reference_audio
+            .clone()
+            .or(s.reference_audio.clone())
+            .filter(|x| !x.is_empty());
+        let voice = state.meta.voice.clone().or(s.voice.clone());
+        let language = state.meta.language.clone().or(s.language.clone());
+
+        gpu_guard::ensure_gpu()?;
+        let plugin = create_plugin(&engine)
+            .ok_or_else(|| anyhow::anyhow!("engine '{engine}' is not installed or model files missing"))?;
+        let handle = plugin.load_model(&engine).await?;
+
+        let chapters: Vec<String> = match &chapter_filter {
+            Some(c) => vec![c.clone()],
+            None => {
+                let mut v: Vec<String> = state.failed.keys().cloned().collect();
+                v.sort();
+                v
+            }
+        };
+        let mut ok = 0usize;
+        let mut failed_again = 0usize;
+        for chapter in chapters {
+            let Some(fails) = state.failed.get(&chapter).cloned() else {
+                continue;
+            };
+            let chapter_dir = book_dir.join(utils::sanitize_filename(&chapter));
+            std::fs::create_dir_all(&chapter_dir)?;
+            let total = fails.len();
+            for (i, f) in fails.into_iter().enumerate() {
+                let wav = chapter_dir.join(format!("chunk_{:04}.wav", f.chunk_index + 1));
+                let request = SynthesizeRequest {
+                    text: f.text.clone(),
+                    output_path: wav.to_string_lossy().to_string(),
+                    reference_audio: reference.clone(),
+                    language: language.clone(),
+                    voice: voice.clone(),
+                    extra: extra.clone(),
+                };
+                match plugin.synthesize(&handle, &request).await {
+                    Ok(()) => {
+                        state.remove_failed(&chapter, f.chunk_index);
+                        if !state.is_done(&chapter, f.chunk_index) {
+                            state.mark_done(&chapter, f.chunk_index);
+                        }
+                        ok += 1;
+                    }
+                    Err(e) => {
+                        state.update_failed(&chapter, f.chunk_index, &f.text, &format!("{e:#}"));
+                        failed_again += 1;
+                    }
+                }
+                state.save(&book_dir)?;
+                update_job_progress(
+                    &job_id,
+                    &format!("Chapter '{chapter}': retrying chunk {} of {total}", i + 1),
+                );
+            }
+        }
+        let _ = plugin.unload(&handle).await;
+        Ok(format!(
+            "retry done: {ok} chunk(s) recovered, {failed_again} still failing. When a chapter has no failures left, merge it with recover action=merge."
+        ))
+    }
+    .await;
+    finish_job(&job_id, result.map_err(|e| format!("{e:#}")));
+}
+
+async fn tool_recover(args: &serde_json::Value) -> Result<String> {
     let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("list");
     match action {
         "list" => {
@@ -730,84 +924,32 @@ async fn tool_recover(pm: &PluginManager, args: &serde_json::Value) -> Result<St
                 .get("chapter")
                 .and_then(|v| v.as_str())
                 .map(String::from);
-            let mut state = recovery::RecoveryState::load(&book_dir)?;
+
+            // Validate before spawning.
+            let state = recovery::RecoveryState::load(&book_dir)?;
             if state.failed.is_empty() {
                 bail!("nothing to recover in {}", book_dir.display());
             }
-            // Parameters: recovery metadata first (recorded at generation
-            // time), session as fallback.
-            let s = session_load();
-            let engine = state
-                .meta
-                .engine_id
-                .clone()
-                .or(s.engine.clone())
-                .context("no engine recorded in the recovery file and none configured")?;
-            let mut extra = if state.meta.extra.is_empty() {
-                s.params.clone()
-            } else {
-                state.meta.extra.clone()
-            };
-            inject_transcript(&engine, s.reference_transcript.as_deref(), &mut extra);
-            let reference = state
-                .meta
-                .reference_audio
-                .clone()
-                .or(s.reference_audio.clone())
-                .filter(|x| !x.is_empty());
-            let voice = state.meta.voice.clone().or(s.voice.clone());
-            let language = state.meta.language.clone().or(s.language.clone());
 
-            gpu_guard::ensure_gpu()?;
-            let plugin = get_or_create_plugin(&engine, pm)
-                .ok_or_else(|| anyhow::anyhow!("engine '{engine}' is not installed or model files missing"))?;
-            let handle = plugin.load_model(&engine).await?;
-
-            let chapters: Vec<String> = match &chapter_filter {
-                Some(c) => vec![c.clone()],
-                None => {
-                    let mut v: Vec<String> = state.failed.keys().cloned().collect();
-                    v.sort();
-                    v
-                }
+            let job_id = generate_job_id("rec");
+            let job = JobState {
+                job_id: job_id.clone(),
+                tool: "recover".to_string(),
+                status: "running".to_string(),
+                started_at: recovery::now_stamp(),
+                finished_at: None,
+                progress: Some("Loading model…".to_string()),
+                result: None,
+                error: None,
+                book_dir: Some(book_dir.to_string_lossy().to_string()),
+                engine: state.meta.engine_id.clone(),
             };
-            let mut ok = 0usize;
-            let mut failed_again = 0usize;
-            for chapter in chapters {
-                let Some(fails) = state.failed.get(&chapter).cloned() else {
-                    continue;
-                };
-                let chapter_dir = book_dir.join(utils::sanitize_filename(&chapter));
-                std::fs::create_dir_all(&chapter_dir)?;
-                for f in fails {
-                    let wav = chapter_dir.join(format!("chunk_{:04}.wav", f.chunk_index + 1));
-                    let request = SynthesizeRequest {
-                        text: f.text.clone(),
-                        output_path: wav.to_string_lossy().to_string(),
-                        reference_audio: reference.clone(),
-                        language: language.clone(),
-                        voice: voice.clone(),
-                        extra: extra.clone(),
-                    };
-                    match plugin.synthesize(&handle, &request).await {
-                        Ok(()) => {
-                            state.remove_failed(&chapter, f.chunk_index);
-                            if !state.is_done(&chapter, f.chunk_index) {
-                                state.mark_done(&chapter, f.chunk_index);
-                            }
-                            ok += 1;
-                        }
-                        Err(e) => {
-                            state.update_failed(&chapter, f.chunk_index, &f.text, &format!("{e:#}"));
-                            failed_again += 1;
-                        }
-                    }
-                    state.save(&book_dir)?;
-                }
-            }
-            let _ = plugin.unload(&handle).await;
+            save_job_state(&job);
+
+            tokio::spawn(run_retry(book_dir, chapter_filter, job_id.clone()));
+
             Ok(format!(
-                "retry done: {ok} chunk(s) recovered, {failed_again} still failing. When a chapter has no failures left, merge it with recover action=merge."
+                "Retry started (job_id: {job_id}). Poll with: recover action=status, job_id=\"{job_id}\"."
             ))
         }
         "merge" => {
@@ -837,6 +979,15 @@ async fn tool_recover(pm: &PluginManager, args: &serde_json::Value) -> Result<St
             }
             Ok(format!("merged {} chunk(s) into {}", wavs.len(), mp3.display()))
         }
+        "status" => {
+            let job_id = args
+                .get("job_id")
+                .and_then(|v| v.as_str())
+                .context("missing 'job_id'")?;
+            let state = load_job_state(job_id)
+                .with_context(|| format!("job '{job_id}' not found"))?;
+            Ok(serde_json::to_string_pretty(&state)?)
+        }
         other => bail!("unknown recover action '{other}'"),
     }
 }
@@ -845,10 +996,10 @@ async fn dispatch_tool(pm: &PluginManager, name: &str, args: &serde_json::Value)
     match name {
         "get_status" => Ok(serde_json::to_string_pretty(&status_json(pm))?),
         "configure" => tool_configure(pm, args),
-        "synthesize" => tool_synthesize(pm, args).await,
+        "synthesize" => tool_synthesize(args).await,
         "book" => tool_book(args),
-        "generate" => tool_generate(pm, args).await,
-        "recover" => tool_recover(pm, args).await,
+        "generate" => tool_generate(args).await,
+        "recover" => tool_recover(args).await,
         other => bail!("unknown tool '{other}'"),
     }
 }
@@ -946,11 +1097,12 @@ fn mcp_tools() -> serde_json::Value {
         },
         {
             "name": "generate",
-            "description": "Generate the audiobook with the configured session. Requires a loaded book and a configured engine. Actions: start.",
+            "description": "Generate the audiobook with the configured session. Requires a loaded book and a configured engine. Action 'start' launches the generation in the background and returns immediately with a job_id; poll with action 'status' to track progress, completion, or errors.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "action": { "type": "string", "enum": ["start"] },
+                    "action": { "type": "string", "enum": ["start", "status"] },
+                    "job_id": { "type": "string", "description": "Job identifier returned by start (required for status)" },
                     "output_dir": { "type": "string", "description": "Output folder (defaults to the configured one, or the app output folder)" },
                     "chapters": { "type": "array", "items": { "type": "string" }, "description": "Chapter titles to convert (omit for the whole book)" },
                     "max_chars": { "type": "integer", "description": "Chunk size in characters (defaults to the engine limit)" },
@@ -961,11 +1113,12 @@ fn mcp_tools() -> serde_json::Value {
         },
         {
             "name": "recover",
-            "description": "Repair interrupted generations. Actions: list (root_dir) shows books with failed chunks; retry (book_dir, optional chapter) re-synthesizes failed chunks; merge (book_dir, chapter) rebuilds the chapter MP3.",
+            "description": "Repair interrupted generations. Actions: list (root_dir) shows books with failed chunks; retry (book_dir, optional chapter) re-synthesizes failed chunks in the background and returns a job_id; status (job_id) checks retry progress; merge (book_dir, chapter) rebuilds the chapter MP3.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "action": { "type": "string", "enum": ["list", "retry", "merge"] },
+                    "action": { "type": "string", "enum": ["list", "retry", "merge", "status"] },
+                    "job_id": { "type": "string", "description": "Job identifier returned by retry (required for status)" },
                     "root_dir": { "type": "string", "description": "Folder to scan for interrupted books (list)" },
                     "book_dir": { "type": "string", "description": "Output folder of the book (retry, merge)" },
                     "chapter": { "type": "string", "description": "Chapter title (optional for retry, required for merge)" }
@@ -1124,7 +1277,7 @@ async fn main() -> Result<()> {
             if s.out.as_os_str().is_empty() {
                 bail!("--out is required");
             }
-            let path = run_synthesize(&pm, s).await?;
+            let path = run_synthesize(s).await?;
             println!("{}", serde_json::json!({ "output": path.to_string_lossy() }));
             Ok(())
         }
