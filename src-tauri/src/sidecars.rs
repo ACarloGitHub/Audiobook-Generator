@@ -35,9 +35,14 @@ pub fn sidecar_dir_candidates(name: &str) -> Vec<PathBuf> {
         if let Some(exe_dir) = exe.parent() {
             // Windows (NSIS/MSI) and Linux: resources sit next to the binary.
             dirs.push(exe_dir.join("resources").join(name));
-            // macOS: <App>.app/Contents/MacOS/<exe> → Contents/Resources.
-            if let Some(contents) = exe_dir.parent() {
-                dirs.push(contents.join("Resources").join("resources").join(name));
+            // abg-cli ships one level deeper, in <install>/resources/cli/:
+            // the engine resources are one level up from the executable.
+            if let Some(up) = exe_dir.parent() {
+                dirs.push(up.join(name));
+                // macOS: <App>.app/Contents/MacOS/<exe> → Contents/Resources.
+                if let Some(contents) = up.parent() {
+                    dirs.push(contents.join("Resources").join("resources").join(name));
+                }
             }
         }
     }
