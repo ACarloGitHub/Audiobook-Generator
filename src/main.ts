@@ -67,12 +67,21 @@ function snapshotFormValues(): Map<string, string | boolean> {
   return values;
 }
 
+// Fields whose value always comes from `state.*` (rendered by the panel)
+// must NOT be restored from the DOM snapshot: a programmatic state update
+// (e.g. auto-filling the audiobook title on EPUB load) would be overwritten
+// by the stale pre-render DOM value.
+const STATE_DRIVEN_FIELDS: Set<string> = new Set(["audiobook-title"]);
+
 function restoreFormValues(values: Map<string, string | boolean>): void {
   for (const [id, value] of values) {
     // Advanced engine params are restored from state.engineParamOverrides
     // by the Configuration panel itself; the snapshot may hold a stale
     // registry default and must not overwrite the user's saved value.
     if (state.engineParamOverrides[id] !== undefined) continue;
+    // Fields rendered from state.* (title, etc.) are already correct in the
+    // freshly rendered HTML; restoring the old snapshot would wipe them.
+    if (STATE_DRIVEN_FIELDS.has(id)) continue;
     const el = document.getElementById(id);
     if (!el) continue;
     if (el instanceof HTMLInputElement) {
