@@ -184,10 +184,10 @@ impl PluginManager {
             let voices = if entry.name.contains("CustomVoice") {
                 qwen_voices
                     .iter()
-                    .map(|(id, desc)| VoiceDescriptor {
+                    .map(|(id, desc, native)| VoiceDescriptor {
                         id: id.to_string(),
                         display_name: desc.to_string(),
-                        language: "Auto".to_string(),
+                        language: native.to_string(),
                     })
                     .collect()
             } else {
@@ -528,10 +528,10 @@ pub fn defaults_for(engine_id: &str) -> EngineDefaults {
     let qwen_voices = qwen_preset_voices();
     let voices: Vec<VoiceDescriptor> = qwen_voices
         .iter()
-        .map(|(id, desc)| VoiceDescriptor {
+        .map(|(id, desc, native)| VoiceDescriptor {
             id: id.to_string(),
             display_name: desc.to_string(),
-            language: "Auto".to_string(),
+            language: native.to_string(),
         })
         .collect();
 
@@ -574,19 +574,32 @@ fn parse_variant_name(name: &str) -> (String, Option<String>) {
     }
 }
 
-fn qwen_preset_voices() -> Vec<(&'static str, &'static str)> {
-    // Source: backup configuration_tab.py:98
-    vec![
-        ("Vivian", "Vivian"),
-        ("Serena", "Serena"),
-        ("Uncle_Fu", "Uncle Fu"),
-        ("Dylan", "Dylan"),
-        ("Eric", "Eric"),
-        ("Ryan", "Ryan"),
-        ("Aiden", "Aiden"),
-        ("Ono_Anna", "Ono Anna"),
-        ("Sohee", "Sohee"),
-    ]
+fn qwen_preset_voices() -> Vec<(String, String, String)> {
+    // Voice names and their OFFICIAL native languages live in
+    // engine_registry.json (mode_specific_params.customvoice.
+    // speaker_native_languages). Nothing model-specific is hardcoded here.
+    if let Ok(raw) = serde_json::from_str::<serde_json::Value>(ENGINE_REGISTRY_JSON) {
+        if let Some(map) = raw
+            .pointer("/engines/qwen3tts/mode_specific_params/customvoice/speaker_native_languages")
+            .and_then(|m| m.as_object())
+        {
+            let voices: Vec<(String, String, String)> = map
+                .iter()
+                .map(|(id, val)| {
+                    let native = val.as_str().unwrap_or("unknown").to_string();
+                    (id.clone(), id.replace('_', " "), native)
+                })
+                .collect();
+            if !voices.is_empty() {
+                return voices;
+            }
+        }
+    }
+    // Fallback when the registry entry is missing: names only.
+    ["Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric", "Ryan", "Aiden", "Ono_Anna", "Sohee"]
+        .iter()
+        .map(|s| (s.to_string(), s.replace('_', " "), "unknown".to_string()))
+        .collect()
 }
 
 #[derive(Debug, Clone)]

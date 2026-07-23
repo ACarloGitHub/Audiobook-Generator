@@ -56,6 +56,34 @@ function genDefault(key: string): string {
     return String(p.default);
 }
 
+// Slider + number field kept in sync, with min/max and a plain-language
+// description from engine_registry.json (backup configuration_tab.py style).
+// The number input keeps the canonical id so collectParamExtras and the
+// override persistence keep working unchanged.
+function paramSlider(id: string, label: string, regKey: string): string {
+    const p = state.engineGeneration[regKey];
+    const min = p?.min ?? 0;
+    const max = p?.max ?? 100;
+    const step = p?.step ?? 1;
+    const value = state.engineParamOverrides[id] ?? genDefault(regKey);
+    const desc = p?.description
+        ? `<p class="param-desc">${escapeHtml(p.description)}</p>`
+        : "";
+    return `
+      <div class="field-row param-row">
+        <div class="param-head">
+          <label class="field-label">${label}</label>
+          <span class="param-range">min ${min} · max ${max}</span>
+        </div>
+        <div class="param-controls">
+          <input type="range" class="param-slider" id="${id}-range" min="${min}" max="${max}" step="${step}" value="${value}" />
+          <input type="number" class="num-input param-num" id="${id}" min="${min}" max="${max}" step="${step}" value="${value}" />
+        </div>
+        ${desc}
+      </div>
+    `;
+}
+
 function renderQwenControls(): string {
     const mode = qwenModeFromEngineId(state.selectedEngineId);
     const modeBadge = `<p class="field-help">Mode: <strong>${mode}</strong></p>`;
@@ -67,14 +95,20 @@ function renderQwenControls(): string {
         .join("");
 
     if (mode === "Custom Voice") {
-        const voices = ["Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric", "Ryan", "Aiden", "Ono_Anna", "Sohee"];
+        // Voices (with official native language) come from the registry via
+        // engine_defaults; fall back to bare names if none arrived yet.
+        const voices = state.engineVoices.length > 0
+            ? state.engineVoices.map((v) => ({ id: v.id, label: `${v.display_name} — native: ${v.language}` }))
+            : ["Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric", "Ryan", "Aiden", "Ono_Anna", "Sohee"]
+                .map((v) => ({ id: v, label: v }));
         const voiceOptions = voices
-            .map((v) => `<option value="${v}" ${state.selectedVoiceId === v ? "selected" : ""}>${v}</option>`)
+            .map((v) => `<option value="${v.id}" ${state.selectedVoiceId === v.id ? "selected" : ""}>${escapeHtml(v.label)}</option>`)
             .join("");
         modeControls = `
           <div class="field-row">
             <label class="field-label">Preset Voice</label>
             <select class="select" id="qwen-speaker-select">${voiceOptions}</select>
+            <p class="param-desc">Official notice: each preset voice gives its best quality in its native language. All voices can speak Italian, but accent and quality may degrade.</p>
           </div>
           <div class="field-row">
             <label class="field-label">Language</label>
@@ -82,7 +116,7 @@ function renderQwenControls(): string {
           </div>
           <div class="field-row">
             <label class="field-label">Additional Instructions (optional)</label>
-            <input type="text" class="text-input" id="qwen-instruct-input" placeholder="Speak slowly. With excitement. In a calm tone." value="${escapeHtml(state.qwenInstruct || "")}" />
+            <input type="text" class="text-input" id="qwen-instruct-input" placeholder="Read calmly and evenly, like a professional audiobook narrator" value="${escapeHtml(state.qwenInstruct || "")}" />
           </div>
         `;
     } else if (mode === "Voice Clone") {
@@ -121,26 +155,11 @@ function renderQwenControls(): string {
       ${modeControls}
       <details class="accordion">
         <summary>Advanced Settings</summary>
-        <div class="field-row">
-          <label class="field-label">Temperature</label>
-          <input type="number" class="num-input" id="qwen-temp" min="0" max="2" step="0.05" value="${genDefault('temp')}" />
-        </div>
-        <div class="field-row">
-          <label class="field-label">Top-K</label>
-          <input type="number" class="num-input" id="qwen-top-k" min="0" max="100" step="1" value="${genDefault('top_k')}" />
-        </div>
-        <div class="field-row">
-          <label class="field-label">Top-P</label>
-          <input type="number" class="num-input" id="qwen-top-p" min="0" max="1" step="0.05" value="${genDefault('top_p')}" />
-        </div>
-        <div class="field-row">
-          <label class="field-label">Repetition Penalty</label>
-          <input type="number" class="num-input" id="qwen-rep-pen" min="1" max="2" step="0.01" value="${genDefault('rep_pen')}" />
-        </div>
-        <div class="field-row">
-          <label class="field-label">Max New Tokens</label>
-          <input type="number" class="num-input" id="qwen-max-new" min="256" max="16384" step="256" value="${genDefault('max_new')}" />
-        </div>
+        ${paramSlider("qwen-temp", "Temperature", "temp")}
+        ${paramSlider("qwen-top-k", "Top-K", "top_k")}
+        ${paramSlider("qwen-top-p", "Top-P", "top_p")}
+        ${paramSlider("qwen-rep-pen", "Repetition Penalty", "rep_pen")}
+        ${paramSlider("qwen-max-new", "Max New Tokens", "max_new")}
         <div class="field-row">
           <label class="field-label">Seed (empty = random)</label>
           <input type="number" class="num-input" id="qwen-seed" placeholder="random" />
@@ -173,30 +192,12 @@ function renderOuteControls(): string {
       </div>
       <details class="accordion">
         <summary>Advanced Settings</summary>
-        <div class="field-row">
-          <label class="field-label">Temperature</label>
-          <input type="number" class="num-input" id="oute-temperature" min="0" max="2" step="0.05" value="${genDefault('temperature')}" />
-        </div>
-        <div class="field-row">
-          <label class="field-label">Top-K</label>
-          <input type="number" class="num-input" id="oute-top-k" min="1" max="100" step="1" value="${genDefault('top_k')}" />
-        </div>
-        <div class="field-row">
-          <label class="field-label">Top-P</label>
-          <input type="number" class="num-input" id="oute-top-p" min="0" max="1" step="0.05" value="${genDefault('top_p')}" />
-        </div>
-        <div class="field-row">
-          <label class="field-label">Min-P</label>
-          <input type="number" class="num-input" id="oute-min-p" min="0" max="1" step="0.01" value="${genDefault('min_p')}" />
-        </div>
-        <div class="field-row">
-          <label class="field-label">Repetition Penalty</label>
-          <input type="number" class="num-input" id="oute-rep-pen" min="1" max="2" step="0.01" value="${genDefault('repetition_penalty')}" />
-        </div>
-        <div class="field-row">
-          <label class="field-label">Max Tokens</label>
-          <input type="number" class="num-input" id="oute-max-tokens" min="256" max="8192" step="256" value="${genDefault('max_tokens')}" />
-        </div>
+        ${paramSlider("oute-temperature", "Temperature", "temperature")}
+        ${paramSlider("oute-top-k", "Top-K", "top_k")}
+        ${paramSlider("oute-top-p", "Top-P", "top_p")}
+        ${paramSlider("oute-min-p", "Min-P", "min_p")}
+        ${paramSlider("oute-rep-pen", "Repetition Penalty", "repetition_penalty")}
+        ${paramSlider("oute-max-tokens", "Max Tokens", "max_tokens")}
       </details>
     `;
 }
@@ -248,22 +249,10 @@ function renderVoxControls(): string {
       ${cloneControls}
       <details class="accordion">
         <summary>Advanced Settings</summary>
-        <div class="field-row">
-          <label class="field-label">CFG Guidance Scale</label>
-          <input type="number" class="num-input" id="vox-cfg" min="1" max="5" step="0.1" value="${genDefault('cfg')}" />
-        </div>
-        <div class="field-row">
-          <label class="field-label">CFM Timesteps</label>
-          <input type="number" class="num-input" id="vox-timesteps" min="4" max="30" step="1" value="${genDefault('timesteps')}" />
-        </div>
-        <div class="field-row">
-          <label class="field-label">Temperature</label>
-          <input type="number" class="num-input" id="vox-temperature" min="0" max="2" step="0.05" value="${genDefault('temperature')}" />
-        </div>
-        <div class="field-row">
-          <label class="field-label">Max Decode Steps</label>
-          <input type="number" class="num-input" id="vox-steps" min="50" max="400" step="10" value="${genDefault('steps')}" />
-        </div>
+        ${paramSlider("vox-cfg", "CFG Guidance Scale", "cfg")}
+        ${paramSlider("vox-timesteps", "CFM Timesteps", "timesteps")}
+        ${paramSlider("vox-temperature", "Temperature", "temperature")}
+        ${paramSlider("vox-steps", "Max Decode Steps", "steps")}
         <div class="field-row">
           <label class="field-label">Seed (empty = random)</label>
           <input type="number" class="num-input" id="vox-seed" placeholder="random" />
@@ -362,15 +351,37 @@ export function attachConfigurationListeners(render: () => void): void {
         "vox-cfg", "vox-timesteps", "vox-temperature", "vox-steps", "vox-seed"];
     for (const id of advIds) {
         const el = document.getElementById(id) as HTMLInputElement | null;
-        if (el) {
-            // Re-apply the saved override: the HTML template renders the
-            // registry default, which would otherwise mask the user's value
-            // after every panel switch (and win over the override when the
-            // panel is open during generation).
-            const saved = state.engineParamOverrides[id];
-            if (saved !== undefined) el.value = saved;
-            el.addEventListener("input", () => {
-                state.engineParamOverrides[id] = el.value;
+        if (!el) continue;
+        const slider = document.getElementById(`${id}-range`) as HTMLInputElement | null;
+        // Re-apply the saved override: the HTML template renders the
+        // registry default, which would otherwise mask the user's value
+        // after every panel switch (and win over the override when the
+        // panel is open during generation).
+        const saved = state.engineParamOverrides[id];
+        if (saved !== undefined) {
+            el.value = saved;
+            if (slider) slider.value = saved;
+        }
+        // Clamp to the registry min/max so an out-of-range value typed by
+        // hand can never reach the engine.
+        const clamped = (raw: string): string => {
+            const n = parseFloat(raw);
+            if (Number.isNaN(n)) return raw;
+            const min = el.min !== "" ? parseFloat(el.min) : -Infinity;
+            const max = el.max !== "" ? parseFloat(el.max) : Infinity;
+            const c = Math.min(max, Math.max(min, n));
+            return String(c);
+        };
+        el.addEventListener("input", () => {
+            const v = clamped(el.value);
+            if (v !== el.value) el.value = v;
+            if (slider) slider.value = v;
+            state.engineParamOverrides[id] = v;
+        });
+        if (slider) {
+            slider.addEventListener("input", () => {
+                el.value = slider.value;
+                state.engineParamOverrides[id] = slider.value;
             });
         }
     }

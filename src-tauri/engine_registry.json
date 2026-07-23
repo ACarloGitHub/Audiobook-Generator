@@ -1,6 +1,6 @@
 {
-  "version": "1.3.0",
-  "last_verified": "2026-07-19",
+  "version": "1.4.0",
+  "last_verified": "2026-07-23",
   "engines": {
     "qwen3tts": {
       "display_name": "Qwen3-TTS",
@@ -309,7 +309,7 @@
           "min": 0.5,
           "max": 2.0,
           "step": 0.1,
-          "description": "Speech speed multiplier (not yet in qwentts.cpp CLI \u2014 controlled via text pacing)"
+          "description": "Speech speed multiplier (not yet in qwentts.cpp CLI — controlled via text pacing)"
         },
         "temp": {
           "type": "float",
@@ -356,7 +356,10 @@
         "max_new": {
           "type": "int",
           "default": 8192,
-          "description": "Max new audio tokens (qwentts.cpp --max-new). Official checkpoint default: 8192",
+          "min": 256,
+          "max": 8192,
+          "step": 256,
+          "description": "Max new audio frames (qwentts.cpp --max-new, runtime default 2048). Official checkpoint generation_config: 8192 = full context; official evaluations used 2048",
           "cli_flag": "--max-new"
         }
       },
@@ -410,7 +413,7 @@
               "Ono_Anna",
               "Sohee"
             ],
-            "description": "Preset voice name"
+            "description": "Preset voice name. OFFICIAL WARNING (model card, verified 2026-07-23): each preset gives its best quality in its NATIVE language - Serena, Vivian, Uncle_Fu: Chinese; Dylan: Chinese (Beijing); Eric: Chinese (Sichuan); Ryan, Aiden: English; Ono_Anna: Japanese; Sohee: Korean. All voices CAN speak Italian, but accent/quality may degrade"
           },
           "language": {
             "type": "string",
@@ -432,7 +435,18 @@
           "instruct": {
             "type": "string",
             "default": "",
-            "description": "Additional instructions (e.g. 'Speak slowly. With excitement.')"
+            "description": "Style instruction, officially supported on CustomVoice (e.g. 'Speak slowly. With excitement.'). For audiobook narration a calmer instruct such as 'Read calmly and evenly, like a professional audiobook narrator' reduces theatrical delivery"
+          },
+          "speaker_native_languages": {
+            "Vivian": "Chinese (bright, slightly edgy young female)",
+            "Serena": "Chinese (warm, gentle young female)",
+            "Uncle_Fu": "Chinese (seasoned male, low mellow timbre)",
+            "Dylan": "Chinese - Beijing dialect (youthful male)",
+            "Eric": "Chinese - Sichuan dialect (lively male, slightly husky)",
+            "Ryan": "English (dynamic male, strong rhythmic drive)",
+            "Aiden": "English - American (sunny male, clear midrange)",
+            "Ono_Anna": "Japanese (playful female, light nimble timbre)",
+            "Sohee": "Korean (warm female, rich emotion)"
           }
         },
         "voicedesign": {
@@ -463,7 +477,8 @@
         "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base (official model card, Italian verified)",
         "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF (GGUF repo, 28.9k downloads/month)",
         "https://github.com/ServeurpersoCom/qwentts.cpp (runtime, MIT)",
-        "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-Base/resolve/main/generation_config.json (parameter source of truth)"
+        "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-Base/resolve/main/generation_config.json (parameter source of truth)",
+        "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice (official model card: instruct support, speaker native languages, evaluation max_new_tokens=2048 - verified 2026-07-23)"
       ]
     },
     "outetts": {
@@ -666,7 +681,7 @@
         "https://huggingface.co/OuteAI/OuteTTS-1.0-0.6B-GGUF (official GGUF repo, 1.4k downloads/month, Apache-2.0)",
         "https://huggingface.co/OuteAI/DAC-speech-v1.0-ONNX (DAC codec decoder ONNX, CDLA-Permissive-2.0)",
         "https://github.com/edwko/OuteTTS (Python reference implementation)",
-        "https://huggingface.co/OuteAI/Llama-OuteTTS-1.0-1B-GGUF (1B sister model, CC-BY-NC-SA-4.0 NON-COMMERCIAL \u2014 NOT compatible with our distribution)"
+        "https://huggingface.co/OuteAI/Llama-OuteTTS-1.0-1B-GGUF (1B sister model, CC-BY-NC-SA-4.0 NON-COMMERCIAL — NOT compatible with our distribution)"
       ],
       "notes": "Italian is officially in the high-training-data list. CRITICAL: repetition_penalty must use rep_window=64, not whole context, otherwise broken output. Optimal audio length ~42s (8192 tokens), best results up to 7000 tokens."
     },
@@ -731,7 +746,7 @@
         "--cpu": "Use CPU backend (default: GPU)",
         "--n-gpu-layers": "Layers to offload to GPU (default: all)"
       },
-      "architecture": "Tokenizer-free Diffusion Autoregressive (LocEnc \u2192 TSLM \u2192 RALM \u2192 LocDiT), MiniCPM-4 backbone, 2B parameters, AudioVAE V2 (16kHz in \u2192 48kHz out)",
+      "architecture": "Tokenizer-free Diffusion Autoregressive (LocEnc → TSLM → RALM → LocDiT), MiniCPM-4 backbone, 2B parameters, AudioVAE V2 (16kHz in → 48kHz out)",
       "sample_rate": 48000,
       "lm_token_rate_hz": 6.25,
       "max_sequence_length": 8192,
@@ -791,9 +806,9 @@
           "type": "float",
           "default": 2.0,
           "min": 1.0,
-          "max": 5.0,
+          "max": 3.0,
           "step": 0.1,
-          "description": "CFG guidance scale (voxcpm2-cli --cfg). Official default: 2.0",
+          "description": "CFG guidance scale (voxcpm2-cli --cfg). Official default 2.0, official typical range 1.0-3.0; for long-form noise/buzz lower to 1.5-1.6 (official usage guide, verified 2026-07-23)",
           "cli_flag": "--cfg"
         },
         "timesteps": {
@@ -808,10 +823,10 @@
         "temperature": {
           "type": "float",
           "default": 1.0,
-          "min": 0.0,
+          "min": 0.2,
           "max": 2.0,
           "step": 0.05,
-          "description": "Noise temperature (voxcpm2-cli --temperature). CLI default: 1.0",
+          "description": "Noise temperature (voxcpm2-cli --temperature, default 1.0). NOTE: the official VoxCPM2 Python API does NOT expose temperature - it is a knob of our C++ runtime only, with no upstream tuning guidance. EMPIRICAL (app tests 2026-07-22, RTX 3090): values <=0.1 produce silent/empty audio; keep >=0.2",
           "cli_flag": "--temperature"
         },
         "steps": {
@@ -864,12 +879,12 @@
         }
       },
       "sources": [
-        "https://huggingface.co/openbmb/VoxCPM2 (official model card: cfg=2.0, timesteps=10, 8192 max sequence, 6.25 Hz LM token rate, 48kHz, 30 languages, Apache-2.0 \u2014 verified 2026-07-19)",
-        "https://voxcpm.readthedocs.io/ (official docs \u2014 verified 2026-07-19)",
+        "https://huggingface.co/openbmb/VoxCPM2 (official model card: cfg=2.0, timesteps=10, 8192 max sequence, 6.25 Hz LM token rate, 48kHz, 30 languages, Apache-2.0 — verified 2026-07-19)",
+        "https://voxcpm.readthedocs.io/en/latest/usage_guide.html (official usage guide: cfg range 1.0-3.0, timesteps 4-30, long text must be split, no temperature in the official API - re-verified 2026-07-23)",
         "https://github.com/tc-mb/llama.cpp-omni (official GGUF runtime fork, commit b9d15b8, compiled unmodified)",
         "https://huggingface.co/DennisHuang648/VoxCPM2-GGUF (GGUF conversion linked from the official README, URLs verified 2026-07-19)"
       ],
-      "notes": "Both GGUF files (BaseLM + Acoustic) are required. VRAM ~4.5-6 GB measured on RTX 3090 (Q8_0 + F16 acoustic). RTF 0.21-0.24 measured on RTX 3090. Voice Design results vary between runs; 1-3 attempts recommended by upstream."
+      "notes": "Both GGUF files (BaseLM + Acoustic) are required. VRAM ~4.5-6 GB measured on RTX 3090 (Q8_0 + F16 acoustic). RTF 0.21-0.24 measured on RTX 3090. Voice Design results vary between runs; 1-3 attempts recommended by upstream. Voice consistency across chunks (official usage guide): without a reference audio the model generates a RANDOM voice on every call - to keep one timbre across a whole book, reuse the same reference audio (cloning modes) or accept variation (Voice Design)."
     },
     "neuttsair": {
       "display_name": "NeuTTS Air",
@@ -902,11 +917,11 @@
           "files": [
             {
               "name": "backbone",
-              "filename_template": "neutts-air-q4-{quant}.gguf",
+              "filename_template": "neutts-air-{quant}.gguf",
               "quants": {
                 "Q4_0": {
-                  "size_mb": 365,
-                  "url": "https://huggingface.co/neuphonic/neutts-air-q4-gguf/resolve/main/neutts-air-q4-Q4_0.gguf"
+                  "size_mb": 503,
+                  "url": "https://huggingface.co/neuphonic/neutts-air-q4-gguf/resolve/main/neutts-air-Q4_0.gguf"
                 }
               }
             }
@@ -927,11 +942,11 @@
           "files": [
             {
               "name": "backbone",
-              "filename_template": "neutts-air-q8-{quant}.gguf",
+              "filename_template": "neutts-air-{quant}.gguf",
               "quants": {
                 "Q8_0": {
-                  "size_mb": 547,
-                  "url": "https://huggingface.co/neuphonic/neutts-air-q8-gguf/resolve/main/neutts-air-q8-Q8_0.gguf"
+                  "size_mb": 765,
+                  "url": "https://huggingface.co/neuphonic/neutts-air-q8-gguf/resolve/main/neutts-air-Q8_0.gguf"
                 }
               }
             }
@@ -947,9 +962,9 @@
           "files": [
             {
               "name": "neucodec_decoder",
-              "filename": "decoder.onnx",
-              "url": "https://huggingface.co/neuphonic/neucodec-onnx-decoder/resolve/main/decoder.onnx",
-              "size_mb": 50
+              "filename": "model.onnx",
+              "url": "https://huggingface.co/neuphonic/neucodec-onnx-decoder/resolve/main/model.onnx",
+              "size_mb": 746
             }
           ]
         }
@@ -1002,14 +1017,14 @@
       "install_requirements": {
         "llama_server": "already bundled by first-run wizard",
         "ort_runtime": "already included for Kokoro (ONNX Runtime via Rust)",
-        "espeak_ng": "REQUIRED external dependency \u2014 must be on PATH or bundled. Windows: install via winget/choco/MSI; Linux: apt; macOS: brew",
+        "espeak_ng": "REQUIRED external dependency — must be on PATH or bundled. Windows: install via winget/choco/MSI; Linux: apt; macOS: brew",
         "additional_dlls": []
       },
       "sources": [
         "https://huggingface.co/neuphonic/neutts-air (upstream model card, 24k downloads/month, Apache-2.0)",
-        "https://huggingface.co/neuphonic/neutts-air-q4-gguf (Q4 GGUF, 527 MB)",
-        "https://huggingface.co/neuphonic/neutts-air-q8-gguf (Q8 GGUF)",
-        "https://huggingface.co/neuphonic/neucodec-onnx-decoder (NeuCodec ONNX)",
+        "https://huggingface.co/neuphonic/neutts-air-q4-gguf (Q4 GGUF, real size 503 MB - link and size corrected 2026-07-23: upstream filename is neutts-air-Q4_0.gguf)",
+        "https://huggingface.co/neuphonic/neutts-air-q8-gguf (Q8 GGUF, real size 765 MB - link and size corrected 2026-07-23)",
+        "https://huggingface.co/neuphonic/neucodec-onnx-decoder (NeuCodec ONNX - corrected 2026-07-23: upstream filename is model.onnx, 746 MB)",
         "https://github.com/neuphonic/neutts (reference Python implementation)"
       ],
       "notes": "English-only at integration time. Every output watermarked with Perth. Smallest voice-clone requirement (3s). Must install espeak-ng."
@@ -1145,7 +1160,7 @@
       },
       "mode_specific_params": {},
       "install_requirements": {
-        "voxtral_cli": "REQUIRED \u2014 custom Rust binary, no prebuilt releases. Must compile from source.",
+        "voxtral_cli": "REQUIRED — custom Rust binary, no prebuilt releases. Must compile from source.",
         "additional_dlls": []
       },
       "sources": [
@@ -1153,7 +1168,7 @@
         "https://huggingface.co/mistralai/Voxtral-4B-TTS-2603 (upstream Mistral model)",
         "https://github.com/TrevorS/voxtral-mini-realtime-rs (custom Rust runtime, ggml-based)"
       ],
-      "notes": "Italian supported (it_female, it_male voices). No voice cloning \u2014 preset voices only. Custom Rust runtime (not llama.cpp). Larger model (4B, 2.7GB Q4). 9 languages including Italian. High quality but requires custom runtime compilation."
+      "notes": "Italian supported (it_female, it_male voices). No voice cloning — preset voices only. Custom Rust runtime (not llama.cpp). Larger model (4B, 2.7GB Q4). 9 languages including Italian. High quality but requires custom runtime compilation."
     }
   },
   "retired_engines": {
@@ -1218,10 +1233,10 @@
     "repo_choice_rationale": "Serveurperso/Qwen3-TTS-GGUF chosen because it is the single repo covering all 5 variants with consistent quantization naming. It has the highest download count (28.9k/month). Official Qwen repos host the safetensors originals; the GGUF conversions are community-maintained but well-adopted.",
     "active_engines_2026-07-03": {
       "qwen3tts": "verified, working end-to-end with 0.6B-Base. 4 more variants registered.",
-      "outetts": "ready for integration \u2014 needs Rust plugin that uses llama-server + DAC ONNX",
-      "chatterbox": "ready for integration \u2014 needs codec.cpp compilation (same effort as qwentts.cpp)",
-      "neuttsair": "ready for integration \u2014 needs espeak-ng as bundled dependency (Windows) or system package (Linux/macOS)",
-      "voxtral": "lowest priority \u2014 needs custom Rust runtime compilation, larger 4B model, no voice cloning"
+      "outetts": "ready for integration — needs Rust plugin that uses llama-server + DAC ONNX",
+      "chatterbox": "ready for integration — needs codec.cpp compilation (same effort as qwentts.cpp)",
+      "neuttsair": "ready for integration — needs espeak-ng as bundled dependency (Windows) or system package (Linux/macOS)",
+      "voxtral": "lowest priority — needs custom Rust runtime compilation, larger 4B model, no voice cloning"
     }
   }
 }
