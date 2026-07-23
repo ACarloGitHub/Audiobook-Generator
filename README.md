@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <strong>Status: active development — v0.1.8</strong> — the project has migrated from Python + Gradio to Tauri + llama.cpp. Qwen3-TTS, OuteTTS and VoxCPM2 are working end-to-end on Windows, macOS and Linux. v0.1.8: full agent tool set in `abg-cli` (configure, book, generate, recover — CLI and MCP), persistent agent session, delete-intermediate-chunks honored, auto book title, verified engine parameters with sliders. See <a href="AudiobookGenerator-Wiki/todo.md">todo.md</a> for the roadmap.
+  <strong>Status: active development — v0.1.9</strong> — the project has migrated from Python + Gradio to Tauri + llama.cpp. Qwen3-TTS, OuteTTS and VoxCPM2 are working end-to-end on Windows, macOS and Linux. v0.1.9: fix — `abg-cli` now finds the bundled engines from the installed layout (GPU guard works), and the AI Agents panel pre-fills the MCP configuration with the real CLI path. See <a href="AudiobookGenerator-Wiki/todo.md">todo.md</a> for the roadmap.
 </p>
 
 <p align="center">
@@ -90,6 +90,23 @@ Then:
 ```
 
 The installer bundles the app, all native engine binaries (`llama-server`, `qwen-tts`, `voxcpm2-cli`) and the `abg-cli` companion (command-line tool and MCP server — see the "AI Agents" panel in the app), so everything works offline out of the box. Only the TTS model weights (GGUF) are downloaded on demand from inside the app. There is no Python, no `pip install`, no virtual environment to manage.
+
+### Where is `abg-cli`?
+
+To register `abg-cli` as an MCP server (e.g. in LM Studio's `mcp.json`) or to call it from a terminal, you need its full path. It lives in the `resources/cli/` folder of the installation:
+
+- **Windows (NSIS `*-setup.exe`, default location):**
+  `C:\Users\<you>\AppData\Local\Audiobook Generator\resources\cli\abg-cli.exe`
+- **Windows (MSI, default location):**
+  `C:\Program Files\Audiobook Generator\resources\cli\abg-cli.exe`
+- **macOS:** `/Applications/Audiobook Generator.app/Contents/Resources/resources/cli/abg-cli`
+- **Linux (.deb):** `/usr/lib/audiobook-generator/resources/cli/abg-cli`
+- **Linux (AppImage):** run the AppImage once, then look for `resources/cli/abg-cli` inside the extracted/mounted folder.
+
+Notes:
+- If you installed to a custom folder, look for `resources/cli/` inside it.
+- On Windows, paths with spaces (like `Audiobook Generator`) are fine in `mcp.json` — the path is a single quoted string. Just double every backslash: `C:\\Users\\you\\...`.
+- Quick check that it works: run `<path-to-abg-cli> status` in a terminal — it should print the list of your installed engines as JSON.
 
 ---
 
