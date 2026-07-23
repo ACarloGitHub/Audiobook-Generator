@@ -217,15 +217,14 @@ impl VoxCpm2Plugin {
             }
         }
 
-        // Sampling parameters (from extra)
+        // Sampling parameters (from extra). NOTE: --temperature was removed
+        // on 2026-07-23 (owner decision): it is undocumented upstream, so the
+        // engine always runs with its runtime default (1.0).
         if let Some(v) = request.extra.get("cfg") {
             cmd.arg("--cfg").arg(v);
         }
         if let Some(v) = request.extra.get("timesteps") {
             cmd.arg("--timesteps").arg(v);
-        }
-        if let Some(v) = request.extra.get("temperature") {
-            cmd.arg("--temperature").arg(v);
         }
         if let Some(v) = request.extra.get("steps") {
             cmd.arg("--steps").arg(v);

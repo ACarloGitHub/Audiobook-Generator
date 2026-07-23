@@ -118,7 +118,6 @@ export function collectParamExtras(): Record<string, string> {
     }
     put("vox-cfg", "cfg", "cfg");
     put("vox-timesteps", "timesteps", "timesteps");
-    put("vox-temperature", "temperature", "temperature");
     put("vox-steps", "steps", "steps");
     put("vox-seed", "seed");
   }

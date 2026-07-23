@@ -1,5 +1,5 @@
 {
-  "version": "1.4.0",
+  "version": "1.5.0",
   "last_verified": "2026-07-23",
   "engines": {
     "qwen3tts": {
@@ -413,7 +413,7 @@
               "Ono_Anna",
               "Sohee"
             ],
-            "description": "Preset voice name. OFFICIAL WARNING (model card, verified 2026-07-23): each preset gives its best quality in its NATIVE language - Serena, Vivian, Uncle_Fu: Chinese; Dylan: Chinese (Beijing); Eric: Chinese (Sichuan); Ryan, Aiden: English; Ono_Anna: Japanese; Sohee: Korean. All voices CAN speak Italian, but accent/quality may degrade"
+            "description": "Preset voice with its official native language. Every voice can speak ANY supported language (Italian included); quality outside the native language is unverified - run a short test before generating a full book"
           },
           "language": {
             "type": "string",
@@ -741,7 +741,6 @@
         "--steps": "Max decode steps (default: 200)",
         "--timesteps": "CFM inference timesteps (default: 10, official default)",
         "--cfg": "CFG guidance scale (default: 2.0, official default)",
-        "--temperature": "Noise temperature (default: 1.0)",
         "--seed": "Random seed (default: 42)",
         "--cpu": "Use CPU backend (default: GPU)",
         "--n-gpu-layers": "Layers to offload to GPU (default: all)"
@@ -820,15 +819,6 @@
           "description": "CFM inference timesteps (voxcpm2-cli --timesteps). Official default: 10",
           "cli_flag": "--timesteps"
         },
-        "temperature": {
-          "type": "float",
-          "default": 1.0,
-          "min": 0.2,
-          "max": 2.0,
-          "step": 0.05,
-          "description": "Noise temperature (voxcpm2-cli --temperature, default 1.0). NOTE: the official VoxCPM2 Python API does NOT expose temperature - it is a knob of our C++ runtime only, with no upstream tuning guidance. EMPIRICAL (app tests 2026-07-22, RTX 3090): values <=0.1 produce silent/empty audio; keep >=0.2",
-          "cli_flag": "--temperature"
-        },
         "steps": {
           "type": "int",
           "default": 600,
@@ -884,150 +874,7 @@
         "https://github.com/tc-mb/llama.cpp-omni (official GGUF runtime fork, commit b9d15b8, compiled unmodified)",
         "https://huggingface.co/DennisHuang648/VoxCPM2-GGUF (GGUF conversion linked from the official README, URLs verified 2026-07-19)"
       ],
-      "notes": "Both GGUF files (BaseLM + Acoustic) are required. VRAM ~4.5-6 GB measured on RTX 3090 (Q8_0 + F16 acoustic). RTF 0.21-0.24 measured on RTX 3090. Voice Design results vary between runs; 1-3 attempts recommended by upstream. Voice consistency across chunks (official usage guide): without a reference audio the model generates a RANDOM voice on every call - to keep one timbre across a whole book, reuse the same reference audio (cloning modes) or accept variation (Voice Design)."
-    },
-    "neuttsair": {
-      "display_name": "NeuTTS Air",
-      "license": "Apache-2.0",
-      "languages": [
-        "English"
-      ],
-      "voice_cloning": true,
-      "voice_clone_min_seconds": 3,
-      "runtime": "llama-server (backbone) + NeuCodec ONNX (audio decoder) + espeak-ng (phonemizer)",
-      "runtime_repo": "https://github.com/neuphonic/neutts",
-      "runtime_help": "Phonemize text with espeak-ng, send to llama-server with backbone GGUF, decode audio tokens with NeuCodec ONNX",
-      "architecture": "Qwen 0.5B backbone + NeuCodec (FSQ, single codebook, 0.8 kbps, 50 Hz)",
-      "max_input_tokens": null,
-      "watermarked": true,
-      "watermark_type": "Perth (Perceptual Threshold Watermarker)",
-      "variants": [
-        {
-          "name": "NeuTTS-Air-q4",
-          "size": "0.5B",
-          "mode": "voice_clone",
-          "description": "On-device voice cloning from 3-second reference audio. English only.",
-          "supported_modes": [
-            "Voice Clone"
-          ],
-          "char_limit_recommended": 400,
-          "char_limit_max": 800,
-          "requires_speaker_reference": true,
-          "gguf_repo": "neuphonic/neutts-air-q4-gguf",
-          "files": [
-            {
-              "name": "backbone",
-              "filename_template": "neutts-air-{quant}.gguf",
-              "quants": {
-                "Q4_0": {
-                  "size_mb": 503,
-                  "url": "https://huggingface.co/neuphonic/neutts-air-q4-gguf/resolve/main/neutts-air-Q4_0.gguf"
-                }
-              }
-            }
-          ]
-        },
-        {
-          "name": "NeuTTS-Air-q8",
-          "size": "0.5B",
-          "mode": "voice_clone",
-          "description": "Higher quality Q8 quantization of NeuTTS Air",
-          "supported_modes": [
-            "Voice Clone"
-          ],
-          "char_limit_recommended": 400,
-          "char_limit_max": 800,
-          "requires_speaker_reference": true,
-          "gguf_repo": "neuphonic/neutts-air-q8-gguf",
-          "files": [
-            {
-              "name": "backbone",
-              "filename_template": "neutts-air-{quant}.gguf",
-              "quants": {
-                "Q8_0": {
-                  "size_mb": 765,
-                  "url": "https://huggingface.co/neuphonic/neutts-air-q8-gguf/resolve/main/neutts-air-Q8_0.gguf"
-                }
-              }
-            }
-          ]
-        }
-      ],
-      "shared_files": [
-        {
-          "name": "neucodec",
-          "description": "NeuCodec ONNX decoder for audio token-to-waveform conversion",
-          "gguf_repo": "neuphonic/neucodec-onnx-decoder",
-          "license": "Apache-2.0",
-          "files": [
-            {
-              "name": "neucodec_decoder",
-              "filename": "model.onnx",
-              "url": "https://huggingface.co/neuphonic/neucodec-onnx-decoder/resolve/main/model.onnx",
-              "size_mb": 746
-            }
-          ]
-        }
-      ],
-      "parameters": {
-        "temperature": {
-          "type": "float",
-          "default": 0.8,
-          "min": 0.0,
-          "max": 2.0,
-          "step": 0.05,
-          "description": "Sampling temperature"
-        },
-        "top_k": {
-          "type": "int",
-          "default": 50,
-          "min": 1,
-          "max": 100,
-          "step": 1,
-          "description": "Top-k sampling"
-        },
-        "top_p": {
-          "type": "float",
-          "default": 0.95,
-          "min": 0.0,
-          "max": 1.0,
-          "step": 0.05,
-          "description": "Top-p sampling"
-        },
-        "seed": {
-          "type": "int",
-          "default": -1,
-          "description": "Random seed (-1 = random)"
-        }
-      },
-      "mode_specific_params": {
-        "voice_clone": {
-          "ref_audio": {
-            "type": "file",
-            "required": true,
-            "description": "Reference audio (3-15s WAV, mono, 16-44kHz, clean)"
-          },
-          "ref_text": {
-            "type": "string",
-            "required": true,
-            "description": "Exact transcription of reference audio"
-          }
-        }
-      },
-      "install_requirements": {
-        "llama_server": "already bundled by first-run wizard",
-        "ort_runtime": "already included for Kokoro (ONNX Runtime via Rust)",
-        "espeak_ng": "REQUIRED external dependency — must be on PATH or bundled. Windows: install via winget/choco/MSI; Linux: apt; macOS: brew",
-        "additional_dlls": []
-      },
-      "sources": [
-        "https://huggingface.co/neuphonic/neutts-air (upstream model card, 24k downloads/month, Apache-2.0)",
-        "https://huggingface.co/neuphonic/neutts-air-q4-gguf (Q4 GGUF, real size 503 MB - link and size corrected 2026-07-23: upstream filename is neutts-air-Q4_0.gguf)",
-        "https://huggingface.co/neuphonic/neutts-air-q8-gguf (Q8 GGUF, real size 765 MB - link and size corrected 2026-07-23)",
-        "https://huggingface.co/neuphonic/neucodec-onnx-decoder (NeuCodec ONNX - corrected 2026-07-23: upstream filename is model.onnx, 746 MB)",
-        "https://github.com/neuphonic/neutts (reference Python implementation)"
-      ],
-      "notes": "English-only at integration time. Every output watermarked with Perth. Smallest voice-clone requirement (3s). Must install espeak-ng."
+      "notes": "Both GGUF files (BaseLM + Acoustic) are required. VRAM ~4.5-6 GB measured on RTX 3090 (Q8_0 + F16 acoustic). RTF 0.21-0.24 measured on RTX 3090. Voice Design results vary between runs; 1-3 attempts recommended by upstream. Voice consistency across chunks (official usage guide): without a reference audio the model generates a RANDOM voice on every call - to keep one timbre across a whole book, reuse the same reference audio (cloning modes) or accept variation (Voice Design). REMOVED 2026-07-23 (owner decision): the --temperature knob is undocumented upstream (the official Python API does not expose it) so it is no longer exposed; the engine always runs with its runtime default 1.0."
     },
     "voxtral": {
       "display_name": "Voxtral TTS 4B",
@@ -1226,6 +1073,11 @@
       "display_name": "F5-TTS-italian (alien79)",
       "reason": "Italian-only fine-tune, CC-BY-4.0 but PyTorch-only, no GGUF. Catastrophic failure on English. Quality unverified.",
       "retired_date": "2026-07-03"
+    },
+    "neuttsair": {
+      "display_name": "NeuTTS Air",
+      "reason": "English-only, mandatory Perth watermark on all output, requires espeak-ng as external dependency. Never integrated in the app; removed from the active registry on 2026-07-23 by owner's decision.",
+      "retired_date": "2026-07-23"
     }
   },
   "notes": {

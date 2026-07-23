@@ -50,6 +50,11 @@ export function renderConfiguration(status: EngineStatus): string {
   `;
 }
 
+// Default instruct for Qwen CustomVoice, pre-filled when empty: calm,
+// even narration instead of the preset's theatrical default delivery.
+const DEFAULT_NARRATION_INSTRUCT =
+    "Read calmly and evenly, like a professional audiobook narrator";
+
 function genDefault(key: string): string {
     const p = state.engineGeneration[key];
     if (!p || p.default === null || p.default === undefined) return "";
@@ -115,7 +120,7 @@ function renderQwenControls(): string {
             <select class="select" id="qwen-language-select">${langOptions}</select>
           </div>
           <div class="field-row">
-            <label class="field-label">Additional Instructions (optional)</label>
+            <label class="field-label">Additional Instructions (pre-filled — edit or delete as you like)</label>
             <input type="text" class="text-input" id="qwen-instruct-input" placeholder="Read calmly and evenly, like a professional audiobook narrator" value="${escapeHtml(state.qwenInstruct || "")}" />
           </div>
         `;
@@ -251,7 +256,6 @@ function renderVoxControls(): string {
         <summary>Advanced Settings</summary>
         ${paramSlider("vox-cfg", "CFG Guidance Scale", "cfg")}
         ${paramSlider("vox-timesteps", "CFM Timesteps", "timesteps")}
-        ${paramSlider("vox-temperature", "Temperature", "temperature")}
         ${paramSlider("vox-steps", "Max Decode Steps", "steps")}
         <div class="field-row">
           <label class="field-label">Seed (empty = random)</label>
@@ -278,6 +282,13 @@ export async function applyEngineDefaults(engineId: string): Promise<void> {
 
         if (d.voices.length > 0 && !state.selectedVoiceId) {
             state.selectedVoiceId = d.voices[0].id;
+        }
+
+        // Pre-fill a calm-narration instruct for Qwen CustomVoice when the
+        // field is empty. The user can edit or delete it; it is re-applied
+        // on engine change if left empty.
+        if (engineId.includes("CustomVoice") && !state.qwenInstruct) {
+            state.qwenInstruct = DEFAULT_NARRATION_INSTRUCT;
         }
     } catch (e) {
         console.warn("engine_defaults failed:", e);
@@ -348,7 +359,7 @@ export function attachConfigurationListeners(render: () => void): void {
 
     const advIds = ["qwen-temp", "qwen-top-k", "qwen-top-p", "qwen-rep-pen", "qwen-max-new", "qwen-seed",
         "oute-temperature", "oute-top-k", "oute-top-p", "oute-min-p", "oute-rep-pen", "oute-max-tokens",
-        "vox-cfg", "vox-timesteps", "vox-temperature", "vox-steps", "vox-seed"];
+        "vox-cfg", "vox-timesteps", "vox-steps", "vox-seed"];
     for (const id of advIds) {
         const el = document.getElementById(id) as HTMLInputElement | null;
         if (!el) continue;
