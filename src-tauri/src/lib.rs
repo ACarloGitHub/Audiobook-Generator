@@ -11,9 +11,9 @@ pub mod merger;
 mod model_manager;
 pub mod plugin_manager;
 pub mod plugins;
-mod recovery;
+pub mod recovery;
 pub mod sidecars;
-mod utils;
+pub mod utils;
 mod wizard;
 
 use std::sync::Arc;

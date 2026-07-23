@@ -1,26 +1,30 @@
 //! abg-cli — command-line and MCP interface to Audiobook Generator.
 //!
-//! Two ways in (same commands underneath):
+//! Two ways in (same tools underneath):
 //!
 //! 1. Direct commands:
 //!      abg-cli status
 //!      abg-cli synthesize --engine <id> [--text T | --text-file F]
 //!          --out OUT.wav [--voice V] [--language L] [--ref REF.wav]
 //!          [--max-chars N] [--param key=value]...
+//!      abg-cli call <tool> '<json-args>'
 //! 2. MCP server over stdio (newline-delimited JSON-RPC), for LM Studio
 //!    and other MCP clients:
 //!      abg-cli --mcp
 //!
-//! The heavy lifting (engines, chunking, merging, GPU guard) is shared
-//! with the desktop app through the library crate.
+//! Tools: get_status, configure, synthesize, book, generate, recover.
+//! The heavy lifting (engines, chunking, merging, GPU guard, recovery)
+//! is shared with the desktop app through the library crate.
 
 use anyhow::{bail, Context, Result};
 use audiobook_generator_lib::base_plugin::{BaseTTSPlugin, SynthesizeRequest};
 use audiobook_generator_lib::plugin_manager::{
-    PluginManager, QwenPaths, VoxCpm2Paths,
+    defaults_for, PluginManager, QwenPaths, VoxCpm2Paths,
 };
-use audiobook_generator_lib::{chunker, config, gpu_guard, merger};
-use std::path::PathBuf;
+use audiobook_generator_lib::{chunker, config, gpu_guard, input, merger, recovery, utils};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 fn init_paths() {
@@ -92,6 +96,191 @@ fn status_json(pm: &PluginManager) -> serde_json::Value {
     })
 }
 
+// ---------------------------------------------------------------------
+// Session (shared by CLI and MCP, persisted on disk)
+// ---------------------------------------------------------------------
+
+/// Persistent CLI/MCP session: engine and synthesis options chosen once
+/// (via the `configure` tool) and reused by `synthesize` and `generate`,
+/// so an external agent does not have to repeat them on every call.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+struct Session {
+    engine: Option<String>,
+    voice: Option<String>,
+    language: Option<String>,
+    reference_audio: Option<String>,
+    reference_transcript: Option<String>,
+    #[serde(default)]
+    params: HashMap<String, String>,
+    book_path: Option<String>,
+    book_title: Option<String>,
+    output_dir: Option<String>,
+}
+
+fn session_path() -> PathBuf {
+    config::paths::app_data_dir().join("cli_session.json")
+}
+
+fn session_load() -> Session {
+    std::fs::read_to_string(session_path())
+        .ok()
+        .and_then(|b| serde_json::from_str(&b).ok())
+        .unwrap_or_default()
+}
+
+fn session_save(s: &Session) -> Result<()> {
+    std::fs::write(session_path(), serde_json::to_string_pretty(s)?)?;
+    Ok(())
+}
+
+/// Inject the reference transcript into the engine-specific extra key:
+/// qwen reads `ref_text`, voxcpm2 reads `prompt_text`. Never overwrites a
+/// key the caller set explicitly.
+fn inject_transcript(engine: &str, transcript: Option<&str>, extra: &mut HashMap<String, String>) {
+    let Some(t) = transcript.filter(|t| !t.trim().is_empty()) else {
+        return;
+    };
+    if engine.starts_with("Qwen3-TTS") && !extra.contains_key("ref_text") {
+        extra.insert("ref_text".to_string(), t.to_string());
+    }
+    if engine.starts_with("VoxCPM2") && !extra.contains_key("prompt_text") {
+        extra.insert("prompt_text".to_string(), t.to_string());
+    }
+}
+
+/// Merge a JSON object of parameters into a string map (values may be
+/// strings, numbers or booleans in the JSON).
+fn merge_params(extra: &mut HashMap<String, String>, obj: &serde_json::Map<String, serde_json::Value>) {
+    for (k, v) in obj {
+        let val = v
+            .as_str()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| v.to_string());
+        extra.insert(k.clone(), val);
+    }
+}
+
+// ---------------------------------------------------------------------
+// Tools
+// ---------------------------------------------------------------------
+
+fn tool_configure(pm: &PluginManager, args: &serde_json::Value) -> Result<String> {
+    let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("set");
+    match action {
+        "list_engines" => {
+            let engines: Vec<serde_json::Value> = pm
+                .catalogue()
+                .into_iter()
+                .filter(|e| e.installed)
+                .map(|e| {
+                    serde_json::json!({
+                        "id": e.id,
+                        "name": e.display_name,
+                        "voice_cloning": e.voice_cloning,
+                        "languages": e.languages,
+                        "preset_voices": e.voices.len(),
+                    })
+                })
+                .collect();
+            Ok(serde_json::to_string_pretty(&engines)?)
+        }
+        "list_voices" => {
+            let engine = args
+                .get("engine")
+                .and_then(|v| v.as_str())
+                .context("missing 'engine'")?;
+            let d = defaults_for(engine);
+            if d.voices.is_empty() {
+                return Ok(format!(
+                    "Engine '{engine}' has no preset voices (voice cloning / design mode)."
+                ));
+            }
+            let voices: Vec<serde_json::Value> = d
+                .voices
+                .iter()
+                .map(|v| {
+                    serde_json::json!({
+                        "id": v.id,
+                        "name": v.display_name,
+                        "native_language": v.language,
+                    })
+                })
+                .collect();
+            Ok(serde_json::to_string_pretty(&voices)?)
+        }
+        "get_parameters" => {
+            let engine = args
+                .get("engine")
+                .and_then(|v| v.as_str())
+                .context("missing 'engine'")?;
+            let d = defaults_for(engine);
+            Ok(serde_json::to_string_pretty(&serde_json::json!({
+                "engine": d.engine_id,
+                "chunk_max_chars": d.chunk_max_chars,
+                "supported_languages": d.supported_languages,
+                "voice_cloning": d.voice_cloning,
+                "needs_reference_transcript": d.needs_reference_transcript,
+                "generation_parameters": d.generation,
+            }))?)
+        }
+        "set" => {
+            let mut s = session_load();
+            let mut notes: Vec<String> = Vec::new();
+            if let Some(e) = args.get("engine").and_then(|v| v.as_str()) {
+                let installed = pm.catalogue().iter().any(|c| c.id == e && c.installed);
+                if !installed {
+                    bail!("engine '{e}' is not installed; run configure list_engines");
+                }
+                if s.engine.as_deref() != Some(e) {
+                    s.voice = None;
+                    notes.push("voice reset (engine changed)".to_string());
+                }
+                s.engine = Some(e.to_string());
+            }
+            if let Some(v) = args.get("voice").and_then(|v| v.as_str()) {
+                s.voice = Some(v.to_string());
+            }
+            if let Some(v) = args.get("language").and_then(|v| v.as_str()) {
+                s.language = Some(v.to_string());
+            }
+            if let Some(v) = args.get("reference_audio").and_then(|v| v.as_str()) {
+                s.reference_audio = Some(v.to_string());
+            }
+            if let Some(v) = args.get("reference_transcript").and_then(|v| v.as_str()) {
+                s.reference_transcript = Some(v.to_string());
+            }
+            if let Some(v) = args.get("output_dir").and_then(|v| v.as_str()) {
+                s.output_dir = Some(v.to_string());
+            }
+            if let Some(obj) = args.get("params").and_then(|v| v.as_object()) {
+                merge_params(&mut s.params, obj);
+            }
+            if let Some(engine) = s.engine.clone() {
+                let d = defaults_for(&engine);
+                if d.needs_reference_transcript
+                    && s.reference_audio.is_some()
+                    && s
+                        .reference_transcript
+                        .as_deref()
+                        .unwrap_or("")
+                        .trim()
+                        .is_empty()
+                {
+                    notes.push(format!(
+                        "WARNING: engine '{engine}' needs the transcript of the reference audio for good quality; ask the user for it and set reference_transcript."
+                    ));
+                }
+            }
+            session_save(&s)?;
+            Ok(serde_json::to_string_pretty(&serde_json::json!({
+                "session": s,
+                "notes": notes,
+            }))?)
+        }
+        other => bail!("unknown configure action '{other}'"),
+    }
+}
+
 struct SynthArgs {
     engine: String,
     text: Option<String>,
@@ -101,7 +290,7 @@ struct SynthArgs {
     language: Option<String>,
     reference: Option<String>,
     max_chars: Option<usize>,
-    extra: std::collections::HashMap<String, String>,
+    extra: HashMap<String, String>,
 }
 
 async fn run_synthesize(pm: &PluginManager, args: SynthArgs) -> Result<PathBuf> {
@@ -122,7 +311,7 @@ async fn run_synthesize(pm: &PluginManager, args: SynthArgs) -> Result<PathBuf> 
         .ok_or_else(|| anyhow::anyhow!("engine '{}' is not installed or model files missing", args.engine))?;
     let handle = plugin.load_model(&args.engine).await?;
 
-    let defaults = audiobook_generator_lib::plugin_manager::defaults_for(&args.engine);
+    let defaults = defaults_for(&args.engine);
     let max_chars = args.max_chars.unwrap_or(defaults.chunk_max_chars as usize);
     let chunks = chunker::chunk_text(&text, 1000, max_chars);
     if chunks.is_empty() {
@@ -165,6 +354,506 @@ async fn run_synthesize(pm: &PluginManager, args: SynthArgs) -> Result<PathBuf> 
     Ok(args.out.canonicalize().unwrap_or(args.out))
 }
 
+async fn tool_synthesize(pm: &PluginManager, args: &serde_json::Value) -> Result<String> {
+    let s = session_load();
+    let engine = args
+        .get("engine")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .or(s.engine.clone())
+        .context("missing 'engine' (none configured in the session)")?;
+    let out = args
+        .get("output_path")
+        .and_then(|v| v.as_str())
+        .context("missing 'output_path'")?;
+    let mut extra = s.params.clone();
+    if let Some(obj) = args.get("extra").and_then(|v| v.as_object()) {
+        merge_params(&mut extra, obj);
+    }
+    inject_transcript(&engine, s.reference_transcript.as_deref(), &mut extra);
+    let pick = |key: &str, fallback: &Option<String>| {
+        args.get(key)
+            .and_then(|v| v.as_str())
+            .map(String::from)
+            .or_else(|| fallback.clone())
+    };
+    let path = run_synthesize(
+        pm,
+        SynthArgs {
+            engine,
+            text: args.get("text").and_then(|v| v.as_str()).map(String::from),
+            text_file: args
+                .get("text_file")
+                .and_then(|v| v.as_str())
+                .map(PathBuf::from),
+            out: PathBuf::from(out),
+            voice: pick("voice", &s.voice),
+            language: pick("language", &s.language),
+            reference: pick("reference_audio", &s.reference_audio),
+            max_chars: args
+                .get("max_chars")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize),
+            extra,
+        },
+    )
+    .await?;
+    Ok(format!("WAV written to {}", path.display()))
+}
+
+fn tool_book(args: &serde_json::Value) -> Result<String> {
+    let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("chapters");
+    match action {
+        "load" => {
+            let path = args
+                .get("path")
+                .and_then(|v| v.as_str())
+                .context("missing 'path'")?;
+            let p = PathBuf::from(path);
+            let chapters = input::extract_chapters_from(&p)?;
+            // Title: explicit argument, otherwise the file name (same
+            // fallback the desktop app uses when metadata is missing).
+            let title = args
+                .get("title")
+                .and_then(|v| v.as_str())
+                .map(String::from)
+                .or_else(|| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+                .unwrap_or_else(|| "Untitled".to_string());
+            let mut s = session_load();
+            s.book_path = Some(path.to_string());
+            s.book_title = Some(title.clone());
+            session_save(&s)?;
+            Ok(format_book_listing(&title, &chapters))
+        }
+        "chapters" => {
+            let s = session_load();
+            let path = s
+                .book_path
+                .as_deref()
+                .context("no book loaded; use book action=load first")?;
+            let chapters = input::extract_chapters_from(Path::new(path))?;
+            Ok(format_book_listing(
+                s.book_title.as_deref().unwrap_or("book"),
+                &chapters,
+            ))
+        }
+        other => bail!("unknown book action '{other}'"),
+    }
+}
+
+fn format_book_listing(title: &str, chapters: &[input::Chapter]) -> String {
+    let names: Vec<String> = chapters
+        .iter()
+        .enumerate()
+        .map(|(i, c)| format!("{}. {}", i + 1, c.title))
+        .collect();
+    format!(
+        "'{title}' ({} chapters):\n{}",
+        chapters.len(),
+        names.join("\n")
+    )
+}
+
+/// Same rule as the desktop app: intermediate chunk folders are deleted
+/// only when no failed_chunks.json exists; otherwise everything is kept
+/// and the failed chapters are reported (they feed the recover tool).
+fn cleanup_cli(out: &Path) -> String {
+    let book = out
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| out.display().to_string());
+    if out.join("failed_chunks.json").exists() {
+        let failed = recovery::RecoveryState::load(out)
+            .map(|s| {
+                let mut v: Vec<String> = s.failed.keys().cloned().collect();
+                v.sort();
+                v.join(", ")
+            })
+            .unwrap_or_else(|_| "unknown".to_string());
+        return format!(
+            "\nCleanup skipped: failed chunks present in '{book}' (chapters: {failed}). Intermediate chunks preserved for recovery."
+        );
+    }
+    if let Ok(entries) = std::fs::read_dir(out) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                let _ = std::fs::remove_dir_all(&p);
+            }
+        }
+    }
+    format!("\nIntermediate chunks deleted for '{book}' (no failed chunks).")
+}
+
+async fn tool_generate(pm: &PluginManager, args: &serde_json::Value) -> Result<String> {
+    let s = session_load();
+    let engine = args
+        .get("engine")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .or(s.engine.clone())
+        .context("missing engine; configure one first (configure action=set)")?;
+    let book_path = args
+        .get("book_path")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .or(s.book_path.clone())
+        .context("no book loaded; use the book tool first")?;
+    let title = s.book_title.clone().unwrap_or_else(|| "audiobook".to_string());
+    let output_dir = args
+        .get("output_dir")
+        .and_then(|v| v.as_str())
+        .map(PathBuf::from)
+        .or_else(|| s.output_dir.as_ref().map(PathBuf::from))
+        .unwrap_or_else(|| {
+            PathBuf::from(config::paths::output_base_dir())
+                .join(utils::sanitize_filename(&title))
+        });
+    let only: Option<Vec<String>> = args
+        .get("chapters")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|t| t.as_str().map(String::from))
+                .collect()
+        });
+    let delete_chunks = args
+        .get("delete_intermediate_chunks")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let defaults = defaults_for(&engine);
+    let max_chars = args
+        .get("max_chars")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize)
+        .unwrap_or(defaults.chunk_max_chars as usize);
+    let max_words = args
+        .get("max_words")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize)
+        .unwrap_or(1000);
+    let mut extra = s.params.clone();
+    if let Some(obj) = args.get("extra").and_then(|v| v.as_object()) {
+        merge_params(&mut extra, obj);
+    }
+    inject_transcript(&engine, s.reference_transcript.as_deref(), &mut extra);
+    let voice = args
+        .get("voice")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .or(s.voice.clone());
+    let language = args
+        .get("language")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .or(s.language.clone());
+    let reference = args
+        .get("reference_audio")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .or(s.reference_audio.clone());
+
+    // GPU-only rule: same guard as the desktop app.
+    gpu_guard::ensure_gpu()?;
+
+    get_or_create_plugin(&engine, pm)
+        .ok_or_else(|| anyhow::anyhow!("engine '{engine}' is not installed or model files missing"))?;
+    let ffmpeg = merger::find_ffmpeg()?;
+    std::fs::create_dir_all(&output_dir)?;
+
+    let epub = PathBuf::from(&book_path);
+    let out = output_dir.clone();
+
+    // Progress goes to stderr so MCP stdout stays protocol-clean.
+    let cb: Box<dyn FnMut(&str) + Send> = Box::new(|msg: &str| eprintln!("[generate] {msg}"));
+
+    let result: Result<usize> = if engine.starts_with("Qwen3-TTS") {
+        let paths = QwenPaths::from_app_data(&config::paths::storage_dir());
+        let engine_c = engine.clone();
+        tokio::task::spawn_blocking(move || {
+            let q = audiobook_generator_lib::plugins::qwen3tts::QwenPlugin::new(paths, &engine_c);
+            audiobook_generator_lib::plugins::qwen3tts::synthesize_book(
+                &q,
+                &epub,
+                &out,
+                max_words,
+                max_chars,
+                &ffmpeg,
+                voice.as_deref(),
+                language.as_deref(),
+                reference.as_deref(),
+                only.as_deref(),
+                &extra,
+                Some(cb),
+            )
+        })
+        .await
+        .context("synthesis task panicked")?
+    } else if engine.starts_with("VoxCPM2") {
+        let paths = VoxCpm2Paths::from_app_data(&config::paths::storage_dir());
+        let engine_c = engine.clone();
+        tokio::task::spawn_blocking(move || {
+            let p = audiobook_generator_lib::plugins::voxcpm2::VoxCpm2Plugin::new(paths, &engine_c);
+            audiobook_generator_lib::plugins::voxcpm2::synthesize_book(
+                &p,
+                &epub,
+                &out,
+                max_words,
+                max_chars,
+                &ffmpeg,
+                reference.as_deref(),
+                only.as_deref(),
+                &extra,
+                Some(cb),
+            )
+        })
+        .await
+        .context("synthesis task panicked")?
+    } else if engine.starts_with("OuteTTS") {
+        let models_dir = config::paths::models_dir().join("outetts");
+        let engine_c = engine.clone();
+        tokio::task::spawn_blocking(move || {
+            let p = audiobook_generator_lib::plugins::outetts::OuteTTSPlugin::new(models_dir, &engine_c);
+            audiobook_generator_lib::plugins::outetts::synthesize_book(
+                &p,
+                &epub,
+                &out,
+                max_words,
+                max_chars,
+                &ffmpeg,
+                only.as_deref(),
+                &extra,
+                Some(cb),
+            )
+        })
+        .await
+        .context("synthesis task panicked")?
+    } else {
+        bail!("engine '{engine}' does not support book generation");
+    };
+
+    match result {
+        Ok(n) => {
+            let mut msg = format!(
+                "Done: {n} chunks synthesized into {}",
+                output_dir.display()
+            );
+            // Failed chunks are kept in failed_chunks.json even on Ok:
+            // report them so the agent can run the recover tool.
+            if let Ok(state) = recovery::RecoveryState::load(&output_dir) {
+                if !state.failed.is_empty() {
+                    let mut ch: Vec<String> = state.failed.keys().cloned().collect();
+                    ch.sort();
+                    msg.push_str(&format!(
+                        "\nWARNING: failed chunks in chapters: {}. Use recover action=retry with book_dir '{}' to fix them, then action=merge.",
+                        ch.join(", "),
+                        output_dir.display()
+                    ));
+                }
+            }
+            if delete_chunks {
+                msg.push_str(&cleanup_cli(&output_dir));
+            }
+            Ok(msg)
+        }
+        Err(e) => {
+            let mut msg = format!("generation failed: {e:#}");
+            if let Ok(state) = recovery::RecoveryState::load(&output_dir) {
+                if !state.failed.is_empty() {
+                    let mut ch: Vec<String> = state.failed.keys().cloned().collect();
+                    ch.sort();
+                    msg.push_str(&format!(
+                        "\nFailed chapters: {}. Use recover action=retry with book_dir '{}' to resume.",
+                        ch.join(", "),
+                        output_dir.display()
+                    ));
+                }
+            }
+            bail!(msg)
+        }
+    }
+}
+
+async fn tool_recover(pm: &PluginManager, args: &serde_json::Value) -> Result<String> {
+    let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("list");
+    match action {
+        "list" => {
+            let root = args
+                .get("root_dir")
+                .and_then(|v| v.as_str())
+                .context("missing 'root_dir'")?;
+            let mut report = String::new();
+            let mut found = 0usize;
+            for entry in std::fs::read_dir(root)
+                .with_context(|| format!("reading {root}"))?
+                .flatten()
+            {
+                let path = entry.path();
+                if !path.is_dir() || !path.join("failed_chunks.json").exists() {
+                    continue;
+                }
+                let Ok(state) = recovery::RecoveryState::load(&path) else {
+                    continue;
+                };
+                if state.failed.is_empty() {
+                    continue;
+                }
+                found += 1;
+                report.push_str(&format!("book_dir: {}\n", path.display()));
+                let mut chapters: Vec<&String> = state.failed.keys().collect();
+                chapters.sort();
+                for ch in chapters {
+                    let fails = &state.failed[ch];
+                    let idx: Vec<usize> = fails.iter().map(|f| f.chunk_index + 1).collect();
+                    report.push_str(&format!(
+                        "  chapter '{ch}': {} failed chunk(s), indices {idx:?}\n",
+                        fails.len()
+                    ));
+                }
+            }
+            if found == 0 {
+                Ok("no interrupted generations found".to_string())
+            } else {
+                Ok(report)
+            }
+        }
+        "retry" => {
+            let book_dir = PathBuf::from(
+                args.get("book_dir")
+                    .and_then(|v| v.as_str())
+                    .context("missing 'book_dir'")?,
+            );
+            let chapter_filter = args
+                .get("chapter")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let mut state = recovery::RecoveryState::load(&book_dir)?;
+            if state.failed.is_empty() {
+                bail!("nothing to recover in {}", book_dir.display());
+            }
+            // Parameters: recovery metadata first (recorded at generation
+            // time), session as fallback.
+            let s = session_load();
+            let engine = state
+                .meta
+                .engine_id
+                .clone()
+                .or(s.engine.clone())
+                .context("no engine recorded in the recovery file and none configured")?;
+            let mut extra = if state.meta.extra.is_empty() {
+                s.params.clone()
+            } else {
+                state.meta.extra.clone()
+            };
+            inject_transcript(&engine, s.reference_transcript.as_deref(), &mut extra);
+            let reference = state
+                .meta
+                .reference_audio
+                .clone()
+                .or(s.reference_audio.clone())
+                .filter(|x| !x.is_empty());
+            let voice = state.meta.voice.clone().or(s.voice.clone());
+            let language = state.meta.language.clone().or(s.language.clone());
+
+            gpu_guard::ensure_gpu()?;
+            let plugin = get_or_create_plugin(&engine, pm)
+                .ok_or_else(|| anyhow::anyhow!("engine '{engine}' is not installed or model files missing"))?;
+            let handle = plugin.load_model(&engine).await?;
+
+            let chapters: Vec<String> = match &chapter_filter {
+                Some(c) => vec![c.clone()],
+                None => {
+                    let mut v: Vec<String> = state.failed.keys().cloned().collect();
+                    v.sort();
+                    v
+                }
+            };
+            let mut ok = 0usize;
+            let mut failed_again = 0usize;
+            for chapter in chapters {
+                let Some(fails) = state.failed.get(&chapter).cloned() else {
+                    continue;
+                };
+                let chapter_dir = book_dir.join(utils::sanitize_filename(&chapter));
+                std::fs::create_dir_all(&chapter_dir)?;
+                for f in fails {
+                    let wav = chapter_dir.join(format!("chunk_{:04}.wav", f.chunk_index + 1));
+                    let request = SynthesizeRequest {
+                        text: f.text.clone(),
+                        output_path: wav.to_string_lossy().to_string(),
+                        reference_audio: reference.clone(),
+                        language: language.clone(),
+                        voice: voice.clone(),
+                        extra: extra.clone(),
+                    };
+                    match plugin.synthesize(&handle, &request).await {
+                        Ok(()) => {
+                            state.remove_failed(&chapter, f.chunk_index);
+                            if !state.is_done(&chapter, f.chunk_index) {
+                                state.mark_done(&chapter, f.chunk_index);
+                            }
+                            ok += 1;
+                        }
+                        Err(e) => {
+                            state.update_failed(&chapter, f.chunk_index, &f.text, &format!("{e:#}"));
+                            failed_again += 1;
+                        }
+                    }
+                    state.save(&book_dir)?;
+                }
+            }
+            let _ = plugin.unload(&handle).await;
+            Ok(format!(
+                "retry done: {ok} chunk(s) recovered, {failed_again} still failing. When a chapter has no failures left, merge it with recover action=merge."
+            ))
+        }
+        "merge" => {
+            let book_dir = PathBuf::from(
+                args.get("book_dir")
+                    .and_then(|v| v.as_str())
+                    .context("missing 'book_dir'")?,
+            );
+            let chapter = args
+                .get("chapter")
+                .and_then(|v| v.as_str())
+                .context("missing 'chapter'")?;
+            let chapter_dir = book_dir.join(utils::sanitize_filename(chapter));
+            let wavs = merger::collect_chapter_wavs(&chapter_dir);
+            if wavs.is_empty() {
+                bail!("no chunk WAVs found in {}", chapter_dir.display());
+            }
+            let ffmpeg = merger::find_ffmpeg()?;
+            let mp3 = book_dir.join(format!("{}.mp3", utils::sanitize_filename(chapter)));
+            merger::merge_wavs_to_mp3(&wavs, &mp3, &ffmpeg)?;
+            let mut state = recovery::RecoveryState::load(&book_dir)?;
+            state.clear_chapter(chapter);
+            if state.failed.is_empty() && state.done.is_empty() {
+                recovery::RecoveryState::remove_file_if_empty(&book_dir, &state)?;
+            } else {
+                state.save(&book_dir)?;
+            }
+            Ok(format!("merged {} chunk(s) into {}", wavs.len(), mp3.display()))
+        }
+        other => bail!("unknown recover action '{other}'"),
+    }
+}
+
+async fn dispatch_tool(pm: &PluginManager, name: &str, args: &serde_json::Value) -> Result<String> {
+    match name {
+        "get_status" => Ok(serde_json::to_string_pretty(&status_json(pm))?),
+        "configure" => tool_configure(pm, args),
+        "synthesize" => tool_synthesize(pm, args).await,
+        "book" => tool_book(args),
+        "generate" => tool_generate(pm, args).await,
+        "recover" => tool_recover(pm, args).await,
+        other => bail!("unknown tool '{other}'"),
+    }
+}
+
+// ---------------------------------------------------------------------
+// Direct CLI parsing
+// ---------------------------------------------------------------------
+
 fn print_usage() {
     eprintln!(
         "abg-cli — Audiobook Generator command line\n\
@@ -173,14 +862,16 @@ fn print_usage() {
          \x20 abg-cli status\n\
          \x20 abg-cli synthesize --engine <id> [--text T | --text-file F] --out OUT.wav\n\
          \x20     [--voice V] [--language L] [--ref REF.wav] [--max-chars N] [--param k=v]...\n\
+         \x20 abg-cli call <tool> '<json-args>'\n\
          \x20 abg-cli --mcp\n\
          \n\
+         Tools: get_status, configure, synthesize, book, generate, recover.\n\
          Engine ids: run `abg-cli status` to list them."
     );
 }
 
-fn parse_kv(pairs: &[String]) -> std::collections::HashMap<String, String> {
-    let mut map = std::collections::HashMap::new();
+fn parse_kv(pairs: &[String]) -> HashMap<String, String> {
+    let mut map = HashMap::new();
     for p in pairs {
         if let Some((k, v)) = p.split_once('=') {
             map.insert(k.to_string(), v.to_string());
@@ -201,12 +892,30 @@ fn mcp_tools() -> serde_json::Value {
             "inputSchema": { "type": "object", "properties": {} }
         },
         {
-            "name": "synthesize",
-            "description": "Synthesize speech to a WAV file with a chosen TTS engine, voice and parameters.",
+            "name": "configure",
+            "description": "Configure the synthesis session (engine, voice, language, reference audio/transcript, engine parameters). Settings persist across calls. Actions: list_engines, list_voices, get_parameters, set.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "engine": { "type": "string", "description": "Engine id (see get_status)" },
+                    "action": { "type": "string", "enum": ["list_engines", "list_voices", "get_parameters", "set"] },
+                    "engine": { "type": "string", "description": "Engine id (see list_engines)" },
+                    "voice": { "type": "string", "description": "Preset voice id (see list_voices)" },
+                    "language": { "type": "string" },
+                    "reference_audio": { "type": "string", "description": "Path to a reference WAV for voice cloning" },
+                    "reference_transcript": { "type": "string", "description": "Transcript of the reference audio (required by some engines for good quality)" },
+                    "output_dir": { "type": "string", "description": "Default output folder for generate" },
+                    "params": { "type": "object", "description": "Engine parameters as key/value, e.g. {\"temperature\": \"0.7\"}" }
+                },
+                "required": ["action"]
+            }
+        },
+        {
+            "name": "synthesize",
+            "description": "Synthesize speech to a WAV file. Uses the configured session as fallback for engine, voice, language, reference and parameters.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "engine": { "type": "string", "description": "Engine id (optional if configured)" },
                     "text": { "type": "string", "description": "Text to synthesize" },
                     "text_file": { "type": "string", "description": "Path to a UTF-8 text file (alternative to text)" },
                     "output_path": { "type": "string", "description": "Destination WAV file path" },
@@ -216,7 +925,49 @@ fn mcp_tools() -> serde_json::Value {
                     "max_chars": { "type": "integer" },
                     "extra": { "type": "object", "description": "Engine parameters, e.g. {\"temperature\": \"0.7\"}" }
                 },
-                "required": ["engine", "output_path"]
+                "required": ["output_path"]
+            }
+        },
+        {
+            "name": "book",
+            "description": "Load a document (epub, txt, md, docx, json) and inspect its chapters. Actions: load, chapters.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "action": { "type": "string", "enum": ["load", "chapters"] },
+                    "path": { "type": "string", "description": "Document path (load)" },
+                    "title": { "type": "string", "description": "Book title (load; defaults to the file name)" }
+                },
+                "required": ["action"]
+            }
+        },
+        {
+            "name": "generate",
+            "description": "Generate the audiobook with the configured session. Requires a loaded book and a configured engine. Actions: start.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "action": { "type": "string", "enum": ["start"] },
+                    "output_dir": { "type": "string", "description": "Output folder (defaults to the configured one, or the app output folder)" },
+                    "chapters": { "type": "array", "items": { "type": "string" }, "description": "Chapter titles to convert (omit for the whole book)" },
+                    "max_chars": { "type": "integer", "description": "Chunk size in characters (defaults to the engine limit)" },
+                    "delete_intermediate_chunks": { "type": "boolean", "description": "Delete chunk WAV folders after success (kept when failures exist)" }
+                },
+                "required": ["action"]
+            }
+        },
+        {
+            "name": "recover",
+            "description": "Repair interrupted generations. Actions: list (root_dir) shows books with failed chunks; retry (book_dir, optional chapter) re-synthesizes failed chunks; merge (book_dir, chapter) rebuilds the chapter MP3.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "action": { "type": "string", "enum": ["list", "retry", "merge"] },
+                    "root_dir": { "type": "string", "description": "Folder to scan for interrupted books (list)" },
+                    "book_dir": { "type": "string", "description": "Output folder of the book (retry, merge)" },
+                    "chapter": { "type": "string", "description": "Chapter title (optional for retry, required for merge)" }
+                },
+                "required": ["action"]
             }
         }
     ])
@@ -238,72 +989,13 @@ async fn mcp_handle(
         "tools/list" => Ok(serde_json::json!({ "tools": mcp_tools() })),
         "tools/call" => {
             let params = req.get("params").cloned().unwrap_or_default();
-            let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
+            let name = params
+                .get("name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("")
+                .to_string();
             let args = params.get("arguments").cloned().unwrap_or_default();
-            let text_result: Result<String> = async {
-                match name {
-                    "get_status" => Ok(serde_json::to_string_pretty(&status_json(pm))?),
-                    "synthesize" => {
-                        let engine = args
-                            .get("engine")
-                            .and_then(|v| v.as_str())
-                            .context("missing 'engine'")?
-                            .to_string();
-                        let out = args
-                            .get("output_path")
-                            .and_then(|v| v.as_str())
-                            .context("missing 'output_path'")?;
-                        let extra: std::collections::HashMap<String, String> = args
-                            .get("extra")
-                            .and_then(|v| v.as_object())
-                            .map(|o| {
-                                o.iter()
-                                    .map(|(k, v)| {
-                                        (k.clone(), v.as_str().unwrap_or("").to_string())
-                                    })
-                                    .collect()
-                            })
-                            .unwrap_or_default();
-                        let path = run_synthesize(
-                            pm,
-                            SynthArgs {
-                                engine,
-                                text: args
-                                    .get("text")
-                                    .and_then(|v| v.as_str())
-                                    .map(|s| s.to_string()),
-                                text_file: args
-                                    .get("text_file")
-                                    .and_then(|v| v.as_str())
-                                    .map(PathBuf::from),
-                                out: PathBuf::from(out),
-                                voice: args
-                                    .get("voice")
-                                    .and_then(|v| v.as_str())
-                                    .map(|s| s.to_string()),
-                                language: args
-                                    .get("language")
-                                    .and_then(|v| v.as_str())
-                                    .map(|s| s.to_string()),
-                                reference: args
-                                    .get("reference_audio")
-                                    .and_then(|v| v.as_str())
-                                    .map(|s| s.to_string()),
-                                max_chars: args
-                                    .get("max_chars")
-                                    .and_then(|v| v.as_u64())
-                                    .map(|n| n as usize),
-                                extra,
-                            },
-                        )
-                        .await?;
-                        Ok(format!("WAV written to {}", path.display()))
-                    }
-                    other => bail!("unknown tool '{}'", other),
-                }
-            }
-            .await;
-            match text_result {
+            match dispatch_tool(pm, &name, &args).await {
                 Ok(t) => Ok(serde_json::json!({
                     "content": [{ "type": "text", "text": t }],
                     "isError": false
@@ -374,6 +1066,16 @@ async fn main() -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&status_json(&pm))?);
             Ok(())
         }
+        "call" => {
+            let tool = args.get(1).context("missing tool name")?;
+            let json: serde_json::Value = match args.get(2) {
+                Some(s) => serde_json::from_str(s).context("arguments must be a JSON object")?,
+                None => serde_json::json!({}),
+            };
+            let out = dispatch_tool(&pm, tool, &json).await?;
+            println!("{out}");
+            Ok(())
+        }
         "synthesize" => {
             let mut s = SynthArgs {
                 engine: String::new(),
@@ -384,13 +1086,13 @@ async fn main() -> Result<()> {
                 language: None,
                 reference: None,
                 max_chars: None,
-                extra: std::collections::HashMap::new(),
+                extra: HashMap::new(),
             };
             let mut kv_pairs: Vec<String> = Vec::new();
             let mut i = 1;
             while i < args.len() {
                 let flag = args[i].as_str();
-                let mut take = |i: &mut usize| -> Result<String> {
+                let take = |i: &mut usize| -> Result<String> {
                     *i += 1;
                     args.get(*i)
                         .cloned()

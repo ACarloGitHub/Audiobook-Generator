@@ -39,7 +39,7 @@ pub struct RecoveryState {
     pub failed: HashMap<String, Vec<FailedChunk>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FailedChunk {
     pub chunk_index: usize,
     pub text: String,
