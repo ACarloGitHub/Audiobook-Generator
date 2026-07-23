@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -668,6 +668,48 @@ pub async fn synthesize_demo(
     Ok(abs.to_string_lossy().to_string())
 }
 
+/// Delete the per-chapter chunk WAV directories after a successful book
+/// generation, mirroring the backup logic: delete only when NO
+/// failed_chunks.json exists; otherwise preserve everything and log which
+/// book and which chapters failed (the data the Error Recovery tab uses).
+fn cleanup_intermediate_chunks(out: &Path, delete_requested: bool, app: &AppHandle) {
+    if !delete_requested {
+        return;
+    }
+    let book = out
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| out.display().to_string());
+    if out.join("failed_chunks.json").exists() {
+        let failed_chapters = crate::recovery::RecoveryState::load(out)
+            .map(|s| {
+                let mut v: Vec<String> = s.failed.keys().cloned().collect();
+                v.sort();
+                v.join(", ")
+            })
+            .unwrap_or_else(|_| "unknown".to_string());
+        let _ = app.emit(
+            "generation-progress",
+            format!(
+                "Cleanup skipped: failed chunks present in '{book}' (chapters: {failed_chapters}). Intermediate chunks preserved for Error Recovery."
+            ),
+        );
+        return;
+    }
+    if let Ok(entries) = std::fs::read_dir(out) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                let _ = std::fs::remove_dir_all(&p);
+            }
+        }
+    }
+    let _ = app.emit(
+        "generation-progress",
+        format!("Intermediate chunks deleted for '{book}' (no failed chunks)."),
+    );
+}
+
 #[tauri::command]
 pub async fn start_generation(
     engine_id: String,
@@ -681,6 +723,7 @@ pub async fn start_generation(
     extra: Option<std::collections::HashMap<String, String>>,
     reference_audio: Option<String>,
     only_chapters: Option<Vec<String>>,
+    delete_intermediate_chunks: Option<bool>,
     pm: State<'_, Arc<PluginManager>>,
     app: AppHandle,
 ) -> Result<usize, String> {
@@ -740,6 +783,9 @@ pub async fn start_generation(
         .map_err(|e| format!("synthesis task panicked: {e}"))?;
 
         let _ = app.emit("generation-complete", ());
+        if result.is_ok() {
+            cleanup_intermediate_chunks(&output_dir, delete_intermediate_chunks.unwrap_or(false), &app);
+        }
         return result.map_err(|e| format!("book synthesis failed: {e:#}"));
     }
 
@@ -769,6 +815,9 @@ pub async fn start_generation(
         .map_err(|e| format!("synthesis task panicked: {e}"))?;
 
         let _ = app.emit("generation-complete", ());
+        if result.is_ok() {
+            cleanup_intermediate_chunks(&output_dir, delete_intermediate_chunks.unwrap_or(false), &app);
+        }
         return result.map_err(|e| format!("book synthesis failed: {e:#}"));
     }
 
@@ -796,6 +845,9 @@ pub async fn start_generation(
         .map_err(|e| format!("synthesis task panicked: {e}"))?;
 
         let _ = app.emit("generation-complete", ());
+        if result.is_ok() {
+            cleanup_intermediate_chunks(&output_dir, delete_intermediate_chunks.unwrap_or(false), &app);
+        }
         return result.map_err(|e| format!("book synthesis failed: {e:#}"));
     }
 

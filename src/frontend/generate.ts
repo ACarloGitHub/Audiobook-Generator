@@ -169,6 +169,7 @@ export function attachGenerateListeners(
           maxChars: maxCharsForLang,
           extra,
           onlyChapters: Array.from(state.selectedChapters),
+          deleteIntermediateChunks: state.deleteIntermediateChunks,
           referenceAudio:
             state.selectedEngineId.startsWith("VoxCPM2") && state.voxMode === "design"
               ? null

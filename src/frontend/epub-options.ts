@@ -72,6 +72,13 @@ export function attachEpubListeners(render: () => void, onEpubLoaded: (info: Boo
         if (typeof path === "string") {
           state.epubPath = path;
           const info = await invoke<BookInfo>("load_epub", { path });
+          // Auto-fill the audiobook title (backup behavior): prefer the
+          // book metadata title, fall back to the file name. The user can
+          // still edit it afterwards.
+          if (!state.audioBookTitle.trim()) {
+            const fromFile = path.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ?? "";
+            state.audioBookTitle = info.title.trim() || fromFile;
+          }
           onEpubLoaded(info);
         }
       } catch (e) {
