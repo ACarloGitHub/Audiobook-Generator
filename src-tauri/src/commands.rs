@@ -669,9 +669,9 @@ pub async fn synthesize_demo(
 }
 
 /// Delete the per-chapter chunk WAV directories after a successful book
-/// generation, mirroring the backup logic: delete only when NO
-/// failed_chunks.json exists; otherwise preserve everything and log which
-/// book and which chapters failed (the data the Error Recovery tab uses).
+/// generation, mirroring the backup logic: delete only when there are NO
+/// failed chunks; otherwise preserve everything and log which book and
+/// which chapters failed (the data the Error Recovery tab uses).
 fn cleanup_intermediate_chunks(out: &Path, delete_requested: bool, app: &AppHandle) {
     if !delete_requested {
         return;
@@ -680,7 +680,10 @@ fn cleanup_intermediate_chunks(out: &Path, delete_requested: bool, app: &AppHand
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| out.display().to_string());
-    if out.join("failed_chunks.json").exists() {
+    let has_failures = crate::recovery::RecoveryState::load(out)
+        .map(|s| !s.failed.is_empty())
+        .unwrap_or(false);
+    if has_failures {
         let failed_chapters = crate::recovery::RecoveryState::load(out)
             .map(|s| {
                 let mut v: Vec<String> = s.failed.keys().cloned().collect();

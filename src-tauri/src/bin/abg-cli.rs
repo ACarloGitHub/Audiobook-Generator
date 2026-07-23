@@ -455,14 +455,17 @@ fn format_book_listing(title: &str, chapters: &[input::Chapter]) -> String {
 }
 
 /// Same rule as the desktop app: intermediate chunk folders are deleted
-/// only when no failed_chunks.json exists; otherwise everything is kept
+/// only when there are no failed chunks; otherwise everything is kept
 /// and the failed chapters are reported (they feed the recover tool).
 fn cleanup_cli(out: &Path) -> String {
     let book = out
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| out.display().to_string());
-    if out.join("failed_chunks.json").exists() {
+    let has_failures = recovery::RecoveryState::load(out)
+        .map(|s| !s.failed.is_empty())
+        .unwrap_or(false);
+    if has_failures {
         let failed = recovery::RecoveryState::load(out)
             .map(|s| {
                 let mut v: Vec<String> = s.failed.keys().cloned().collect();

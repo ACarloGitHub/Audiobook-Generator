@@ -220,4 +220,53 @@ mod tests {
         assert_eq!(loaded.meta.extra.get("temp").map(|s| s.as_str()), Some("0.7"));
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn cleanup_allows_when_failed_empty_even_if_file_exists() {
+        let dir = std::env::temp_dir().join(format!(
+            "recovery_cleanup_empty_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut state = RecoveryState::default();
+        state.mark_done("Chapter 1", 0);
+        state.mark_done("Chapter 1", 1);
+        state.mark_done("Chapter 2", 0);
+        state.save(&dir).unwrap();
+        let file_exists = dir.join("failed_chunks.json").exists();
+        let loaded = RecoveryState::load(&dir).unwrap();
+        assert!(file_exists, "failed_chunks.json should exist on disk");
+        assert!(
+            loaded.failed.is_empty(),
+            "failed map should be empty -> cleanup must proceed"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cleanup_blocked_when_failed_not_empty() {
+        let dir = std::env::temp_dir().join(format!(
+            "recovery_cleanup_fail_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut state = RecoveryState::default();
+        state.mark_done("Chapter 1", 0);
+        state.mark_failed("Chapter 2", 3, "some text", "synth error");
+        state.save(&dir).unwrap();
+        let loaded = RecoveryState::load(&dir).unwrap();
+        assert!(
+            !loaded.failed.is_empty(),
+            "failed map should not be empty -> cleanup must be skipped"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
