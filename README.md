@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <strong>Status: active development — v0.1.5</strong> — the project has migrated from Python + Gradio to Tauri + llama.cpp. Qwen3-TTS, OuteTTS and VoxCPM2 are working end-to-end on Windows, macOS and Linux. v0.1.5: GPU-only runtime guard, custom storage folder, TXT/Markdown/DOCX/JSON input, live VRAM bar, and `abg-cli` (CLI + MCP server for AI agents) bundled in the installer. See <a href="AudiobookGenerator-Wiki/todo.md">todo.md</a> for the roadmap.
+  <strong>Status: active development — v0.1.8</strong> — the project has migrated from Python + Gradio to Tauri + llama.cpp. Qwen3-TTS, OuteTTS and VoxCPM2 are working end-to-end on Windows, macOS and Linux. v0.1.8: full agent tool set in `abg-cli` (configure, book, generate, recover — CLI and MCP), persistent agent session, delete-intermediate-chunks honored, auto book title, verified engine parameters with sliders. See <a href="AudiobookGenerator-Wiki/todo.md">todo.md</a> for the roadmap.
 </p>
 
 <p align="center">
