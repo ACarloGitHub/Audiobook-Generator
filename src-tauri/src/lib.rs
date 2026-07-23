@@ -81,6 +81,7 @@ pub fn run() {
             commands::get_test_epub,
             commands::list_mp3s_in_dir,
             commands::get_default_output_dir,
+            commands::get_cli_exe_path,
             commands::list_models,
             commands::is_model_installed,
             commands::download_model,

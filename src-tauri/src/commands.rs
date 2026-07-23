@@ -872,6 +872,28 @@ pub fn get_default_output_dir(kind: String) -> String {
     .to_string()
 }
 
+/// Absolute path of the bundled `abg-cli` executable, so the AI Agents
+/// panel can pre-fill the MCP configuration with the real location
+/// instead of a placeholder. None when the CLI is not found (e.g. the
+/// app runs unpacked).
+#[tauri::command]
+pub fn get_cli_exe_path() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let name = if cfg!(windows) { "abg-cli.exe" } else { "abg-cli" };
+    // Installed layout: <install>/resources/cli/abg-cli[.exe]
+    let bundled = dir.join("resources").join("cli").join(name);
+    if bundled.exists() {
+        return Some(bundled.to_string_lossy().to_string());
+    }
+    // Dev layout: target/debug|release/abg-cli[.exe] next to the app binary
+    let sibling = dir.join(name);
+    if sibling.exists() {
+        return Some(sibling.to_string_lossy().to_string());
+    }
+    None
+}
+
 fn map_language_to_test_suffix(lang: Option<&str>) -> String {
     let l = match lang {
         Some(l) => l.trim(),

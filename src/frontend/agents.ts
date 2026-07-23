@@ -1,13 +1,22 @@
+import { invoke } from "@tauri-apps/api/core";
 import { escapeHtml } from "./helpers";
 
-const MCP_JSON = `{
+const PLACEHOLDER_PATH = "C:\\\\path\\\\to\\\\abg-cli.exe";
+
+function mcpJsonFor(cliPath: string): string {
+  // In JSON every backslash of the Windows path must be doubled.
+  const escaped = cliPath.replace(/\\/g, "\\\\\\\\");
+  return `{
   "mcpServers": {
     "audiobook-generator": {
-      "command": "C:\\\\path\\\\to\\\\abg-cli.exe",
+      "command": "${escaped}",
       "args": ["--mcp"]
     }
   }
 }`;
+}
+
+let mcpJson = mcpJsonFor(PLACEHOLDER_PATH);
 
 const CLI_EXAMPLES = `# List engines, models and GPU status
 abg-cli status
@@ -63,13 +72,12 @@ export function renderAgents(): string {
         <code>abg-cli --mcp</code> speaks the MCP protocol, so agents in LM Studio can call the
         tools below. Register it in <code>%USERPROFILE%\\.cache\\lm-studio\\mcp.json</code> like this:
       </p>
-      <textarea class="text-input log-area" rows="9" readonly id="agents-mcp-json">${escapeHtml(MCP_JSON)}</textarea>
+      <textarea class="text-input log-area" rows="9" readonly id="agents-mcp-json">${escapeHtml(mcpJson)}</textarea>
       <div class="btn-row">
         <button class="btn-secondary" id="agents-copy-mcp">📋 Copy JSON</button>
       </div>
-      <p class="field-help">
-        Replace <code>C:\\\\path\\\\to\\\\abg-cli.exe</code> with the real path (the
-        <code>resources/cli/</code> folder of your installation).<br/>
+      <p class="field-help" id="agents-path-note">
+        Looking for the <code>abg-cli</code> path in your installation…<br/>
         <strong>Gotcha:</strong> when pasting manually into an existing <code>mcp.json</code>, copy only
         the content between <code>"mcpServers": {</code> and the matching closing brace — LM Studio
         merges it into the existing top-level key. Then restart LM Studio and enable the server in
@@ -110,11 +118,41 @@ export function renderAgents(): string {
 }
 
 export function attachAgentsListeners(): void {
+  // Fill the MCP JSON with the real abg-cli path of this installation.
+  void (async () => {
+    const note = document.getElementById("agents-path-note");
+    try {
+      const cliPath = await invoke<string | null>("get_cli_exe_path");
+      if (cliPath) {
+        mcpJson = mcpJsonFor(cliPath);
+        const ta = document.getElementById("agents-mcp-json") as HTMLTextAreaElement | null;
+        if (ta) ta.value = mcpJson;
+        if (note) {
+          note.innerHTML = `Detected path: <code>${escapeHtml(cliPath)}</code> — the JSON above is ready to paste.<br/>
+        <strong>Gotcha:</strong> when pasting manually into an existing <code>mcp.json</code>, copy only
+        the content between <code>"mcpServers": {</code> and the matching closing brace — LM Studio
+        merges it into the existing top-level key. Then restart LM Studio and enable the server in
+        the chat's tool picker.`;
+        }
+        return;
+      }
+    } catch {
+      // fall through to the "not found" note
+    }
+    if (note) {
+      note.innerHTML = `<code>abg-cli</code> was not found next to this installation.
+        Look for it in the <code>resources/cli/</code> folder of the install directory
+        (see the README, "Where is abg-cli?") and replace the placeholder path above.<br/>
+        <strong>Gotcha:</strong> when pasting manually into an existing <code>mcp.json</code>, copy only
+        the content between <code>"mcpServers": {</code> and the matching closing brace.`;
+    }
+  })();
+
   document.getElementById("agents-copy-cli")?.addEventListener("click", () => {
     void navigator.clipboard.writeText(CLI_EXAMPLES);
   });
   document.getElementById("agents-copy-mcp")?.addEventListener("click", () => {
-    void navigator.clipboard.writeText(MCP_JSON);
+    void navigator.clipboard.writeText(mcpJson);
   });
   document.getElementById("agents-copy-workflow")?.addEventListener("click", () => {
     void navigator.clipboard.writeText(WORKFLOW);
