@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <strong>Status: active development — v0.1.9</strong> — the project has migrated from Python + Gradio to Tauri + llama.cpp. Qwen3-TTS, OuteTTS and VoxCPM2 are working end-to-end on Windows, macOS and Linux. v0.1.9: fix — `abg-cli` now finds the bundled engines from the installed layout (GPU guard works), and the AI Agents panel pre-fills the MCP configuration with the real CLI path. See <a href="AudiobookGenerator-Wiki/todo.md">todo.md</a> for the roadmap.
+  <strong>Status: active development — v0.2.0</strong> — the project has migrated from Python + Gradio to Tauri + llama.cpp. Qwen3-TTS, OuteTTS and VoxCPM2 are working end-to-end on Windows, macOS and Linux. v0.2.0: fix audiobook title not showing after loading a document; fix intermediate chunk cleanup never running; redesign MCP server so `generate` and `recover` run in the background and respond immediately with a job ID (no more LM Studio timeout). See <a href="AudiobookGenerator-Wiki/todo.md">todo.md</a> for the roadmap.
 </p>
 
 <p align="center">
