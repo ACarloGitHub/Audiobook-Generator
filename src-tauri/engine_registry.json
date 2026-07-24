@@ -159,8 +159,8 @@
           "supported_modes": [
             "Voice Clone"
           ],
-          "char_limit_recommended": 800,
-          "char_limit_max": 1000,
+          "char_limit_recommended": 700,
+          "char_limit_max": 850,
           "requires_speaker_encoder": true,
           "speaker_encoder_repo": "Qwen/Qwen3-TTS-12Hz-Speaker-Encoder",
           "gguf_repo": "Serveurperso/Qwen3-TTS-GGUF",
@@ -198,8 +198,8 @@
           "supported_modes": [
             "Custom Voice"
           ],
-          "char_limit_recommended": 800,
-          "char_limit_max": 1000,
+          "char_limit_recommended": 700,
+          "char_limit_max": 850,
           "requires_speaker_encoder": false,
           "preset_voices": [
             "Vivian",
@@ -247,8 +247,8 @@
           "supported_modes": [
             "Voice Design"
           ],
-          "char_limit_recommended": 800,
-          "char_limit_max": 1000,
+          "char_limit_recommended": 700,
+          "char_limit_max": 850,
           "requires_speaker_encoder": false,
           "gguf_repo": "Serveurperso/Qwen3-TTS-GGUF",
           "files": [

@@ -45,8 +45,16 @@ pub fn tts_model_config() -> HashMap<&'static str, TtsModelConfig> {
         voice_cloning: Some(true),
         needs_reference_transcript: Some(false),
     };
-    m.insert("Qwen3-TTS-12Hz-0.6B-Base", qwen_base.clone());
-    m.insert("Qwen3-TTS-12Hz-1.7B-Base", qwen_base);
+    m.insert("Qwen3-TTS-12Hz-0.6B-Base", qwen_base);
+
+    // 1.7B models: reduced char limits (700/850) to avoid
+    // "decode would overflow cache (4097 > 4096)" on borderline chunks.
+    let qwen_base_17b = TtsModelConfig {
+        char_limit_recommended: Some(700),
+        char_limit_max: Some(850),
+        ..qwen_base.clone()
+    };
+    m.insert("Qwen3-TTS-12Hz-1.7B-Base", qwen_base_17b);
 
     m.insert(
         "Qwen3-TTS-12Hz-0.6B-CustomVoice",
@@ -72,8 +80,8 @@ pub fn tts_model_config() -> HashMap<&'static str, TtsModelConfig> {
             mode: Some("Custom Voice".into()),
             supported_modes: Some(vec!["Custom Voice".into()]),
             note: Some("Qwen3-TTS CustomVoice: 9 preset voices with instruct control, higher quality.".into()),
-            char_limit_recommended: Some(800),
-            char_limit_max: Some(1000),
+            char_limit_recommended: Some(700),
+            char_limit_max: Some(850),
             char_limits_by_lang: None,
             separator: ".".into(),
             replace_guillemets: false,
@@ -91,8 +99,8 @@ pub fn tts_model_config() -> HashMap<&'static str, TtsModelConfig> {
             mode: Some("Voice Design".into()),
             supported_modes: Some(vec!["Voice Design".into()]),
             note: Some("Qwen3-TTS VoiceDesign: generate voice from natural-language description.".into()),
-            char_limit_recommended: Some(800),
-            char_limit_max: Some(1000),
+            char_limit_recommended: Some(700),
+            char_limit_max: Some(850),
             char_limits_by_lang: None,
             separator: ".".into(),
             replace_guillemets: false,
