@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use tracing::{error, info};
 
 fn init_paths() {
     // Same base dir Tauri uses for the desktop app (dirs::data_dir ==
@@ -65,7 +66,7 @@ fn init_logging() -> tracing_appender::non_blocking::WorkerGuard {
         .with_ansi(false)
         .with_writer(non_blocking)
         .init();
-    tracing::info!("=== abg-cli starting (log: {}) ===", log_path.display());
+    info!("=== abg-cli starting (log: {}) ===", log_path.display());
     guard
 }
 
@@ -209,6 +210,27 @@ struct JobState {
     book_dir: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     engine: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pid: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    gen_params: Option<GenParams>,
+}
+
+/// Generation parameters stored in the job file so the detached
+/// `internal-generate` process can read them.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct GenParams {
+    engine: String,
+    epub: String,
+    output_dir: String,
+    max_words: usize,
+    max_chars: usize,
+    voice: Option<String>,
+    language: Option<String>,
+    reference: Option<String>,
+    only: Option<Vec<String>>,
+    extra: HashMap<String, String>,
+    delete_chunks: bool,
 }
 
 fn jobs_dir() -> PathBuf {
@@ -590,89 +612,6 @@ fn cleanup_cli(out: &Path) -> String {
     format!("\nIntermediate chunks deleted for '{book}' (no failed chunks).")
 }
 
-/// Run book generation in the background, updating job state as it goes.
-/// Run book generation in the background, updating job state as it goes.
-/// Spawned via `tokio::spawn` so the MCP request loop stays responsive.
-async fn run_generation(
-    engine: String,
-    epub: PathBuf,
-    out: PathBuf,
-    max_words: usize,
-    max_chars: usize,
-    ffmpeg: PathBuf,
-    voice: Option<String>,
-    language: Option<String>,
-    reference: Option<String>,
-    only: Option<Vec<String>>,
-    extra: HashMap<String, String>,
-    delete_chunks: bool,
-    job_id: String,
-) -> Result<String> {
-    let job_id_cb = job_id.clone();
-    let cb: Box<dyn FnMut(&str) + Send> =
-        Box::new(move |msg: &str| update_job_progress(&job_id_cb, msg));
-
-    let out_msg = out.clone();
-
-    let n: usize = if engine.starts_with("Qwen3-TTS") {
-        let paths = QwenPaths::from_app_data(&config::paths::storage_dir());
-        let engine_c = engine.clone();
-        tokio::task::spawn_blocking(move || {
-            let q = audiobook_generator_lib::plugins::qwen3tts::QwenPlugin::new(paths, &engine_c);
-            audiobook_generator_lib::plugins::qwen3tts::synthesize_book(
-                &q, &epub, &out, max_words, max_chars, &ffmpeg,
-                voice.as_deref(), language.as_deref(), reference.as_deref(),
-                only.as_deref(), &extra, Some(cb),
-            )
-        })
-        .await
-        .context("synthesis task panicked")??
-    } else if engine.starts_with("VoxCPM2") {
-        let paths = VoxCpm2Paths::from_app_data(&config::paths::storage_dir());
-        let engine_c = engine.clone();
-        tokio::task::spawn_blocking(move || {
-            let p = audiobook_generator_lib::plugins::voxcpm2::VoxCpm2Plugin::new(paths, &engine_c);
-            audiobook_generator_lib::plugins::voxcpm2::synthesize_book(
-                &p, &epub, &out, max_words, max_chars, &ffmpeg,
-                reference.as_deref(), only.as_deref(), &extra, Some(cb),
-            )
-        })
-        .await
-        .context("synthesis task panicked")??
-    } else if engine.starts_with("OuteTTS") {
-        let models_dir = config::paths::models_dir().join("outetts");
-        let engine_c = engine.clone();
-        tokio::task::spawn_blocking(move || {
-            let p = audiobook_generator_lib::plugins::outetts::OuteTTSPlugin::new(models_dir, &engine_c);
-            audiobook_generator_lib::plugins::outetts::synthesize_book(
-                &p, &epub, &out, max_words, max_chars, &ffmpeg,
-                only.as_deref(), &extra, Some(cb),
-            )
-        })
-        .await
-        .context("synthesis task panicked")??
-    } else {
-        bail!("engine '{engine}' does not support book generation");
-    };
-
-    let mut msg = format!("Done: {n} chunks synthesized into {}", out_msg.display());
-    if let Ok(state) = recovery::RecoveryState::load(&out_msg) {
-        if !state.failed.is_empty() {
-            let mut ch: Vec<String> = state.failed.keys().cloned().collect();
-            ch.sort();
-            msg.push_str(&format!(
-                "\nWARNING: failed chunks in chapters: {}. Use recover action=retry with book_dir '{}' to fix them, then action=merge.",
-                ch.join(", "),
-                out_msg.display()
-            ));
-        }
-    }
-    if delete_chunks {
-        msg.push_str(&cleanup_cli(&out_msg));
-    }
-    Ok(msg)
-}
-
 async fn tool_generate(args: &serde_json::Value) -> Result<String> {
     let action = args
         .get("action")
@@ -687,6 +626,61 @@ async fn tool_generate(args: &serde_json::Value) -> Result<String> {
             let state = load_job_state(job_id)
                 .with_context(|| format!("job '{job_id}' not found"))?;
             Ok(serde_json::to_string_pretty(&state)?)
+        }
+        "stop" => {
+            let job_id = args
+                .get("job_id")
+                .and_then(|v| v.as_str())
+                .context("missing 'job_id'")?;
+            let state = load_job_state(job_id)
+                .with_context(|| format!("job '{job_id}' not found"))?;
+            if state.status != "running" {
+                return Ok(format!("Job '{job_id}' is not running (status: {})", state.status));
+            }
+            if let Some(pid) = state.pid {
+                #[cfg(windows)]
+                {
+                    let kill = std::process::Command::new("taskkill")
+                        .args(["/PID", &pid.to_string(), "/T", "/F"])
+                        .output();
+                    match kill {
+                        Ok(o) if o.status.success() => {
+                            if let Some(mut s) = load_job_state(job_id) {
+                                s.status = "stopped".to_string();
+                                s.finished_at = Some(recovery::now_stamp());
+                                s.progress = Some("Stopped by user".to_string());
+                                save_job_state(&s);
+                            }
+                            Ok(format!("Job '{job_id}' (pid {pid}) killed."))
+                        }
+                        Ok(o) => Ok(format!(
+                            "Kill command failed: {}",
+                            String::from_utf8_lossy(&o.stderr)
+                        )),
+                        Err(e) => Ok(format!("Failed to run taskkill: {e}")),
+                    }
+                }
+                #[cfg(not(windows))]
+                {
+                    let kill = std::process::Command::new("kill")
+                        .args(["-TERM", &pid.to_string()])
+                        .output();
+                    match kill {
+                        Ok(o) if o.status.success() => {
+                            if let Some(mut s) = load_job_state(job_id) {
+                                s.status = "stopped".to_string();
+                                s.finished_at = Some(recovery::now_stamp());
+                                s.progress = Some("Stopped by user".to_string());
+                                save_job_state(&s);
+                            }
+                            Ok(format!("Job '{job_id}' (pid {pid}) killed."))
+                        }
+                        _ => Ok(format!("Failed to kill pid {pid}")),
+                    }
+                }
+            } else {
+                Ok(format!("Job '{job_id}' has no PID; cannot stop."))
+            }
         }
         "start" => {
             let s = session_load();
@@ -761,10 +755,22 @@ async fn tool_generate(args: &serde_json::Value) -> Result<String> {
             gpu_guard::ensure_gpu()?;
             create_plugin(&engine)
                 .ok_or_else(|| anyhow::anyhow!("engine '{engine}' is not installed or model files missing"))?;
-            let ffmpeg = merger::find_ffmpeg()?;
             std::fs::create_dir_all(&output_dir)?;
 
             let job_id = generate_job_id("gen");
+            let gen_params = GenParams {
+                engine: engine.clone(),
+                epub: book_path.clone(),
+                output_dir: output_dir.to_string_lossy().to_string(),
+                max_words,
+                max_chars,
+                voice,
+                language,
+                reference,
+                only,
+                extra,
+                delete_chunks,
+            };
             let job = JobState {
                 job_id: job_id.clone(),
                 tool: "generate".to_string(),
@@ -776,33 +782,41 @@ async fn tool_generate(args: &serde_json::Value) -> Result<String> {
                 error: None,
                 book_dir: Some(output_dir.to_string_lossy().to_string()),
                 engine: Some(engine.clone()),
+                pid: None,
+                gen_params: Some(gen_params),
             };
             save_job_state(&job);
 
-            let job_id_resp = job_id.clone();
-            let output_dir_resp = output_dir.clone();
-            tokio::spawn(async move {
-                let result = run_generation(
-                    engine,
-                    PathBuf::from(&book_path),
-                    output_dir.clone(),
-                    max_words,
-                    max_chars,
-                    ffmpeg,
-                    voice,
-                    language,
-                    reference,
-                    only,
-                    extra,
-                    delete_chunks,
-                    job_id.clone(),
-                )
-                .await;
-                finish_job(&job_id, result.map_err(|e| format!("{e:#}")));
-            });
+            // Spawn a DETACHED child process (`abg-cli internal-generate`)
+            // that runs the full generation independently. This process
+            // survives even if the MCP server (abg-cli --mcp) exits,
+            // which is essential because some MCP clients restart the
+            // server between requests.
+            let exe = std::env::current_exe()
+                .context("cannot find current executable")?;
+            let mut cmd = std::process::Command::new(&exe);
+            cmd.arg("internal-generate")
+               .arg("--job-id").arg(&job_id)
+               .stdin(std::process::Stdio::null())
+               .stdout(std::process::Stdio::null())
+               .stderr(std::process::Stdio::null());
+            crate::utils::hide_console_window(&mut cmd);
+            let child = cmd.spawn()
+                .context("failed to spawn internal-generate process")?;
+            let pid = child.id();
+            // Detach: do NOT assign_child (we want this process to
+            // outlive the MCP server).
+            drop(child);
 
+            // Record the PID so `stop` can kill it later.
+            if let Some(mut state) = load_job_state(&job_id) {
+                state.pid = Some(pid);
+                save_job_state(&state);
+            }
+
+            let output_dir_resp = output_dir.clone();
             Ok(format!(
-                "Generation started (job_id: {job_id_resp}). Output: {}. Poll with: generate action=status, job_id=\"{job_id_resp}\".",
+                "Generation started (job_id: {job_id}, pid: {pid}). Output: {}. Poll with: generate action=status, job_id=\"{job_id}\". Stop with: generate action=stop, job_id=\"{job_id}\".",
                 output_dir_resp.display()
             ))
         }
@@ -973,6 +987,8 @@ async fn tool_recover(args: &serde_json::Value) -> Result<String> {
                 error: None,
                 book_dir: Some(book_dir.to_string_lossy().to_string()),
                 engine: state.meta.engine_id.clone(),
+                pid: None,
+                gen_params: None,
             };
             save_job_state(&job);
 
@@ -1131,7 +1147,7 @@ fn mcp_tools() -> serde_json::Value {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "action": { "type": "string", "enum": ["start", "status"] },
+                    "action": { "type": "string", "enum": ["start", "status", "stop"], "description": "start launches generation as a detached background process and returns immediately with a job_id and pid; stop kills a running job by pid; status reads the job state file for progress, completion, or errors." },
                     "job_id": { "type": "string", "description": "Job identifier returned by start (required for status)" },
                     "output_dir": { "type": "string", "description": "Output folder (defaults to the configured one, or the app output folder)" },
                     "chapters": { "type": "array", "items": { "type": "string" }, "description": "Chapter titles to convert (omit for the whole book)" },
@@ -1235,6 +1251,92 @@ async fn run_mcp(pm: &PluginManager) -> Result<()> {
     Ok(())
 }
 
+/// Run generation as a detached process. Reads all parameters from the
+/// job state file, runs the synthesis, and writes progress/result back.
+/// This function exists so that the MCP server can respond immediately
+/// while generation continues in a separate OS process that survives
+/// even if the MCP server (abg-cli --mcp) exits.
+async fn run_internal_generate(job_id: String) -> Result<String> {
+    let state = load_job_state(&job_id)
+        .with_context(|| format!("job '{job_id}' not found"))?;
+    let params = state.gen_params
+        .ok_or_else(|| anyhow::anyhow!("job '{job_id}' has no gen_params"))?;
+
+    let ffmpeg = merger::find_ffmpeg()?;
+
+    let job_id_cb = job_id.clone();
+    let cb: Box<dyn FnMut(&str) + Send> =
+        Box::new(move |msg: &str| update_job_progress(&job_id_cb, msg));
+
+    let out_msg = PathBuf::from(&params.output_dir);
+
+    let n: usize = if params.engine.starts_with("Qwen3-TTS") {
+        let paths = QwenPaths::from_app_data(&config::paths::storage_dir());
+        let engine_c = params.engine.clone();
+        let epub = PathBuf::from(&params.epub);
+        let out = PathBuf::from(&params.output_dir);
+        tokio::task::spawn_blocking(move || {
+            let q = audiobook_generator_lib::plugins::qwen3tts::QwenPlugin::new(paths, &engine_c);
+            audiobook_generator_lib::plugins::qwen3tts::synthesize_book(
+                &q, &epub, &out, params.max_words, params.max_chars, &ffmpeg,
+                params.voice.as_deref(), params.language.as_deref(),
+                params.reference.as_deref(), params.only.as_deref(),
+                &params.extra, Some(cb),
+            )
+        })
+        .await
+        .context("synthesis task panicked")??
+    } else if params.engine.starts_with("VoxCPM2") {
+        let paths = VoxCpm2Paths::from_app_data(&config::paths::storage_dir());
+        let engine_c = params.engine.clone();
+        let epub = PathBuf::from(&params.epub);
+        let out = PathBuf::from(&params.output_dir);
+        tokio::task::spawn_blocking(move || {
+            let p = audiobook_generator_lib::plugins::voxcpm2::VoxCpm2Plugin::new(paths, &engine_c);
+            audiobook_generator_lib::plugins::voxcpm2::synthesize_book(
+                &p, &epub, &out, params.max_words, params.max_chars, &ffmpeg,
+                params.reference.as_deref(), params.only.as_deref(),
+                &params.extra, Some(cb),
+            )
+        })
+        .await
+        .context("synthesis task panicked")??
+    } else if params.engine.starts_with("OuteTTS") {
+        let models_dir = config::paths::models_dir().join("outetts");
+        let engine_c = params.engine.clone();
+        let epub = PathBuf::from(&params.epub);
+        let out = PathBuf::from(&params.output_dir);
+        tokio::task::spawn_blocking(move || {
+            let p = audiobook_generator_lib::plugins::outetts::OuteTTSPlugin::new(models_dir, &engine_c);
+            audiobook_generator_lib::plugins::outetts::synthesize_book(
+                &p, &epub, &out, params.max_words, params.max_chars, &ffmpeg,
+                params.only.as_deref(), &params.extra, Some(cb),
+            )
+        })
+        .await
+        .context("synthesis task panicked")??
+    } else {
+        bail!("engine '{}' does not support book generation", params.engine);
+    };
+
+    let mut msg = format!("Done: {n} chunks synthesized into {}", out_msg.display());
+    if let Ok(rec_state) = recovery::RecoveryState::load(&out_msg) {
+        if !rec_state.failed.is_empty() {
+            let mut ch: Vec<String> = rec_state.failed.keys().cloned().collect();
+            ch.sort();
+            msg.push_str(&format!(
+                "\nWARNING: failed chunks in chapters: {}. Use recover action=retry with book_dir '{}' to fix them, then action=merge.",
+                ch.join(", "),
+                out_msg.display()
+            ));
+        }
+    }
+    if params.delete_chunks {
+        msg.push_str(&cleanup_cli(&out_msg));
+    }
+    Ok(msg)
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     init_paths();
@@ -1250,6 +1352,22 @@ async fn main() -> Result<()> {
 
     match cmd.as_str() {
         "--mcp" => run_mcp(&pm).await,
+        "internal-generate" => {
+            let job_id = args.get(1).context("missing --job-id")?;
+            let job_id = if job_id == "--job-id" {
+                args.get(2).context("missing job_id value")?.clone()
+            } else {
+                bail!("expected --job-id, got '{}'", job_id)
+            };
+            info!("[internal-generate] starting job {job_id}");
+            let result = run_internal_generate(job_id.clone()).await;
+            match &result {
+                Ok(msg) => info!("[internal-generate] done: {msg}"),
+                Err(e) => error!("[internal-generate] failed: {e:#}"),
+            }
+            finish_job(&job_id, result.map_err(|e| format!("{e:#}")));
+            Ok(())
+        }
         "status" => {
             println!("{}", serde_json::to_string_pretty(&status_json(&pm))?);
             Ok(())

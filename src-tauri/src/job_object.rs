@@ -65,14 +65,19 @@ mod ffi {
     #[repr(C)]
     #[derive(Default)]
     pub struct IO_COUNTERS {
-        pub QuadPart: u64,
+        pub ReadOperationCount: u64,
+        pub WriteOperationCount: u64,
+        pub OtherOperationCount: u64,
+        pub ReadTransferCount: u64,
+        pub WriteTransferCount: u64,
+        pub OtherTransferCount: u64,
     }
 
     #[repr(C)]
     #[derive(Default)]
     pub struct JOBOBJECT_BASIC_LIMIT_INFORMATION {
-        pub PerProcessUserTimeLimit: IO_COUNTERS,
-        pub PerJobUserTimeLimit: IO_COUNTERS,
+        pub PerProcessUserTimeLimit: u64,
+        pub PerJobUserTimeLimit: u64,
         pub LimitFlags: u32,
         pub MinimumWorkingSetSize: usize,
         pub MaximumWorkingSetSize: usize,
