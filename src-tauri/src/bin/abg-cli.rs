@@ -39,6 +39,36 @@ fn init_paths() {
     config::paths::load_storage_override();
 }
 
+/// Initialise the tracing subscriber so that all `info!`, `warn!`,
+/// `debug!` calls in the library crate are actually captured.
+/// Writes to `<app_data>/abg-cli.log` (append mode).
+/// Returns the WorkerGuard which must be kept alive for the process lifetime.
+fn init_logging() -> tracing_appender::non_blocking::WorkerGuard {
+    let log_path = config::paths::app_data_dir().join("abg-cli.log");
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .unwrap_or_else(|e| {
+            eprintln!(
+                "[abg-cli] FATAL: cannot open log file {}: {e}",
+                log_path.display()
+            );
+            std::process::exit(1);
+        });
+    let (non_blocking, guard) = tracing_appender::non_blocking(file);
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .with_ansi(false)
+        .with_writer(non_blocking)
+        .init();
+    tracing::info!("=== abg-cli starting (log: {}) ===", log_path.display());
+    guard
+}
+
 fn create_plugin(engine_id: &str) -> Option<Arc<dyn audiobook_generator_lib::base_plugin::BaseTTSPlugin>> {
     use audiobook_generator_lib::plugins;
     let qwen = plugins::qwen3tts::QwenPlugin::new(
@@ -1208,6 +1238,7 @@ async fn run_mcp(pm: &PluginManager) -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     init_paths();
+    let _log_guard = init_logging();
     let pm = PluginManager::new(config::paths::app_data_dir());
 
     let args: Vec<String> = std::env::args().skip(1).collect();

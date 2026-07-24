@@ -55,6 +55,30 @@ pub fn run() {
             }
             config::paths::set_app_data_dir(app_data_dir.clone());
             config::paths::load_storage_override();
+
+            // Initialise tracing so that info!/warn!/debug! calls in the
+            // engine plugins are captured to <app_data>/audiobook-generator.log.
+            // The WorkerGuard is leaked because it must live for the entire
+            // process lifetime (the non-blocking writer needs it to flush).
+            let log_path = app_data_dir.join("audiobook-generator.log");
+            if let Ok(log_file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&log_path)
+            {
+                let (non_blocking, guard) = tracing_appender::non_blocking(log_file);
+                tracing_subscriber::fmt()
+                    .with_env_filter(
+                        tracing_subscriber::EnvFilter::try_from_default_env()
+                            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+                    )
+                    .with_ansi(false)
+                    .with_writer(non_blocking)
+                    .init();
+                tracing::info!("=== Audiobook Generator starting (log: {}) ===", log_path.display());
+                Box::leak(Box::new(guard));
+            }
+
             let pm = Arc::new(plugin_manager::PluginManager::new(app_data_dir));
             eprintln!(
                 "[setup] plugin manager ready: {} engine(s) registered",
