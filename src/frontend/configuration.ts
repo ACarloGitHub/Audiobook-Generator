@@ -222,7 +222,7 @@ function renderVoxControls(): string {
         descControls = `
       <div class="field-row">
         <label class="field-label">Voice Description (in English, required)</label>
-        <textarea class="text-input" rows="2" id="vox-voice-description" placeholder="A calm middle-aged male narrator with a deep voice">${escapeHtml(state.voxVoiceDescription || "")}</textarea>
+        <textarea class="text-input" rows="2" id="vox-voice-description">${escapeHtml(state.voxVoiceDescription || "A calm middle-aged male narrator with a deep voice")}</textarea>
       </div>`;
     }
 

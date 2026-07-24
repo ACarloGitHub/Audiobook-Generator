@@ -69,7 +69,7 @@ export const state: AppState = {
   qwenInstruct: "",
   outeSpeakerJsonPath: null,
   voxMode: "design",
-  voxVoiceDescription: "",
+  voxVoiceDescription: "A calm middle-aged male narrator with a deep voice",
   engineGeneration: {},
   engineParamOverrides: {},
 };
