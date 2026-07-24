@@ -114,7 +114,7 @@ function render(): void {
     <aside class="sidebar">
       <div class="sidebar-header">
         <h1 class="sidebar-title">Audiobook Generator</h1>
-        <p class="sidebar-version">v0.1.0</p>
+        <p class="sidebar-version">v0.2.1</p>
       </div>
       <nav><ul class="nav-list">${renderSidebar(state.currentPanel)}</ul></nav>
       <div class="sidebar-footer">
