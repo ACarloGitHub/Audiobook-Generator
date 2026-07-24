@@ -178,6 +178,7 @@ impl OuteTTSPlugin {
             .stderr(Stdio::piped())
             .spawn()
             .context("failed to spawn llama-server")?;
+        crate::job_object::assign_child(&child);
 
         *guard = Some(ServerHandle { child });
 
@@ -537,7 +538,19 @@ impl OuteTTSPlugin {
             speaker.map(|s| s.words.len()).unwrap_or(0)
         );
 
-        let (c1, c2) = Self::send_completion_streaming(&prompt, extra)?;
+        let (c1, c2) = match Self::send_completion_streaming(&prompt, extra) {
+            Ok(tokens) => tokens,
+            Err(e) => {
+                warn!(
+                    "[outetts] completion failed, restarting server and retrying: {e:#}"
+                );
+                self.stop_server();
+                self.ensure_server_running_with_ctx(ctx_size)
+                    .context("server restart failed after completion error")?;
+                Self::send_completion_streaming(&prompt, extra)
+                    .context("completion failed even after server restart")?
+            }
+        };
 
         if c1.is_empty() || c2.is_empty() {
             anyhow::bail!("no codec tokens extracted from LLM response");
@@ -745,5 +758,11 @@ impl BaseTTSPlugin for OuteTTSPlugin {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+}
+
+impl Drop for OuteTTSPlugin {
+    fn drop(&mut self) {
+        self.stop_server();
     }
 }

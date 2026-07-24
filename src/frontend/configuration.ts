@@ -121,7 +121,7 @@ function renderQwenControls(): string {
           </div>
           <div class="field-row">
             <label class="field-label">Additional Instructions (pre-filled — edit or delete as you like)</label>
-            <input type="text" class="text-input" id="qwen-instruct-input" placeholder="Read calmly and evenly, like a professional audiobook narrator" value="${escapeHtml(state.qwenInstruct || "")}" />
+            <input type="text" class="text-input" id="qwen-instruct-input" value="${escapeHtml(state.qwenInstruct || "Read calmly and evenly, like a professional audiobook narrator")}" />
           </div>
         `;
     } else if (mode === "Voice Clone") {
@@ -146,7 +146,7 @@ function renderQwenControls(): string {
         modeControls = `
           <div class="field-row">
             <label class="field-label">Voice Description (in English)</label>
-            <textarea class="text-input" rows="3" id="qwen-instruct-input" placeholder="A calm middle-aged male announcer with a deep voice">${escapeHtml(state.qwenInstruct || "")}</textarea>
+            <textarea class="text-input" rows="3" id="qwen-instruct-input">${escapeHtml(state.qwenInstruct || "A calm middle-aged male announcer with a deep voice")}</textarea>
           </div>
           <div class="field-row">
             <label class="field-label">Language</label>

@@ -65,14 +65,16 @@ fn windows_counters_devices() -> Option<Vec<GpuDevice>> {
 
     let mut cmd = std::process::Command::new("powershell");
     crate::utils::hide_console_window(&mut cmd);
-    let output = cmd
+    let child = cmd
         .args([
             "-NoProfile",
             "-Command",
             "((Get-Counter '\\GPU Process Memory(*)\\Dedicated Usage' -ErrorAction SilentlyContinue).CounterSamples | Measure-Object -Property CookedValue -Sum).Sum",
         ])
-        .output()
+        .spawn()
         .ok()?;
+    crate::job_object::assign_child(&child);
+    let output = child.wait_with_output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -124,8 +126,12 @@ fn raw_devices_output() -> Result<String> {
     crate::utils::hide_console_window(&mut cmd);
     cmd.arg("--list-devices");
     crate::sidecars::apply_loader_path(&mut cmd, &dirs);
-    let output = cmd
-        .output()
+    let child = cmd
+        .spawn()
+        .map_err(|e| anyhow::anyhow!("failed to run llama-server --list-devices: {}", e))?;
+    crate::job_object::assign_child(&child);
+    let output = child
+        .wait_with_output()
         .map_err(|e| anyhow::anyhow!("failed to run llama-server --list-devices: {}", e))?;
 
     Ok(format!(

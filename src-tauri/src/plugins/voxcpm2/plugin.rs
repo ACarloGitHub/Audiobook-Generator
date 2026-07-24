@@ -430,9 +430,14 @@ fn synthesize_chunk(plugin: &VoxCpm2Plugin, request: &SynthesizeRequest) -> Resu
         plugin.variant_name
     );
 
-    let output = cmd
-        .output()
+    let child = cmd
+        .spawn()
         .with_context(|| "failed to spawn voxcpm2-cli")?;
+    crate::job_object::assign_child(&child);
+
+    let output = child
+        .wait_with_output()
+        .with_context(|| "failed to wait for voxcpm2-cli")?;
 
     if !output.status.success() {
         anyhow::bail!(

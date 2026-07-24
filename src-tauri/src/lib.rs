@@ -7,6 +7,7 @@ pub mod config;
 mod epub;
 pub mod gpu_guard;
 pub mod input;
+pub mod job_object;
 pub mod merger;
 mod model_manager;
 pub mod plugin_manager;
@@ -20,6 +21,7 @@ use std::sync::Arc;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    job_object::init();
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -120,6 +122,11 @@ pub fn run() {
             wizard::is_wizard_done,
             wizard::mark_wizard_done,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                tracing::info!("App exiting, Job Object will clean up child processes");
+            }
+        });
 }

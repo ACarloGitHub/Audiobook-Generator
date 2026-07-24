@@ -351,7 +351,7 @@ fn synthesize_chunk(plugin: &QwenPlugin, request: &SynthesizeRequest) -> Result<
     let mut child = cmd
         .spawn()
         .with_context(|| format!("failed to spawn qwen-tts: {}", QwenPlugin::find_qwen_tts_binary().map(|p| p.display().to_string()).unwrap_or_default()))?;
-
+    crate::job_object::assign_child(&child);
     // Write text to stdin
     if let Some(stdin) = child.stdin.take() {
         use std::io::Write;
@@ -426,7 +426,7 @@ impl BaseTTSPlugin for QwenPlugin {
 
         let mut child = cmd.spawn()
             .with_context(|| "failed to spawn qwen-tts")?;
-
+        crate::job_object::assign_child(&child);
         if let Some(stdin) = child.stdin.take() {
             use std::io::Write;
             let mut stdin = stdin;

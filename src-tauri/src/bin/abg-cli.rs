@@ -1239,6 +1239,7 @@ async fn run_mcp(pm: &PluginManager) -> Result<()> {
 async fn main() -> Result<()> {
     init_paths();
     let _log_guard = init_logging();
+    audiobook_generator_lib::job_object::init();
     let pm = PluginManager::new(config::paths::app_data_dir());
 
     let args: Vec<String> = std::env::args().skip(1).collect();
