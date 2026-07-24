@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
@@ -53,6 +53,7 @@ pub struct OuteTTSPlugin {
 
 struct ServerHandle {
     child: Child,
+    stderr_tail: Arc<Mutex<Vec<String>>>,
 }
 
 impl OuteTTSPlugin {
@@ -167,20 +168,39 @@ impl OuteTTSPlugin {
         // DYLD_LIBRARY_PATH on macOS.
         crate::sidecars::apply_loader_path(&mut command, &path_dirs);
 
-        let child = command
+        let mut child = command
             .arg("-m").arg(&model)
             .arg("--port").arg(OUTE_SERVER_PORT.to_string())
             .arg("--host").arg("127.0.0.1")
             .arg("-ngl").arg("999")
             .arg("--ctx-size").arg(ctx_size.to_string())
             .arg("--no-webui")
-            .stdout(Stdio::piped())
+            .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .spawn()
             .context("failed to spawn llama-server")?;
         crate::job_object::assign_child(&child);
 
-        *guard = Some(ServerHandle { child });
+        // Drain stderr in a background thread to prevent pipe buffer
+        // deadlock (~64 KB on Windows). Keep the last 20 lines for
+        // diagnostics when the server fails or is stopped.
+        let stderr_tail = Arc::new(Mutex::new(Vec::<String>::new()));
+        let tail_clone = Arc::clone(&stderr_tail);
+        if let Some(stderr) = child.stderr.take() {
+            std::thread::spawn(move || {
+                use std::io::BufRead;
+                let reader = std::io::BufReader::new(stderr);
+                for line in reader.lines().flatten() {
+                    let mut buf = tail_clone.lock().unwrap();
+                    if buf.len() >= 20 {
+                        buf.remove(0);
+                    }
+                    buf.push(line);
+                }
+            });
+        }
+
+        *guard = Some(ServerHandle { child, stderr_tail });
 
         drop(guard);
 
@@ -196,6 +216,12 @@ impl OuteTTSPlugin {
     fn stop_server(&self) {
         let mut guard = self.server.lock().unwrap();
         if let Some(mut handle) = guard.take() {
+            // Log accumulated stderr for diagnostics before killing.
+            if let Ok(tail) = handle.stderr_tail.lock() {
+                if !tail.is_empty() {
+                    info!("[outetts] llama-server stderr (last {} lines):\n{}", tail.len(), tail.join("\n"));
+                }
+            }
             let _ = handle.child.kill();
             let _ = handle.child.wait();
         }

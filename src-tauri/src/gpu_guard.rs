@@ -11,7 +11,7 @@
 //! GPU vendor (CUDA, Vulkan, Metal) with one command.
 
 use anyhow::{bail, Result};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 
 /// One GPU device as reported by ggml (`--list-devices`).
@@ -71,6 +71,8 @@ fn windows_counters_devices() -> Option<Vec<GpuDevice>> {
             "-Command",
             "((Get-Counter '\\GPU Process Memory(*)\\Dedicated Usage' -ErrorAction SilentlyContinue).CounterSamples | Measure-Object -Property CookedValue -Sum).Sum",
         ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .ok()?;
     crate::job_object::assign_child(&child);
@@ -127,6 +129,8 @@ fn raw_devices_output() -> Result<String> {
     cmd.arg("--list-devices");
     crate::sidecars::apply_loader_path(&mut cmd, &dirs);
     let child = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| anyhow::anyhow!("failed to run llama-server --list-devices: {}", e))?;
     crate::job_object::assign_child(&child);
