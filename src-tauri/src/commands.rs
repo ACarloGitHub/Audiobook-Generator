@@ -950,8 +950,11 @@ fn map_language_to_test_suffix(lang: Option<&str>) -> String {
 
 fn find_test_files_dir() -> Option<PathBuf> {
     let candidates = [
+        // Installed app: Tauri bundles test_files under resources/
+        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("resources").join("test_files"))),
         std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("test_files"))),
         std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("..").join("test_files"))),
+        // Dev mode: test_files at project root
         std::env::current_dir().ok().map(|d| d.join("test_files")),
         std::env::current_dir().ok().map(|d| d.join("..").join("test_files")),
     ];
