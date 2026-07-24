@@ -64,11 +64,21 @@ fn spawn_outside_tree(exe: &Path, args: &[&str]) -> Result<u32> {
         .display()
         .to_string();
 
+    // CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB | CREATE_NEW_PROCESS_GROUP
+    let flags_primary: u32 = 0x0900_0200;
+    // Fallback without breakaway (some jobs don't allow it)
+    let flags_fallback: u32 = 0x0800_0200;
+
     let ps_script = format!(
         "$s = ([wmiclass]'Win32_ProcessStartup').CreateInstance(); \
          $s.ShowWindow = 0; \
-         $s.CreateFlags = 134217728; \
+         $s.CreateFlags = {flags_primary}; \
          $r = ([wmiclass]'Win32_Process').Create('{cmd}', '{dir}', $s); \
+         if ($r.ReturnValue -ne 0) {{ \
+             [Console]::Error.WriteLine(\"WMI primary flags failed: $($r.ReturnValue). Retrying without breakaway.\"); \
+             $s.CreateFlags = {flags_fallback}; \
+             $r = ([wmiclass]'Win32_Process').Create('{cmd}', '{dir}', $s); \
+         }}; \
          if ($r.ReturnValue -ne 0) {{ \
              Write-Error \"WMI Create failed (code $($r.ReturnValue))\"; \
              exit 1 \
@@ -76,6 +86,8 @@ fn spawn_outside_tree(exe: &Path, args: &[&str]) -> Result<u32> {
          Write-Output $r.ProcessId",
         cmd = cmdline.replace('\'', "''"),
         dir = workdir.replace('\'', "''"),
+        flags_primary = flags_primary,
+        flags_fallback = flags_fallback,
     );
 
     let output = Command::new("powershell.exe")
@@ -142,7 +154,13 @@ fn init_logging() -> tracing_appender::non_blocking::WorkerGuard {
         .with_ansi(false)
         .with_writer(non_blocking)
         .init();
-    info!("=== abg-cli starting (log: {}) ===", log_path.display());
+    let role = std::env::args().nth(1).unwrap_or_else(|| "cli".to_string());
+    info!(
+        "=== abg-cli starting | pid={} | role={} | log={} ===",
+        std::process::id(),
+        role,
+        log_path.display()
+    );
     guard
 }
 
