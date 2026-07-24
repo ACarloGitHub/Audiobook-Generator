@@ -792,6 +792,11 @@ async fn tool_generate(args: &serde_json::Value) -> Result<String> {
             // survives even if the MCP server (abg-cli --mcp) exits,
             // which is essential because some MCP clients restart the
             // server between requests.
+            //
+            // CREATE_BREAKAWAY_FROM_JOB is critical: without it, the child
+            // inherits the parent's Job Object. When LM Studio restarts
+            // the MCP server, Windows kills all processes in the Job
+            // Object — including this child — mid-generation.
             let exe = std::env::current_exe()
                 .context("cannot find current executable")?;
             let mut cmd = std::process::Command::new(&exe);
@@ -800,7 +805,22 @@ async fn tool_generate(args: &serde_json::Value) -> Result<String> {
                .stdin(std::process::Stdio::null())
                .stdout(std::process::Stdio::null())
                .stderr(std::process::Stdio::null());
-            crate::utils::hide_console_window(&mut cmd);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+                const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+                const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+                cmd.creation_flags(
+                    CREATE_BREAKAWAY_FROM_JOB
+                        | CREATE_NEW_PROCESS_GROUP
+                        | CREATE_NO_WINDOW,
+                );
+            }
+            #[cfg(not(windows))]
+            {
+                crate::utils::hide_console_window(&mut cmd);
+            }
             let child = cmd.spawn()
                 .context("failed to spawn internal-generate process")?;
             let pid = child.id();
