@@ -40,6 +40,82 @@ fn init_paths() {
     config::paths::load_storage_override();
 }
 
+/// Spawn a process completely outside our process tree.
+///
+/// On Windows, uses WMI `Win32_Process.Create` which creates the
+/// process under the WMI service (svchost.exe).  This is necessary
+/// because some MCP clients (LM Studio) kill the entire process tree
+/// when restarting the MCP server — any regular child, even with
+/// `CREATE_BREAKAWAY_FROM_JOB`, is reachable via parent-child links
+/// and gets killed.
+///
+/// On non-Windows, falls back to a simple detached `Command::spawn`.
+#[cfg(windows)]
+fn spawn_outside_tree(exe: &Path, args: &[&str]) -> Result<u32> {
+    use std::process::{Command, Stdio};
+
+    let mut cmdline = format!("\"{}\"", exe.display());
+    for arg in args {
+        cmdline.push_str(&format!(" \"{}\"", arg));
+    }
+
+    let workdir = std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .display()
+        .to_string();
+
+    let ps_script = format!(
+        "$s = ([wmiclass]'Win32_ProcessStartup').CreateInstance(); \
+         $s.ShowWindow = 0; \
+         $s.CreateFlags = 134217728; \
+         $r = ([wmiclass]'Win32_Process').Create('{cmd}', '{dir}', $s); \
+         if ($r.ReturnValue -ne 0) {{ \
+             Write-Error \"WMI Create failed (code $($r.ReturnValue))\"; \
+             exit 1 \
+         }}; \
+         Write-Output $r.ProcessId",
+        cmd = cmdline.replace('\'', "''"),
+        dir = workdir.replace('\'', "''"),
+    );
+
+    let output = Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &ps_script])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .context("failed to run PowerShell for WMI spawn")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("WMI spawn failed: {stderr}");
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let pid: u32 = stdout
+        .trim()
+        .parse()
+        .with_context(|| format!("cannot parse PID from WMI response: {stdout}"))?;
+
+    info!("[spawn_outside_tree] spawned PID {pid} via WMI (cmd: {cmdline})");
+    Ok(pid)
+}
+
+#[cfg(not(windows))]
+fn spawn_outside_tree(exe: &Path, args: &[&str]) -> Result<u32> {
+    use std::process::{Command, Stdio};
+    let child = Command::new(exe)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .context("failed to spawn detached process")?;
+    let pid = child.id();
+    drop(child);
+    Ok(pid)
+}
+
 /// Initialise the tracing subscriber so that all `info!`, `warn!`,
 /// `debug!` calls in the library crate are actually captured.
 /// Writes to `<app_data>/abg-cli.log` (append mode).
@@ -787,46 +863,19 @@ async fn tool_generate(args: &serde_json::Value) -> Result<String> {
             };
             save_job_state(&job);
 
-            // Spawn a DETACHED child process (`abg-cli internal-generate`)
-            // that runs the full generation independently. This process
-            // survives even if the MCP server (abg-cli --mcp) exits,
-            // which is essential because some MCP clients restart the
-            // server between requests.
+            // Spawn a DETACHED child process that is COMPLETELY OUTSIDE
+            // our process tree.  Some MCP clients (notably LM Studio)
+            // kill the entire process tree when they restart the MCP
+            // server.  CREATE_BREAKAWAY_FROM_JOB only helps with Job
+            // Objects; if the client uses tree-kill (taskkill /T), the
+            // child is still reachable via parent-child links and dies.
             //
-            // CREATE_BREAKAWAY_FROM_JOB is critical: without it, the child
-            // inherits the parent's Job Object. When LM Studio restarts
-            // the MCP server, Windows kills all processes in the Job
-            // Object — including this child — mid-generation.
+            // WMI Win32_Process.Create spawns the process under the WMI
+            // service (svchost.exe), not under us.  No tree-kill from
+            // the MCP client can reach it.
             let exe = std::env::current_exe()
                 .context("cannot find current executable")?;
-            let mut cmd = std::process::Command::new(&exe);
-            cmd.arg("internal-generate")
-               .arg("--job-id").arg(&job_id)
-               .stdin(std::process::Stdio::null())
-               .stdout(std::process::Stdio::null())
-               .stderr(std::process::Stdio::null());
-            #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-                const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
-                const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-                const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-                cmd.creation_flags(
-                    CREATE_BREAKAWAY_FROM_JOB
-                        | CREATE_NEW_PROCESS_GROUP
-                        | CREATE_NO_WINDOW,
-                );
-            }
-            #[cfg(not(windows))]
-            {
-                crate::utils::hide_console_window(&mut cmd);
-            }
-            let child = cmd.spawn()
-                .context("failed to spawn internal-generate process")?;
-            let pid = child.id();
-            // Detach: do NOT assign_child (we want this process to
-            // outlive the MCP server).
-            drop(child);
+            let pid = spawn_outside_tree(&exe, &["internal-generate", "--job-id", &job_id])?;
 
             // Record the PID so `stop` can kill it later.
             if let Some(mut state) = load_job_state(&job_id) {
