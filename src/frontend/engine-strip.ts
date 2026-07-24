@@ -54,7 +54,7 @@ export function startVramMonitor(): void {
   if (vramTimerStarted) return;
   vramTimerStarted = true;
   void pollVram();
-  window.setInterval(() => void pollVram(), 3000);
+  window.setInterval(() => void pollVram(), 5000);
 }
 
 const vramSlot = `<span id="vram-bar-slot" style="display:inline-flex;align-items:center;gap:6px;"></span>`;

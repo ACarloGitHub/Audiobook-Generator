@@ -71,7 +71,7 @@ function snapshotFormValues(): Map<string, string | boolean> {
 // must NOT be restored from the DOM snapshot: a programmatic state update
 // (e.g. auto-filling the audiobook title on EPUB load) would be overwritten
 // by the stale pre-render DOM value.
-const STATE_DRIVEN_FIELDS: Set<string> = new Set(["audiobook-title"]);
+const STATE_DRIVEN_FIELDS: Set<string> = new Set(["audiobook-title", "progress-log"]);
 
 function restoreFormValues(values: Map<string, string | boolean>): void {
   for (const [id, value] of values) {
@@ -141,13 +141,10 @@ function attachAllListeners(): void {
   attachConfigurationListeners(render);
   attachEpubListeners(render, (info) => {
     bookInfo = info;
-    if (!state.audioBookTitle) {
-      state.audioBookTitle = info.title;
-    }
     state.selectedChapters = new Set(info.chapters.map((c) => c.title));
     render();
   });
-  attachGenerateListeners(render, bookInfo, refreshEngineStatus);
+  attachGenerateListeners(bookInfo, refreshEngineStatus);
   attachRecoveryListeners(render);
   attachDemoListeners();
   attachModelsListeners(async () => {

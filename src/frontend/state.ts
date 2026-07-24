@@ -37,6 +37,8 @@ export interface AppState {
   // (e.g. "vox-temperature"). Persisted across panel switches; without
   // this, edits were stored on the DOM element and lost on re-render.
   engineParamOverrides: Record<string, string>;
+  progressLog: string;
+  generationRunning: boolean;
 }
 
 export const state: AppState = {
@@ -72,6 +74,8 @@ export const state: AppState = {
   voxVoiceDescription: "A calm middle-aged male narrator with a deep voice",
   engineGeneration: {},
   engineParamOverrides: {},
+  progressLog: "",
+  generationRunning: false,
 };
 
 export const SEPARATOR_OPTIONS = [

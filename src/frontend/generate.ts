@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { escapeHtml, ts, pickOutputDir, appendLog, setLog, collectParamExtras } from "./helpers";
+import { escapeHtml, ts, pickOutputDir, collectParamExtras } from "./helpers";
 import { renderEngineStrip } from "./engine-strip";
 import { state } from "./state";
 import type { BookInfo, EngineStatus } from "./types";
@@ -52,16 +52,25 @@ export function renderGenerate(status: EngineStatus, bookInfo: BookInfo | null):
 
     <div class="card">
       <h2>Progress</h2>
-      <textarea class="text-input log-area" id="progress-log" rows="12" readonly placeholder="No generation running."></textarea>
+      <textarea class="text-input log-area" id="progress-log" rows="12" readonly placeholder="No generation running.">${escapeHtml(state.progressLog)}</textarea>
     </div>
   `;
 }
 
 export function attachGenerateListeners(
-  render: () => void,
   bookInfo: BookInfo | null,
   refreshStatus: () => Promise<EngineStatus>,
 ): void {
+  function pushProgress(text: string, reset = false): void {
+    if (reset) state.progressLog = text;
+    else state.progressLog += text;
+    const el = document.getElementById("progress-log") as HTMLTextAreaElement | null;
+    if (el) {
+      el.value = state.progressLog;
+      el.scrollTop = el.scrollHeight;
+    }
+  }
+
   const genPickBtn = document.getElementById("gen-pick-output-btn");
   if (genPickBtn) {
     genPickBtn.addEventListener("click", async () => {
@@ -87,7 +96,11 @@ export function attachGenerateListeners(
       } else {
         state.selectedChapters = new Set(bookInfo!.chapters.map((c) => c.title));
       }
-      render();
+      for (const cb of Array.from(document.querySelectorAll<HTMLInputElement>(".chapter-cb"))) {
+        cb.checked = state.selectedChapters.has(cb.dataset.title!);
+      }
+      const genBtn = document.getElementById("generate-btn") as HTMLButtonElement | null;
+      if (genBtn) genBtn.disabled = state.selectedChapters.size === 0;
     });
   }
 
@@ -99,7 +112,11 @@ export function attachGenerateListeners(
         if (!state.selectedChapters.has(c.title)) next.add(c.title);
       }
       state.selectedChapters = next;
-      render();
+      for (const cb of Array.from(document.querySelectorAll<HTMLInputElement>(".chapter-cb"))) {
+        cb.checked = state.selectedChapters.has(cb.dataset.title!);
+      }
+      const genBtn = document.getElementById("generate-btn") as HTMLButtonElement | null;
+      if (genBtn) genBtn.disabled = state.selectedChapters.size === 0;
     });
   }
 
@@ -118,12 +135,16 @@ export function attachGenerateListeners(
   const progressLog = document.getElementById("progress-log") as HTMLTextAreaElement | null;
 
   if (generateBtn && stopBtn && progressLog && bookInfo) {
+    if (state.generationRunning) {
+      generateBtn.disabled = true;
+      stopBtn.disabled = false;
+    }
     generateBtn.addEventListener("click", async () => {
       if (!bookInfo || state.selectedChapters.size === 0) return;
       const status = await refreshStatus();
       const engine = status.engines.find((e) => e.id === state.selectedEngineId);
       if (!engine || !engine.installed) {
-        progressLog.value = `[ERROR] No installed engine selected. Pick one in Configuration.\n`;
+        pushProgress("[ERROR] No installed engine selected. Pick one in Configuration.\n", true);
         return;
       }
       const safeTitle = bookInfo.title.replace(/[^a-zA-Z0-9-_ ]/g, "_").trim() || "audiobook";
@@ -132,22 +153,23 @@ export function attachGenerateListeners(
         : pickOutputDir(bookInfo.title);
       generateBtn.disabled = true;
       stopBtn.disabled = false;
+      state.generationRunning = true;
       const t0 = Date.now();
-      setLog("progress-log", `[INFO] Book: ${bookInfo.title}\n`);
-      appendLog("progress-log", `[INFO] Selected engine: ${engine.display_name}\n`);
-      appendLog("progress-log", `[INFO] Chapters: ${state.selectedChapters.size}\n`);
-      appendLog("progress-log", `[INFO] Output: ${outputDir}\n`);
-      appendLog("progress-log", `[INFO] --- starting generation ---\n`);
+      pushProgress(`[INFO] Book: ${bookInfo.title}\n`, true);
+      pushProgress(`[INFO] Selected engine: ${engine.display_name}\n`);
+      pushProgress(`[INFO] Chapters: ${state.selectedChapters.size}\n`);
+      pushProgress(`[INFO] Output: ${outputDir}\n`);
+      pushProgress(`[INFO] --- starting generation ---\n`);
 
       let unlistenProgress: (() => void) | null = null;
       let unlistenComplete: (() => void) | null = null;
       try {
         unlistenProgress = await listen<string>("generation-progress", (e) => {
-          appendLog("progress-log", `[${ts()}] ${e.payload}\n`);
+          pushProgress(`[${ts()}] ${e.payload}\n`);
         });
         unlistenComplete = await listen("generation-complete", () => {
           const secs = ((Date.now() - t0) / 1000).toFixed(1);
-          appendLog("progress-log", `[${ts()}] [INFO] Generation finished in ${secs}s\n`);
+          pushProgress(`[${ts()}] [INFO] Generation finished in ${secs}s\n`);
         });
         const maxCharsForLang =
           state.chunkMaxCharsByLang[state.selectedLanguage] ?? state.chunkMaxChars;
@@ -176,10 +198,11 @@ export function attachGenerateListeners(
               : state.referenceWavPath,
         });
       } catch (e) {
-        appendLog("progress-log", `[${ts()}] [ERROR] ${e}\n`);
+        pushProgress(`[${ts()}] [ERROR] ${e}\n`);
       } finally {
         if (unlistenProgress) unlistenProgress();
         if (unlistenComplete) unlistenComplete();
+        state.generationRunning = false;
         generateBtn.disabled = state.selectedChapters.size === 0;
         stopBtn.disabled = true;
         await refreshStatus();
@@ -189,10 +212,10 @@ export function attachGenerateListeners(
     stopBtn.addEventListener("click", async () => {
       try {
         await invoke("stop_generation");
-        if (progressLog) progressLog.value += `[${ts()}] [WARN] Stop requested.\n`;
+        pushProgress(`[${ts()}] [WARN] Stop requested.\n`);
         stopBtn.disabled = true;
       } catch (e) {
-        if (progressLog) progressLog.value += `[${ts()}] [ERROR] stop failed: ${e}\n`;
+        pushProgress(`[${ts()}] [ERROR] stop failed: ${e}\n`);
       }
     });
   }
