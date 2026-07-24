@@ -1189,7 +1189,7 @@ fn mcp_tools() -> serde_json::Value {
                     "voice": { "type": "string", "description": "Preset voice id (see list_voices)" },
                     "language": { "type": "string" },
                     "reference_audio": { "type": "string", "description": "Path to a reference WAV for voice cloning" },
-                    "reference_transcript": { "type": "string", "description": "Transcript of the reference audio (required by some engines for good quality)" },
+                    "reference_transcript": { "type": "string", "description": "Transcript TEXT of the reference audio (NOT a file path — write the actual words spoken in the reference audio). Required by some engines for good quality voice cloning." },
                     "output_dir": { "type": "string", "description": "Default output folder for generate" },
                     "params": { "type": "object", "description": "Engine parameters as key/value, e.g. {\"temperature\": \"0.7\"}" }
                 },

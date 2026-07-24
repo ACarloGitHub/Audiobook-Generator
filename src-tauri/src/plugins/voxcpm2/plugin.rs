@@ -210,7 +210,21 @@ impl VoxCpm2Plugin {
                     .unwrap_or_default();
                 if !prompt_text.is_empty() {
                     cmd.arg("--prompt-wav").arg(ref_wav);
-                    cmd.arg("--prompt-text").arg(Self::to_ansi_argv(&prompt_text));
+                    // voxcpm2-cli --prompt-text expects a FILE PATH.
+                    // If the value is not an existing file, treat it as
+                    // transcript text and write it to a temp file (same
+                    // pattern as Qwen's ref_text handling).
+                    let text_path = if std::path::Path::new(&prompt_text).is_file() {
+                        prompt_text.clone()
+                    } else {
+                        let temp = std::env::temp_dir().join(format!(
+                            "voxcpm2_prompt_text_{}.txt",
+                            std::process::id()
+                        ));
+                        std::fs::write(&temp, &prompt_text)?;
+                        temp.to_string_lossy().to_string()
+                    };
+                    cmd.arg("--prompt-text").arg(Self::to_ansi_argv(&text_path));
                 } else {
                     cmd.arg("-r").arg(ref_wav);
                 }
