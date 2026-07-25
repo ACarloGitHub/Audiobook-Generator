@@ -45,7 +45,7 @@ pub fn tts_model_config() -> HashMap<&'static str, TtsModelConfig> {
         voice_cloning: Some(true),
         needs_reference_transcript: Some(false),
     };
-    m.insert("Qwen3-TTS-12Hz-0.6B-Base", qwen_base);
+    m.insert("Qwen3-TTS-12Hz-0.6B-Base", qwen_base.clone());
 
     // 1.7B models: reduced char limits (700/850) to avoid
     // "decode would overflow cache (4097 > 4096)" on borderline chunks.
