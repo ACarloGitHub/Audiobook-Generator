@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/plugin-dialog";
 import { escapeHtml, ts } from "./helpers";
 import { state } from "./state";
 import type { BookErrorSummary, FailedChunkInfo } from "./types";
@@ -11,6 +12,7 @@ let failedChunks: FailedChunkInfo[] = [];
 let selectedChunkIndices = new Set<number>();
 let manualSelectedIndex: number | null = null;
 let operationRunning = false;
+let recoveryCustomDir: string | null = null;
 
 export function renderRecovery(): string {
   const bookOpts = recoveryBooks
@@ -72,6 +74,7 @@ export function renderRecovery(): string {
         </div>
         <div class="col-auto">
           <button class="btn-secondary btn-large" id="recovery-refresh-btn" ${dis}>🔄 Refresh</button>
+          <button class="btn-secondary btn-large" id="recovery-browse-btn" ${dis}>📂 Browse…</button>
         </div>
       </div>
 
@@ -128,6 +131,17 @@ export function attachRecoveryListeners(render: () => void): void {
     recoveryRefreshBtn.addEventListener("click", async () => {
       await scanRecoveryBooks();
       render();
+    });
+  }
+  const recoveryBrowseBtn = document.getElementById("recovery-browse-btn");
+  if (recoveryBrowseBtn) {
+    recoveryBrowseBtn.addEventListener("click", async () => {
+      const selected = await open({ directory: true, multiple: false });
+      if (selected && typeof selected === "string") {
+        recoveryCustomDir = selected;
+        await scanRecoveryBooks();
+        render();
+      }
     });
   }
   const recoveryBookSelect = document.getElementById("recovery-book-select") as HTMLSelectElement | null;
@@ -317,7 +331,9 @@ async function runOperation(
 
 async function scanRecoveryBooks(): Promise<void> {
   try {
-    const rootDir = await invoke<string>("get_default_output_dir", { kind: "books" });
+    const rootDir = recoveryCustomDir
+      ? recoveryCustomDir
+      : await invoke<string>("get_default_output_dir", { kind: "books" });
     recoveryBooks = await invoke<BookErrorSummary[]>("scan_recovery_books", { rootDir });
   } catch (e) {
     console.warn("scan_recovery_books failed:", e);
