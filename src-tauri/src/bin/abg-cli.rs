@@ -379,6 +379,119 @@ fn finish_job(job_id: &str, outcome: Result<String, String>) {
     }
 }
 
+/// Check whether a process with the given PID is still running.
+/// Uses `tasklist` on Windows and `kill -0` on Unix.
+fn pid_is_alive(pid: u32) -> bool {
+    #[cfg(windows)]
+    {
+        let out = std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .output();
+        match out {
+            Ok(o) if o.status.success() => {
+                let s = String::from_utf8_lossy(&o.stdout);
+                // tasklist prints the process line if the PID exists,
+                // or "INFO: No tasks are running..." if not.
+                s.contains(&pid.to_string()) && !s.contains("No tasks")
+            }
+            _ => false,
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let out = std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output();
+        matches!(out, Ok(o) if o.status.success())
+    }
+}
+
+/// Scan all job files for a running job with a live PID.
+/// Returns Ok(()) if no concurrent job is running, or Err with a
+/// clear message if a live worker is already active.
+///
+/// Stale jobs (status "running" but PID dead) are marked as "dead"
+/// so the caller can proceed to start a new job.
+fn ensure_no_concurrent_job() -> Result<()> {
+    let _ = std::fs::create_dir_all(jobs_dir());
+    let entries = match std::fs::read_dir(jobs_dir()) {
+        Ok(e) => e,
+        Err(_) => return Ok(()),
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let Ok(body) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(state) = serde_json::from_str::<JobState>(&body) else {
+            continue;
+        };
+        if state.status != "running" {
+            continue;
+        }
+        if let Some(pid) = state.pid {
+            if pid_is_alive(pid) {
+                bail!(
+                    "A generation job is already running (job_id: {}, pid: {}). \
+                     Wait for it to finish or stop it with generate action=stop \
+                     before starting a new one. Two workers on the same GPU \
+                     would crash.",
+                    state.job_id,
+                    pid
+                );
+            }
+            // PID is dead — mark the job as dead so the agent knows.
+            let mut st = state;
+            st.status = "dead".to_string();
+            st.finished_at = Some(recovery::now_stamp());
+            st.error = Some(format!(
+                "Worker process (pid {pid}) died unexpectedly; the OS reports \
+                 it is no longer running."
+            ));
+            save_job_state(&st);
+            info!(
+                "[ensure_no_concurrent_job] marked stale job {} as dead (pid {} gone)",
+                st.job_id, pid
+            );
+        }
+    }
+    Ok(())
+}
+
+/// If a job is "running", verify the worker PID is still alive.
+/// If the PID is dead, update the status to "dead" so the caller
+/// is not left polling a job that will never finish.
+fn refresh_job_liveness(state: &mut JobState) {
+    if state.status != "running" {
+        return;
+    }
+    if let Some(pid) = state.pid {
+        if !pid_is_alive(pid) {
+            state.status = "dead".to_string();
+            state.finished_at = Some(recovery::now_stamp());
+            state.error = Some(format!(
+                "Worker process (pid {pid}) died unexpectedly; the OS reports \
+                 it is no longer running."
+            ));
+            save_job_state(state);
+            info!(
+                "[refresh_job_liveness] job {} marked dead (pid {} gone)",
+                state.job_id, pid
+            );
+        }
+    }
+}
+
 // ---------------------------------------------------------------------
 // Tools
 // ---------------------------------------------------------------------
@@ -717,8 +830,11 @@ async fn tool_generate(args: &serde_json::Value) -> Result<String> {
                 .get("job_id")
                 .and_then(|v| v.as_str())
                 .context("missing 'job_id'")?;
-            let state = load_job_state(job_id)
+            let mut state = load_job_state(job_id)
                 .with_context(|| format!("job '{job_id}' not found"))?;
+            // P6: if the job is "running" but the worker PID is dead,
+            // mark it as "dead" so the caller stops polling.
+            refresh_job_liveness(&mut state);
             Ok(serde_json::to_string_pretty(&state)?)
         }
         "stop" => {
@@ -844,6 +960,11 @@ async fn tool_generate(args: &serde_json::Value) -> Result<String> {
                 .and_then(|v| v.as_str())
                 .map(String::from)
                 .or(s.reference_audio.clone());
+
+            // P7: refuse to start if another generate/recover job is
+            // already running with a live PID — two workers on the same
+            // GPU would crash.
+            ensure_no_concurrent_job()?;
 
             // Validate before spawning the background task.
             gpu_guard::ensure_gpu()?;
@@ -1056,6 +1177,10 @@ async fn tool_recover(args: &serde_json::Value) -> Result<String> {
                 .and_then(|v| v.as_str())
                 .map(String::from);
 
+            // P7: refuse to start if another generate/recover job is
+            // already running with a live PID.
+            ensure_no_concurrent_job()?;
+
             // Validate before spawning.
             let state = recovery::RecoveryState::load(&book_dir)?;
             if state.failed.is_empty() {
@@ -1117,8 +1242,11 @@ async fn tool_recover(args: &serde_json::Value) -> Result<String> {
                 .get("job_id")
                 .and_then(|v| v.as_str())
                 .context("missing 'job_id'")?;
-            let state = load_job_state(job_id)
+            let mut state = load_job_state(job_id)
                 .with_context(|| format!("job '{job_id}' not found"))?;
+            // P6: if the job is "running" but the worker PID is dead,
+            // mark it as "dead" so the caller stops polling.
+            refresh_job_liveness(&mut state);
             Ok(serde_json::to_string_pretty(&state)?)
         }
         other => bail!("unknown recover action '{other}'"),
