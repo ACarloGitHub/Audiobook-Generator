@@ -6,6 +6,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::base_plugin::{EngineHandle, SynthesizeRequest, BaseTTSPlugin};
+use crate::book_registry;
 use crate::merger;
 use crate::plugin_manager::{self, EngineDefaults, EngineInfo, PluginManager};
 use crate::recovery::{self, RecoveryState};
@@ -147,48 +148,195 @@ pub struct ChapterErrorSummary {
     pub title: String,
     pub failed_chunks: usize,
     pub total_chunks: usize,
+    /// True when the chapter has chunk WAVs on disk but no up-to-date MP3
+    /// yet (the book's merge is pending). Kept separate from `failed_chunks`
+    /// so the frontend can show and enable the merge button for a chapter
+    /// whose failed chunks were all retried successfully.
+    pub needs_merge: bool,
 }
 
-#[tauri::command]
-pub fn scan_recovery_books(root_dir: PathBuf) -> Vec<BookErrorSummary> {
-    let Ok(books_root) = std::fs::read_dir(&root_dir) else {
-        return Vec::new();
+/// True when a chapter still needs its chunk WAVs merged into an MP3:
+/// the MP3 is missing, or at least one chunk WAV is newer than the MP3
+/// (e.g. after a retry that re-synthesized chunks without regenerating the
+/// MP3). Uses the same WAV collection rules as the real merge.
+fn chapter_needs_merge(book_dir: &Path, chapter: &str) -> bool {
+    let chapter_dir = book_dir.join(crate::utils::sanitize_filename(chapter));
+    let wavs = merger::collect_chapter_wavs(&chapter_dir);
+    if wavs.is_empty() {
+        return false;
+    }
+    let mp3_path = book_dir.join(format!(
+        "{}.mp3",
+        crate::utils::sanitize_filename(chapter)
+    ));
+    let mp3_time = match std::fs::metadata(&mp3_path) {
+        Ok(m) => m.modified().unwrap_or(std::time::UNIX_EPOCH),
+        Err(_) => return true,
     };
-    let mut out = Vec::new();
-    for entry in books_root.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
+    for w in &wavs {
+        if let Ok(m) = std::fs::metadata(w) {
+            if let Ok(t) = m.modified() {
+                if t > mp3_time {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Analyze a single book directory: read `failed_chunks.json` and return the
+/// chapters that still need attention (failed chunks, or chunk WAVs whose MP3
+/// is missing/stale). `None` when the directory is not a book with pending
+/// work.
+fn analyze_book_dir(path: &Path) -> Option<BookErrorSummary> {
+    if !path.is_dir() {
+        return None;
+    }
+    let recovery_path = path.join("failed_chunks.json");
+    if !recovery_path.exists() {
+        return None;
+    }
+    let state = recovery::RecoveryState::load(path).ok()?;
+    if state.failed.is_empty() && state.done.is_empty() {
+        return None;
+    }
+
+    // Union of chapter names from `failed` and `done` (a chapter with
+    // only successfully-synthesized chunks still needs its merge).
+    let mut chapter_names: Vec<String> = Vec::new();
+    for k in state.failed.keys() {
+        if !chapter_names.contains(k) {
+            chapter_names.push(k.clone());
+        }
+    }
+    for k in state.done.keys() {
+        if !chapter_names.contains(k) {
+            chapter_names.push(k.clone());
+        }
+    }
+    chapter_names.sort();
+
+    let mut chapters_with_errors: Vec<ChapterErrorSummary> = Vec::new();
+    for title in &chapter_names {
+        let failed_count = state.failed.get(title).map(|v| v.len()).unwrap_or(0);
+        let done_count = state.done.get(title).map(|v| v.len()).unwrap_or(0);
+        let needs_merge = done_count > 0 && chapter_needs_merge(path, title);
+        if failed_count == 0 && !needs_merge {
             continue;
         }
-        let recovery_path = path.join("failed_chunks.json");
-        if !recovery_path.exists() {
-            continue;
-        }
-        let Ok(state) = recovery::RecoveryState::load(&path) else {
-            continue;
-        };
-        if state.failed.is_empty() {
-            continue;
-        }
-        let mut chapters_with_errors: Vec<ChapterErrorSummary> = state
-            .failed
-            .iter()
-            .map(|(title, failures)| ChapterErrorSummary {
-                title: title.clone(),
-                failed_chunks: failures.len(),
-                total_chunks: state.done.get(title).map(|v| v.len()).unwrap_or(0) + failures.len(),
-            })
-            .collect();
-        chapters_with_errors.sort_by(|a, b| a.title.cmp(&b.title));
-        out.push(BookErrorSummary {
-            book_title: path
-                .file_name()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_default(),
-            book_dir: path,
-            chapters_with_errors,
+        chapters_with_errors.push(ChapterErrorSummary {
+            title: title.clone(),
+            failed_chunks: failed_count,
+            total_chunks: done_count + failed_count,
+            needs_merge,
         });
     }
+    chapters_with_errors.sort_by(|a, b| a.title.cmp(&b.title));
+    if chapters_with_errors.is_empty() {
+        return None;
+    }
+    Some(BookErrorSummary {
+        book_title: path
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        book_dir: path.to_path_buf(),
+        chapters_with_errors,
+    })
+}
+
+/// Scan a directory tree for books with pending recovery work. A book is
+/// included when it has a `failed_chunks.json` and either:
+/// - at least one chapter with failed chunks, or
+/// - at least one chapter whose chunk WAVs are on disk but whose MP3 is
+///   missing or stale (the merge button must stay reachable even when all
+///   failed chunks have been retried).
+/// `root_dir` may be the parent folder of several books (the default scan
+/// layout) or a single book folder itself (when the user picks a book
+/// directory via Browse). Books found here are also added to the persistent
+/// registry, so they stay discoverable on the next app launch.
+#[tauri::command]
+pub fn scan_recovery_books(root_dir: PathBuf) -> Vec<BookErrorSummary> {
+    // Candidates: the root itself (single-book layout when the user picks a
+    // book folder via Browse) and its subdirectories (default parent layout).
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if root_dir.join("failed_chunks.json").exists() {
+        candidates.push(root_dir.clone());
+    }
+    if let Ok(entries) = std::fs::read_dir(&root_dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                candidates.push(p);
+            }
+        }
+    }
+
+    let mut out: Vec<BookErrorSummary> = Vec::new();
+    for path in candidates {
+        if path.join("failed_chunks.json").exists() {
+            // Sync the registry for this book: keep it while it has pending
+            // work, drop it once finished (so the registry never lists
+            // successfully merged books).
+            update_registry_for_book(&path, None);
+        }
+        if let Some(book) = analyze_book_dir(&path) {
+            out.push(book);
+        }
+    }
+    out
+}
+
+/// Keep the persistent registry in sync with the disk. A book stays in the
+/// registry only while it has pending recovery work (failed chunks or a
+/// pending merge); once error-free and merged it is removed, so the registry
+/// never lists finished books. `engine_id` may be `None` to preserve the
+/// engine already recorded for that book.
+fn update_registry_for_book(book_dir: &Path, engine_id: Option<&str>) {
+    if analyze_book_dir(book_dir).is_some() {
+        let engine = engine_id
+            .map(|s| s.to_string())
+            .or_else(|| {
+                book_registry::load()
+                    .into_iter()
+                    .find(|r| r.book_dir == book_dir)
+                    .and_then(|r| r.engine_id)
+            });
+        book_registry::register(book_dir, engine.as_deref());
+    } else {
+        book_registry::remove(book_dir);
+    }
+}
+
+/// Scan the default output folder plus every book directory recorded in the
+/// persistent registry (books generated in user-chosen paths outside the
+/// default folder). This is what the Recovery panel uses on load/refresh so
+/// user-chosen locations stay discoverable without browsing again.
+#[tauri::command]
+pub fn scan_recovery_all() -> Vec<BookErrorSummary> {
+    let mut seen: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+    let mut out: Vec<BookErrorSummary> = Vec::new();
+
+    let mut push = |book: BookErrorSummary| {
+        if seen.insert(book.book_dir.clone()) {
+            out.push(book);
+        }
+    };
+
+    // 1. Default output folder (scan its subdirectories as books).
+    let default = crate::config::paths::output_base_dir();
+    for book in scan_recovery_books(default.clone()) {
+        push(book);
+    }
+
+    // 2. Every directory recorded in the persistent registry.
+    for record in book_registry::load() {
+        if let Some(book) = analyze_book_dir(&record.book_dir) {
+            push(book);
+        }
+    }
+
     out
 }
 
@@ -330,7 +478,7 @@ pub async fn retry_failed_chunks(
     for idx in &chunk_indices {
         if is_stop_requested() {
             stopped = true;
-            let _ = app.emit("generation-progress", "STOP requested — aborting retry.".to_string());
+            let _ = app.emit("generation-progress", "STOP requested â€” aborting retry.".to_string());
             break;
         }
         let text = texts_override
@@ -396,6 +544,8 @@ pub async fn retry_failed_chunks(
         if stopped { ", stopped by user" } else { "" }
     );
     let _ = app.emit("generation-progress", format!("Retry done: {summary}"));
+    // Keep the registry in sync: drop the book once it has no pending work.
+    update_registry_for_book(&book_dir, Some(&params.engine_id));
     Ok(summary)
 }
 
@@ -450,7 +600,7 @@ pub async fn split_and_retry_chunk(
     for (k, part_text) in parts.iter().enumerate() {
         if is_stop_requested() {
             stopped = true;
-            let _ = app.emit("generation-progress", "STOP requested — aborting split retry.".to_string());
+            let _ = app.emit("generation-progress", "STOP requested â€” aborting split retry.".to_string());
             break;
         }
         let part_path = chapter_dir.join(format!("chunk_{:04}_part{:02}.wav", chunk_index + 1, k + 1));
@@ -517,6 +667,8 @@ pub async fn split_and_retry_chunk(
         .save(&book_dir)
         .map_err(|e| format!("recovery save failed: {e:#}"))?;
     let _ = app.emit("generation-progress", format!("Split retry done: {summary}"));
+    // Keep the registry in sync: drop the book once it has no pending work.
+    update_registry_for_book(&book_dir, Some(&params.engine_id));
     Ok(summary)
 }
 
@@ -554,8 +706,15 @@ pub fn merge_chapter_chunks(book_dir: PathBuf, chapter: String) -> Result<String
             .save(&book_dir)
             .map_err(|e| format!("recovery save failed: {e:#}"))?;
     }
+    // Keep the registry in sync: once the last chapter is merged the book
+    // has no pending work and must disappear from the registry.
+    update_registry_for_book(&book_dir, None);
 
-    Ok(mp3_path.to_string_lossy().to_string())
+    Ok(format!(
+        "Merged {} chunk(s) into {}",
+        wavs.len(),
+        mp3_path.to_string_lossy()
+    ))
 }
 
 /// Get a plugin from the registry, or create one on-the-fly if the model
@@ -789,6 +948,9 @@ pub async fn start_generation(
         if result.is_ok() {
             cleanup_intermediate_chunks(&output_dir, delete_intermediate_chunks.unwrap_or(false), &app);
         }
+        // Keep the registry in sync: the book stays registered only while it
+        // has pending recovery work (failed chunks or a pending merge).
+        update_registry_for_book(&output_dir, Some(&engine_id));
         return result.map_err(|e| format!("book synthesis failed: {e:#}"));
     }
 
@@ -821,6 +983,9 @@ pub async fn start_generation(
         if result.is_ok() {
             cleanup_intermediate_chunks(&output_dir, delete_intermediate_chunks.unwrap_or(false), &app);
         }
+        // Keep the registry in sync: the book stays registered only while it
+        // has pending recovery work (failed chunks or a pending merge).
+        update_registry_for_book(&output_dir, Some(&engine_id));
         return result.map_err(|e| format!("book synthesis failed: {e:#}"));
     }
 
@@ -851,6 +1016,9 @@ pub async fn start_generation(
         if result.is_ok() {
             cleanup_intermediate_chunks(&output_dir, delete_intermediate_chunks.unwrap_or(false), &app);
         }
+        // Keep the registry in sync: the book stays registered only while it
+        // has pending recovery work (failed chunks or a pending merge).
+        update_registry_for_book(&output_dir, Some(&engine_id));
         return result.map_err(|e| format!("book synthesis failed: {e:#}"));
     }
 
@@ -1167,4 +1335,133 @@ pub fn set_storage_dir(path: Option<String>, move_existing: bool) -> Result<Stri
         .map_err(|e| format!("cannot save settings: {e}"))?;
 
     Ok(new_storage.to_string_lossy().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn temp_book_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("commands_test_{}_{}", name, std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn set_mtime(path: &Path, seconds_ago: u64) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let t = std::time::UNIX_EPOCH + std::time::Duration::from_secs(now - seconds_ago);
+        if let Ok(f) = std::fs::File::options().write(true).open(path) {
+            let _ = f.set_times(std::fs::FileTimes::new().set_modified(t));
+        }
+    }
+
+    #[test]
+    fn needs_merge_true_when_mp3_missing() {
+        let book = temp_book_dir("merge_missing");
+        let chapter_dir = book.join("Chapter_1");
+        std::fs::create_dir_all(&chapter_dir).unwrap();
+        std::fs::write(chapter_dir.join("chunk_0001.wav"), b"RIFF").unwrap();
+        assert!(chapter_needs_merge(&book, "Chapter 1"));
+        let _ = std::fs::remove_dir_all(&book);
+    }
+
+    #[test]
+    fn needs_merge_false_when_mp3_newer_than_wavs() {
+        let book = temp_book_dir("merge_up_to_date");
+        let chapter_dir = book.join("Chapter_1");
+        std::fs::create_dir_all(&chapter_dir).unwrap();
+        let wav = chapter_dir.join("chunk_0001.wav");
+        std::fs::write(&wav, b"RIFF").unwrap();
+        set_mtime(&wav, 60);
+        std::fs::write(book.join("Chapter_1.mp3"), b"ID3").unwrap();
+        assert!(!chapter_needs_merge(&book, "Chapter 1"));
+        let _ = std::fs::remove_dir_all(&book);
+    }
+
+    #[test]
+    fn needs_merge_true_when_wav_newer_than_mp3() {
+        let book = temp_book_dir("merge_stale");
+        let chapter_dir = book.join("Chapter_1");
+        std::fs::create_dir_all(&chapter_dir).unwrap();
+        std::fs::write(book.join("Chapter_1.mp3"), b"ID3").unwrap();
+        let wav = chapter_dir.join("chunk_0001.wav");
+        std::fs::write(&wav, b"RIFF").unwrap();
+        set_mtime(&wav, 10);
+        set_mtime(&book.join("Chapter_1.mp3"), 120);
+        assert!(chapter_needs_merge(&book, "Chapter 1"));
+        let _ = std::fs::remove_dir_all(&book);
+    }
+
+    #[test]
+    fn scan_includes_book_with_only_merge_pending() {
+        let book = temp_book_dir("scan_merge_only");
+        std::fs::create_dir_all(book.join("Chapter_1")).unwrap();
+        std::fs::write(book.join("Chapter_1/chunk_0001.wav"), b"RIFF").unwrap();
+        let mut state = recovery::RecoveryState::default();
+        state.mark_done("Chapter 1", 0);
+        state.save(&book).unwrap();
+
+        let books = scan_recovery_books(book.clone());
+        assert_eq!(books.len(), 1);
+        assert_eq!(books[0].chapters_with_errors.len(), 1);
+        assert!(books[0].chapters_with_errors[0].needs_merge);
+        assert_eq!(books[0].chapters_with_errors[0].failed_chunks, 0);
+        let _ = std::fs::remove_dir_all(&book);
+    }
+
+    #[test]
+    fn update_registry_keeps_book_with_failures_and_drops_finished_book() {
+        // Point the registry at a temp file so the test never touches the
+        // real app data dir.
+        let reg = std::env::temp_dir().join(format!("update_registry_{}.json", std::process::id()));
+        let _ = std::fs::remove_file(&reg);
+        std::env::set_var("ABG_TEST_REGISTRY", &reg);
+
+        // Book with a failed chunk -> must stay registered.
+        let failing = temp_book_dir("registry_failing");
+        let mut state = recovery::RecoveryState::default();
+        state.mark_failed("Chapter 1", 0, "some text", "boom");
+        state.save(&failing).unwrap();
+        update_registry_for_book(&failing, Some("VoxCPM2 F16"));
+        let loaded = book_registry::load();
+        // Paths are canonicalized on registration (Windows adds the \\?\ 
+        // prefix), so compare by file name.
+        let failing_name = failing.file_name().unwrap().to_string_lossy().into_owned();
+        let rec = loaded
+            .iter()
+            .find(|r| r.book_dir.file_name().map(|n| n.to_string_lossy().into_owned()) == Some(failing_name.clone()))
+            .expect("book with failures must be registered");
+        assert_eq!(rec.engine_id.as_deref(), Some("VoxCPM2 F16"));
+
+        // Book with all chunks done and MP3 fresh -> pending work gone, the
+        // book must disappear from the registry.
+        let finished = temp_book_dir("registry_finished");
+        let chapter_dir = finished.join("Chapter_1");
+        std::fs::create_dir_all(&chapter_dir).unwrap();
+        let wav = chapter_dir.join("chunk_0001.wav");
+        std::fs::write(&wav, b"RIFF").unwrap();
+        set_mtime(&wav, 120);
+        std::fs::write(finished.join("Chapter_1.mp3"), b"ID3").unwrap();
+        let mut state = recovery::RecoveryState::default();
+        state.mark_done("Chapter 1", 0);
+        state.save(&finished).unwrap();
+        update_registry_for_book(&finished, Some("VoxCPM2 F16"));
+        let loaded = book_registry::load();
+        let finished_name = finished.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(
+            !loaded
+                .iter()
+                .any(|r| r.book_dir.file_name().map(|n| n.to_string_lossy().into_owned()) == Some(finished_name.clone()))
+        );
+
+        let _ = std::env::remove_var("ABG_TEST_REGISTRY");
+        let _ = std::fs::remove_file(&reg);
+        let _ = std::fs::remove_dir_all(&failing);
+        let _ = std::fs::remove_dir_all(&finished);
+    }
 }

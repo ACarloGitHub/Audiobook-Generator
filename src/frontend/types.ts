@@ -96,6 +96,7 @@ export interface ChapterErrorSummary {
   title: string;
   failed_chunks: number;
   total_chunks: number;
+  needs_merge: boolean;
 }
 
 export interface FailedChunkInfo {

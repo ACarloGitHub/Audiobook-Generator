@@ -1,6 +1,7 @@
 use tauri::Manager;
 
 pub mod base_plugin;
+pub mod book_registry;
 pub mod chunker;
 mod commands;
 pub mod config;
@@ -98,6 +99,7 @@ pub fn run() {
             commands::load_epub,
             commands::check_recovery,
             commands::scan_recovery_books,
+            commands::scan_recovery_all,
             commands::get_failed_chunks,
             commands::retry_failed_chunks,
             commands::split_and_retry_chunk,

@@ -12,7 +12,7 @@ let failedChunks: FailedChunkInfo[] = [];
 let selectedChunkIndices = new Set<number>();
 let manualSelectedIndex: number | null = null;
 let operationRunning = false;
-let recoveryCustomDir: string | null = null;
+let initialScanDone = false;
 
 export function renderRecovery(): string {
   const bookOpts = recoveryBooks
@@ -23,10 +23,13 @@ export function renderRecovery(): string {
     .join("");
   const chapterOpts = recoverySelectedBook
     ? recoverySelectedBook.chapters_with_errors
-        .map(
-          (c) =>
-            `<option value="${escapeHtml(c.title)}" ${recoverySelectedChapter === c.title ? "selected" : ""}>${escapeHtml(c.title)} (${c.failed_chunks}/${c.total_chunks} failed)</option>`,
-        )
+        .map((c) => {
+          const tag =
+            c.failed_chunks > 0
+              ? `${c.failed_chunks}/${c.total_chunks} failed`
+              : `${c.total_chunks} chunks · merge pending`;
+          return `<option value="${escapeHtml(c.title)}" ${recoverySelectedChapter === c.title ? "selected" : ""}>${escapeHtml(c.title)} (${tag})</option>`;
+        })
         .join("")
     : "";
 
@@ -80,7 +83,7 @@ export function renderRecovery(): string {
 
       <h3>Failed Chunks</h3>
       <div class="chapter-list" id="failed-chunk-list">
-        ${chunkRows || '<p class="field-help">Pick a book and chapter to see the failed chunks for that chapter.</p>'}
+        ${chunkRows || (recoverySelectedChapter ? '<p class="field-help">No failed chunks. Use "Merge All Chunks" to build the chapter MP3.</p>' : '<p class="field-help">Pick a book and chapter to see the failed chunks for that chapter.</p>')}
       </div>
 
       <div class="btn-row btn-row-large">
@@ -138,11 +141,19 @@ export function attachRecoveryListeners(render: () => void): void {
     recoveryBrowseBtn.addEventListener("click", async () => {
       const selected = await open({ directory: true, multiple: false });
       if (selected && typeof selected === "string") {
-        recoveryCustomDir = selected;
+        // Register any books found in this folder so they stay discoverable
+        // from the persistent registry on later launches.
+        await invoke("scan_recovery_books", { rootDir: selected });
         await scanRecoveryBooks();
         render();
       }
     });
+  }
+  // Populate the book list once per app session (covers the case where the
+  // panel is opened before any Refresh was ever pressed).
+  if (!initialScanDone) {
+    initialScanDone = true;
+    scanRecoveryBooks().then(render);
   }
   const recoveryBookSelect = document.getElementById("recovery-book-select") as HTMLSelectElement | null;
   if (recoveryBookSelect) {
@@ -231,12 +242,14 @@ export function attachRecoveryListeners(render: () => void): void {
       const textarea = document.getElementById("manual-chunk-text") as HTMLTextAreaElement | null;
       const chunk = failedChunks.find((f) => f.chunk_index === manualSelectedIndex);
       if (textarea) textarea.value = chunk ? chunk.text : "";
-      render();
-      // render() rebuilds the DOM; restore the textarea content.
-      const ta2 = document.getElementById("manual-chunk-text") as HTMLTextAreaElement | null;
-      if (ta2 && chunk) ta2.value = chunk.text;
-      const sel2 = document.getElementById("manual-chunk-select") as HTMLSelectElement | null;
-      if (sel2) sel2.value = val;
+      // Update the buttons in place instead of re-rendering the whole panel:
+      // a full render() would rebuild the DOM and collapse the open
+      // <details> accordion the user just expanded.
+      const retryBtn = document.getElementById("manual-retry-btn") as HTMLButtonElement | null;
+      const splitBtn = document.getElementById("manual-split-btn") as HTMLButtonElement | null;
+      const enabled = manualSelectedIndex !== null && !operationRunning;
+      if (retryBtn) retryBtn.disabled = !enabled;
+      if (splitBtn) splitBtn.disabled = !enabled;
     });
   }
 
@@ -331,12 +344,11 @@ async function runOperation(
 
 async function scanRecoveryBooks(): Promise<void> {
   try {
-    const rootDir = recoveryCustomDir
-      ? recoveryCustomDir
-      : await invoke<string>("get_default_output_dir", { kind: "books" });
-    recoveryBooks = await invoke<BookErrorSummary[]>("scan_recovery_books", { rootDir });
+    // Registry-based scan: default output folder + every book recorded in
+    // the persistent registry (including user-chosen custom paths).
+    recoveryBooks = await invoke<BookErrorSummary[]>("scan_recovery_all");
   } catch (e) {
-    console.warn("scan_recovery_books failed:", e);
+    console.warn("scan_recovery_all failed:", e);
     recoveryBooks = [];
   }
 }

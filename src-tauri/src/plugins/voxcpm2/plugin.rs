@@ -397,7 +397,24 @@ pub fn synthesize_book(
             }
         }
 
-        if !wavs.is_empty() {
+        let chapter_failed = recovery_state
+            .failed
+            .get(&chapter.title)
+            .map(|v| !v.is_empty())
+            .unwrap_or(false);
+        if chapter_failed {
+            let n = recovery_state
+                .failed
+                .get(&chapter.title)
+                .map(|v| v.len())
+                .unwrap_or(0);
+            if let Some(cb) = progress.as_deref_mut() {
+                cb(&format!(
+                    "Merge skipped for '{}': {n} chunk(s) failed. Retry them in Error Recovery, then use Merge All Chunks.",
+                    chapter.title
+                ));
+            }
+        } else if !wavs.is_empty() {
             let mp3_path = output_dir.join(format!(
                 "{}.mp3",
                 crate::utils::sanitize_filename(&chapter.title)
@@ -407,6 +424,12 @@ pub fn synthesize_book(
                 if let Some(cb) = progress.as_deref_mut() {
                     cb(&format!("ERROR: merge failed for {}: {}", chapter.title, e));
                 }
+            } else if let Some(cb) = progress.as_deref_mut() {
+                cb(&format!(
+                    "Merged {} chunk(s) into {}.mp3",
+                    wavs.len(),
+                    crate::utils::sanitize_filename(&chapter.title)
+                ));
             }
         }
 
