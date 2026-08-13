@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <strong>Status: active development — v0.2.0</strong> — the project has migrated from Python + Gradio to Tauri + llama.cpp. Qwen3-TTS, OuteTTS and VoxCPM2 are working end-to-end on Windows, macOS and Linux. v0.2.0: fix audiobook title not showing after loading a document; fix intermediate chunk cleanup never running; redesign MCP server so `generate` and `recover` run in the background and respond immediately with a job ID (no more LM Studio timeout). See <a href="AudiobookGenerator-Wiki/todo.md">todo.md</a> for the roadmap.
+  <strong>Status: active development — v0.2.5</strong> — the project has migrated from Python + Gradio to Tauri + llama.cpp. Qwen3-TTS, OuteTTS and VoxCPM2 are working end-to-end on Windows, macOS and Linux. v0.2.5: Error Recovery panel overhaul — persistent book registry that tracks only books with pending work (failed chunks or pending merge), books in user-chosen output folders stay discoverable across launches, no more partial MP3s when a chapter has failed chunks, explicit merge messages, and a manual editing accordion that stays open while editing. v0.2.4: MCP fix for VoxCPM2 prompt_text, bundled test files, safer Qwen 1.7B chunk limits. See <a href="AudiobookGenerator-Wiki/todo.md">todo.md</a> for the roadmap.
 </p>
 
 <p align="center">
