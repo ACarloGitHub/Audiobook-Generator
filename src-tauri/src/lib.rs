@@ -1,5 +1,6 @@
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
+pub mod aurawrite;
 pub mod base_plugin;
 pub mod book_registry;
 pub mod chunker;
@@ -28,6 +29,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // A second instance was launched (AuraWrite opened the app): tell
+            // the frontend to re-read the proposal.
+            let _ = app.emit("aurawrite:proposal-arrived", ());
+        }))
         .setup(|app| {
             let path_resolver = app.path();
             let app_data_dir = match path_resolver.app_data_dir() {
@@ -118,6 +124,9 @@ pub fn run() {
             commands::get_storage_dir,
             commands::set_storage_dir,
             commands::get_gpu_memory,
+            aurawrite::aurawrite_check,
+            aurawrite::aurawrite_take_proposal,
+            aurawrite::aurawrite_catalog,
             wizard::detect_hardware,
             wizard::check_dependencies,
             wizard::get_wizard_steps,
