@@ -13,6 +13,15 @@ import { renderDemo, attachDemoListeners } from "./frontend/demo";
 import { renderModels, attachModelsListeners, loadModels } from "./frontend/models";
 import { startVramMonitor, renderVramSlot } from "./frontend/engine-strip";
 import { renderAgents, attachAgentsListeners } from "./frontend/agents";
+import {
+  renderAurawrite,
+  attachAurawriteListeners,
+  checkAurawriteState,
+  takeProposal,
+  confirmProposal,
+  showBusyWarning,
+} from "./frontend/aurawrite";
+import type { AurawriteState } from "./frontend/aurawrite";
 import { initWizard, renderWizard, attachWizardListeners } from "./frontend/wizard";
 
 let engineStatus: EngineStatus = {
@@ -26,6 +35,8 @@ let engineStatus: EngineStatus = {
 
 let modelList: ModelListEntry[] = [];
 let bookInfo: BookInfo | null = null;
+let aurawriteLoaded = false;
+let aurawriteState: AurawriteState = { found: false, books: [] };
 
 function panelBody(): string {
   switch (state.currentPanel) {
@@ -36,6 +47,7 @@ function panelBody(): string {
     case "demo": return renderDemo(engineStatus);
     case "models": return renderModels(engineStatus, modelList);
     case "agents": return renderAgents();
+    case "aurawrite": return renderAurawrite(aurawriteState, aurawriteLoaded);
   }
 }
 
@@ -152,6 +164,37 @@ function attachAllListeners(): void {
     render();
   });
   attachAgentsListeners();
+  attachAurawriteListeners();
+}
+
+async function refreshAurawrite(): Promise<void> {
+  aurawriteState = await checkAurawriteState();
+  aurawriteLoaded = true;
+  render();
+}
+
+/** Consume a pending AuraWrite proposal: confirm, guard busy, load the book. */
+async function checkProposalFlow(): Promise<void> {
+  const proposal = await takeProposal();
+  if (!proposal) return;
+  const ok = await confirmProposal(proposal);
+  if (!ok) return;
+  if (state.generationRunning) {
+    showBusyWarning();
+    return;
+  }
+  try {
+    const info = await invoke<BookInfo>("load_epub", { path: proposal.input });
+    state.epubPath = proposal.input;
+    const fromFile = proposal.input.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ?? "";
+    state.audioBookTitle = info.title.trim() || fromFile;
+    bookInfo = info;
+    state.selectedChapters = new Set(info.chapters.map((c) => c.title));
+    state.currentPanel = "generate";
+    render();
+  } catch (e) {
+    console.error("[aurawrite] failed to load proposed book:", e);
+  }
 }
 
 async function refreshEngineStatus(): Promise<EngineStatus> {
@@ -209,6 +252,10 @@ async function main(): Promise<void> {
     await applyEngineDefaults(state.selectedEngineId);
   }
   render();
+  void refreshAurawrite();
+  void checkProposalFlow();
+  await listen("aurawrite:proposal-arrived", () => void checkProposalFlow());
+  window.addEventListener("aurawrite:refresh-requested", () => void refreshAurawrite());
   await listen("engine-status-changed", () => {
     refreshAll().then(async () => {
       const currentInstalled = engineStatus.engines.find(

@@ -95,6 +95,7 @@ export const PANEL_TITLES: Record<PanelId, string> = {
   demo: "Demo & Test",
   models: "Models",
   agents: "AI Agents",
+  aurawrite: "AuraWrite",
 };
 
 export const NAV_ITEMS: { id: PanelId; label: string }[] = [
@@ -105,4 +106,5 @@ export const NAV_ITEMS: { id: PanelId; label: string }[] = [
   { id: "demo", label: "Demo & Test" },
   { id: "models", label: "Models" },
   { id: "agents", label: "AI Agents" },
+  { id: "aurawrite", label: "AuraWrite" },
 ];

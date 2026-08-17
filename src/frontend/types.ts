@@ -5,7 +5,8 @@ export type PanelId =
   | "recovery"
   | "agents"
   | "demo"
-  | "models";
+  | "models"
+  | "aurawrite";
 
 export interface EngineInfo {
   id: string;
