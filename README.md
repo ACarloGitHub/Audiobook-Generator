@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <strong>Status: active development — v0.2.5</strong> — the project has migrated from Python + Gradio to Tauri + llama.cpp. Qwen3-TTS, OuteTTS and VoxCPM2 are working end-to-end on Windows, macOS and Linux. v0.2.5: Error Recovery panel overhaul — persistent book registry that tracks only books with pending work (failed chunks or pending merge), books in user-chosen output folders stay discoverable across launches, no more partial MP3s when a chapter has failed chunks, explicit merge messages, and a manual editing accordion that stays open while editing. v0.2.4: MCP fix for VoxCPM2 prompt_text, bundled test files, safer Qwen 1.7B chunk limits. See <a href="AudiobookGenerator-Wiki/todo.md">todo.md</a> for the roadmap.
+  <strong>Status: active development — v0.3.0</strong> — the project has migrated from Python + Gradio to Tauri + llama.cpp. Qwen3-TTS, OuteTTS and VoxCPM2 are working end-to-end on Windows, macOS and Linux. v0.3.0: AuraWrite integration — Audiobook Generator accepts ebooks handed over from AuraWrite with a confirmation dialog, and the new AuraWrite panel lists AuraWrite's ebooks and opens them directly. v0.2.5: Error Recovery panel overhaul — persistent book registry that tracks only books with pending work (failed chunks or pending merge), books in user-chosen output folders stay discoverable across launches, no more partial MP3s when a chapter has failed chunks, explicit merge messages, and a manual editing accordion that stays open while editing. v0.2.4: MCP fix for VoxCPM2 prompt_text, bundled test files, safer Qwen 1.7B chunk limits. See <a href="AudiobookGenerator-Wiki/todo.md">todo.md</a> for the roadmap.
 </p>
 
 <p align="center">
@@ -62,6 +62,7 @@ Each model has its own license. You are responsible for reviewing and accepting 
 - **Custom storage folder** — Move models and engines (several GB) to any drive you like, from the Models panel
 - **Live VRAM bar** — Per-GPU free/total memory in the status bar, works the same on NVIDIA, AMD, Intel and Apple Silicon
 - **CLI and MCP server** — `abg-cli` synthesizes speech and reports status from the command line, and doubles as an MCP server so AI agents (e.g. in LM Studio) can drive Audiobook Generator directly
+- **AuraWrite integration** — receive an ebook exported from AuraWrite (confirmation dialog), and open AuraWrite's ebooks directly from the AuraWrite panel
 - **GPU-only by design** — Requires a GPU (dedicated, or integrated with unified memory such as Apple Silicon or AMD AI Max). CUDA, Vulkan and Metal supported through llama.cpp. CPU-only machines are not supported: the app refuses to fall back to CPU rather than offering a slow, frustrating experience
 - **One installer** — No Python, no virtual environment, no `pip install`. The installer is self-contained
 
