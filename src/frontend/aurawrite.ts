@@ -83,10 +83,19 @@ export function renderAurawrite(aurawrite: AurawriteState, loaded: boolean): str
   }
   const rows = aurawrite.books.length
     ? aurawrite.books
-        .map(
-          (b) =>
-            `<li><strong>${escapeHtml(b.name)}</strong> <span class="field-help">(${escapeHtml(b.section)})</span></li>`
-        )
+        .map((b) => {
+          if (b.section === "reader") {
+            return `<li>
+              <strong>${escapeHtml(b.name)}</strong>
+              <button class="btn-secondary btn-small" data-open-book-path="${escapeHtml(b.path)}">Open</button>
+              <span class="field-help">(Reader)</span>
+            </li>`;
+          }
+          return `<li>
+            <strong>${escapeHtml(b.name)}</strong>
+            <span class="field-help">(Editor — export it first with the 🎧 button in AuraWrite)</span>
+          </li>`;
+        })
         .join("")
     : `<p class="field-help">No ebooks published by AuraWrite yet. Export an ebook from AuraWrite to see it here.</p>`;
   return `<div class="card">
@@ -100,6 +109,15 @@ export function renderAurawrite(aurawrite: AurawriteState, loaded: boolean): str
 export function attachAurawriteListeners(): void {
   document.getElementById("aurawrite-refresh")?.addEventListener("click", () => {
     window.dispatchEvent(new Event("aurawrite:refresh-requested"));
+  });
+  document.querySelectorAll("[data-open-book-path]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const path = btn.getAttribute("data-open-book-path");
+      if (!path) return;
+      window.dispatchEvent(
+        new CustomEvent("aurawrite:open-catalog-book", { detail: { path } })
+      );
+    });
   });
   const dontShow = document.getElementById("aurawrite-dont-show") as HTMLInputElement | null;
   dontShow?.addEventListener("change", () => {

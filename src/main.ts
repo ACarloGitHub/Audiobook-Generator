@@ -183,17 +183,31 @@ async function checkProposalFlow(): Promise<void> {
     showBusyWarning();
     return;
   }
+  await loadBookIntoGenerate(proposal.input);
+}
+
+/** Open a catalog book from the AuraWrite panel (Reader entries only). */
+async function openCatalogBook(path: string): Promise<void> {
+  if (state.generationRunning) {
+    showBusyWarning();
+    return;
+  }
+  await loadBookIntoGenerate(path);
+}
+
+/** Load an ebook and switch to the Generate panel (shared by proposal + Open). */
+async function loadBookIntoGenerate(path: string): Promise<void> {
   try {
-    const info = await invoke<BookInfo>("load_epub", { path: proposal.input });
-    state.epubPath = proposal.input;
-    const fromFile = proposal.input.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ?? "";
+    const info = await invoke<BookInfo>("load_epub", { path });
+    state.epubPath = path;
+    const fromFile = path.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ?? "";
     state.audioBookTitle = info.title.trim() || fromFile;
     bookInfo = info;
     state.selectedChapters = new Set(info.chapters.map((c) => c.title));
     state.currentPanel = "generate";
     render();
   } catch (e) {
-    console.error("[aurawrite] failed to load proposed book:", e);
+    console.error("[aurawrite] failed to load book:", e);
   }
 }
 
@@ -256,6 +270,10 @@ async function main(): Promise<void> {
   void checkProposalFlow();
   await listen("aurawrite:proposal-arrived", () => void checkProposalFlow());
   window.addEventListener("aurawrite:refresh-requested", () => void refreshAurawrite());
+  window.addEventListener("aurawrite:open-catalog-book", (e) => {
+    const detail = (e as CustomEvent<{ path: string }>).detail;
+    void openCatalogBook(detail.path);
+  });
   await listen("engine-status-changed", () => {
     refreshAll().then(async () => {
       const currentInstalled = engineStatus.engines.find(
