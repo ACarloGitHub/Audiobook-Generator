@@ -8,6 +8,7 @@ mod commands;
 pub mod config;
 mod epub;
 pub mod gpu_guard;
+pub mod history;
 pub mod input;
 pub mod job_object;
 pub mod merger;
@@ -127,6 +128,10 @@ pub fn run() {
             aurawrite::aurawrite_check,
             aurawrite::aurawrite_take_proposal,
             aurawrite::aurawrite_catalog,
+            history::history_list,
+            history::history_open,
+            history::history_continue,
+            history::history_restart,
             wizard::detect_hardware,
             wizard::check_dependencies,
             wizard::get_wizard_steps,

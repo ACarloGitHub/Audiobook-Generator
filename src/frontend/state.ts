@@ -92,6 +92,7 @@ export const PANEL_TITLES: Record<PanelId, string> = {
   epub: "EPUB & Options",
   generate: "Generate",
   recovery: "Error Recovery",
+  history: "History",
   demo: "Demo & Test",
   models: "Models",
   agents: "AI Agents",
@@ -106,5 +107,6 @@ export const NAV_ITEMS: { id: PanelId; label: string }[] = [
   { id: "demo", label: "Demo & Test" },
   { id: "models", label: "Models" },
   { id: "agents", label: "AI Agents" },
+  { id: "history", label: "History" },
   { id: "aurawrite", label: "AuraWrite" },
 ];

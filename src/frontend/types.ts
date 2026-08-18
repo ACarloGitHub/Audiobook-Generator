@@ -3,9 +3,10 @@ export type PanelId =
   | "epub"
   | "generate"
   | "recovery"
-  | "agents"
+  | "history"
   | "demo"
   | "models"
+  | "agents"
   | "aurawrite";
 
 export interface EngineInfo {
@@ -105,6 +106,31 @@ export interface FailedChunkInfo {
   chunk_index: number;
   text: string;
   error: string;
+}
+
+// A job from the persistent history (jobs_history.json), as serialized by
+// the Rust backend (snake_case field names).
+export interface HistoryJobView {
+  id: string;
+  aurawrite_book_id: string | null;
+  title: string;
+  source_document: string | null;
+  book_dir: string;
+  engine_id: string | null;
+  voice: string | null;
+  language: string | null;
+  reference_audio: string | null;
+  reference_transcript: string | null;
+  params: Record<string, string>;
+  converted_chapters: string[];
+  chapter_titles: string[];
+  created_at: string | null;
+  updated_at: string | null;
+  completed_at: string | null;
+  dir_exists: boolean;
+  status: "missing" | "completed" | "in_progress";
+  converted_count: number;
+  total_count: number;
 }
 
 export interface ModelListEntry {

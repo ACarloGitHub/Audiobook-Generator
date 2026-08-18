@@ -7,6 +7,8 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { escapeHtml } from "./helpers";
+import { renderJobRows, statusLabel, chapterSummary, formatDate } from "./history";
+import type { HistoryJobView } from "./types";
 
 export interface AurawriteProposal {
   input: string;
@@ -57,7 +59,11 @@ export async function takeProposal(): Promise<AurawriteProposal | null> {
   }
 }
 
-export function renderAurawrite(aurawrite: AurawriteState, loaded: boolean): string {
+export function renderAurawrite(
+  aurawrite: AurawriteState,
+  jobs: HistoryJobView[],
+  loaded: boolean,
+): string {
   if (!loaded) {
     return `<div class="card"><p class="field-help">Checking for AuraWrite…</p></div>`;
   }
@@ -81,27 +87,70 @@ export function renderAurawrite(aurawrite: AurawriteState, loaded: boolean): str
       <button class="btn-secondary" id="aurawrite-refresh">🔄 Refresh</button>
     </div>`;
   }
-  const rows = aurawrite.books.length
-    ? aurawrite.books
-        .map((b) => {
-          if (b.section === "reader") {
-            return `<li>
-              <strong>${escapeHtml(b.name)}</strong>
-              <button class="btn-secondary btn-small" data-open-book-path="${escapeHtml(b.path)}">Open</button>
-              <span class="field-help">(Reader)</span>
-            </li>`;
-          }
-          return `<li>
-            <strong>${escapeHtml(b.name)}</strong>
-            <span class="field-help">(Editor — export it first with the 🎧 button in AuraWrite)</span>
-          </li>`;
-        })
-        .join("")
-    : `<p class="field-help">No ebooks published by AuraWrite yet. Export an ebook from AuraWrite to see it here.</p>`;
+
+  // One table like the History panel: every catalog book has a row with the
+  // status of its job next to it. Books without a job show "Not started"
+  // (Reader) or the Editor note. Orphan AuraWrite jobs (books no longer in
+  // the catalog) are listed afterwards with the same rows as History.
+  const jobByBookId = new Map(
+    jobs.filter((j) => j.aurawrite_book_id).map((j) => [j.aurawrite_book_id!, j]),
+  );
+  const rows = aurawrite.books
+    .map((b) => {
+      const job = jobByBookId.get(b.id);
+      if (job) {
+        const st = statusLabel(job);
+        return `<tr>
+          <td><span class="history-title" title="${escapeHtml(b.name)}">${escapeHtml(b.name)}</span></td>
+          <td><span style="color:${st.color};font-weight:600;">${escapeHtml(st.text)}</span></td>
+          <td>${escapeHtml(chapterSummary(job))}</td>
+          <td>${job.engine_id ? `<span class="history-engine" title="${escapeHtml(job.engine_id)}">${escapeHtml(job.engine_id)}</span>` : "—"}</td>
+          <td>${escapeHtml(formatDate(job.updated_at))}</td>
+          <td><button class="btn-secondary btn-small" data-open-job-dir="${escapeHtml(job.book_dir)}">Open</button></td>
+        </tr>`;
+      }
+      if (b.section === "reader") {
+        return `<tr>
+          <td><span class="history-title" title="${escapeHtml(b.name)}">${escapeHtml(b.name)}</span></td>
+          <td><span style="color:var(--text-dim);">Not started</span></td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td><button class="btn-secondary btn-small" data-open-book-path="${escapeHtml(b.path)}">Open</button></td>
+        </tr>`;
+      }
+      return `<tr>
+        <td><span class="history-title" title="${escapeHtml(b.name)}">${escapeHtml(b.name)}</span></td>
+        <td><span class="history-note" title="Export it first with the 🎧 button in AuraWrite">Export it first with the 🎧 button in AuraWrite</span></td>
+        <td>—</td>
+        <td>—</td>
+        <td>—</td>
+        <td></td>
+      </tr>`;
+    })
+    .join("");
+
+  const orphanIds = new Set(aurawrite.books.map((b) => b.id));
+  const orphanJobs = jobs.filter((j) => j.aurawrite_book_id && !orphanIds.has(j.aurawrite_book_id));
+  const orphanRows = renderJobRows(orphanJobs);
+
+  const tableBody = rows + orphanRows;
+  const empty = !tableBody
+    ? `<p class="field-help">No ebooks published by AuraWrite yet. Export an ebook from AuraWrite to see it here.</p>`
+    : "";
+
   return `<div class="card">
     <h2>AuraWrite ebooks</h2>
-    <p class="field-help">Books exported from AuraWrite. When one is sent, accept the request to load it.</p>
-    <ul>${rows}</ul>
+    <p class="field-help">Books exported from AuraWrite, with the status of their conversion jobs.</p>
+    <table class="history-table">
+      <thead>
+        <tr>
+          <th>Title</th><th>Status</th><th>Chapters</th><th>Engine</th><th>Last updated</th><th></th>
+        </tr>
+      </thead>
+      <tbody>${tableBody}</tbody>
+    </table>
+    ${empty}
     <button class="btn-secondary" id="aurawrite-refresh">🔄 Refresh</button>
   </div>`;
 }

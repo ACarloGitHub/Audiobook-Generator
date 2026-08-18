@@ -14,6 +14,13 @@ import { renderModels, attachModelsListeners, loadModels } from "./frontend/mode
 import { startVramMonitor, renderVramSlot } from "./frontend/engine-strip";
 import { renderAgents, attachAgentsListeners } from "./frontend/agents";
 import {
+  renderHistory,
+  attachHistoryListeners,
+  loadHistory,
+  confirmMissingFolder,
+} from "./frontend/history";
+import type { HistoryJobView } from "./frontend/types";
+import {
   renderAurawrite,
   attachAurawriteListeners,
   checkAurawriteState,
@@ -37,6 +44,8 @@ let modelList: ModelListEntry[] = [];
 let bookInfo: BookInfo | null = null;
 let aurawriteLoaded = false;
 let aurawriteState: AurawriteState = { found: false, books: [] };
+let historyLoaded = false;
+let historyJobs: HistoryJobView[] = [];
 
 function panelBody(): string {
   switch (state.currentPanel) {
@@ -44,11 +53,16 @@ function panelBody(): string {
     case "epub": return renderEpub();
     case "generate": return renderGenerate(engineStatus, bookInfo);
     case "recovery": return renderRecovery();
+    case "history": return renderHistory(historyJobs, historyLoaded);
     case "demo": return renderDemo(engineStatus);
     case "models": return renderModels(engineStatus, modelList);
     case "agents": return renderAgents();
-    case "aurawrite": return renderAurawrite(aurawriteState, aurawriteLoaded);
+    case "aurawrite": return renderAurawrite(aurawriteState, aurawriteJobs(), aurawriteLoaded);
   }
+}
+
+function aurawriteJobs(): HistoryJobView[] {
+  return historyJobs.filter((j) => j.aurawrite_book_id);
 }
 
 function renderMainPanel(): string {
@@ -165,6 +179,13 @@ function attachAllListeners(): void {
   });
   attachAgentsListeners();
   attachAurawriteListeners();
+  attachHistoryListeners();
+}
+
+async function refreshHistory(): Promise<void> {
+  historyJobs = await loadHistory();
+  historyLoaded = true;
+  render();
 }
 
 async function refreshAurawrite(): Promise<void> {
@@ -208,6 +229,114 @@ async function loadBookIntoGenerate(path: string): Promise<void> {
     render();
   } catch (e) {
     console.error("[aurawrite] failed to load book:", e);
+  }
+}
+
+/** Open a job from History / AuraWrite, resuming or restarting it. */
+async function openJob(dir: string): Promise<void> {
+  if (state.generationRunning) {
+    showBusyWarning();
+    return;
+  }
+  let job: HistoryJobView;
+  try {
+    job = await invoke<HistoryJobView>("history_open", { bookDir: dir });
+  } catch (e) {
+    console.error("[history] open failed:", e);
+    return;
+  }
+  let restart = false;
+  if (!job.dir_exists) {
+    const action = await confirmMissingFolder();
+    if (!action) return;
+    restart = action === "restart";
+    try {
+      job = await invoke<HistoryJobView>(restart ? "history_restart" : "history_continue", {
+        bookDir: dir,
+      });
+    } catch (e) {
+      console.error("[history] recreate folder failed:", e);
+      return;
+    }
+  }
+  await loadJob(job, restart);
+}
+
+/** Load the job's source document with its saved settings and preselect
+ * the chapters that are not converted yet. */
+async function loadJob(job: HistoryJobView, restart: boolean): Promise<void> {
+  if (!job.source_document) {
+    alert("The original document for this job is no longer available, so it cannot be loaded.");
+    return;
+  }
+  try {
+    const info = await invoke<BookInfo>("load_epub", { path: job.source_document });
+    state.epubPath = job.source_document;
+    state.audioBookTitle = info.title.trim() || job.title || "audiobook";
+    bookInfo = info;
+    applySavedSettings(job);
+    if (job.engine_id) await applyEngineDefaults(job.engine_id);
+    state.selectedChapters = restart
+      ? new Set(info.chapters.map((c) => c.title))
+      : remainingChapters(info, job);
+    state.currentPanel = "generate";
+    render();
+  } catch (e) {
+    console.error("[history] failed to load job:", e);
+  }
+}
+
+function remainingChapters(info: BookInfo, job: HistoryJobView): Set<string> {
+  const converted = new Set(job.converted_chapters);
+  const remaining = info.chapters.filter((c) => !converted.has(c.title)).map((c) => c.title);
+  if (remaining.length > 0) return new Set(remaining);
+  // Already fully converted: preselect everything so the user can re-generate.
+  return new Set(info.chapters.map((c) => c.title));
+}
+
+/** Apply the saved engine/voice/language/reference settings of a job. */
+function applySavedSettings(job: HistoryJobView): void {
+  if (job.engine_id) state.selectedEngineId = job.engine_id;
+  if (job.voice) state.selectedVoiceId = job.voice;
+  if (job.language) state.selectedLanguage = job.language;
+  if (job.reference_audio) state.referenceWavPath = job.reference_audio;
+  const p = job.params ?? {};
+  if (p["instruct"]) state.qwenInstruct = p["instruct"];
+  if (p["ref_text"]) state.referenceTranscript = p["ref_text"];
+  if (p["prompt_text"]) state.referenceTranscript = p["prompt_text"];
+  if (p["speaker_json"]) state.outeSpeakerJsonPath = p["speaker_json"];
+  if (p["voice_mode"] === "design") state.voxMode = "design";
+  else if (p["voice_mode"] === "clone") state.voxMode = "clone";
+  else if (p["voice_mode"] === "ultimate") state.voxMode = "ultimate";
+  if (p["voice_description"]) state.voxVoiceDescription = p["voice_description"];
+
+  const engine = state.selectedEngineId;
+  const overrides: Record<string, string> = {};
+  const set = (key: string, id: string | undefined): void => {
+    if (id && p[key]) overrides[id] = p[key];
+  };
+  if (engine.startsWith("Qwen3-TTS")) {
+    set("temp", "qwen-temp");
+    set("top_k", "qwen-top-k");
+    set("top_p", "qwen-top-p");
+    set("rep_pen", "qwen-rep-pen");
+    set("max_new", "qwen-max-new");
+    set("seed", "qwen-seed");
+  } else if (engine.startsWith("OuteTTS")) {
+    set("temperature", "oute-temperature");
+    set("top_k", "oute-top-k");
+    set("top_p", "oute-top-p");
+    set("min_p", "oute-min-p");
+    set("repetition_penalty", "oute-rep-pen");
+    set("max_tokens", "oute-max-tokens");
+  } else if (engine.startsWith("VoxCPM2")) {
+    set("cfg", "vox-cfg");
+    set("timesteps", "vox-timesteps");
+    set("steps", "vox-steps");
+    set("seed", "vox-seed");
+  }
+  for (const [id, val] of Object.entries(overrides)) {
+    state.engineParamOverrides[id] = val;
   }
 }
 
@@ -267,12 +396,18 @@ async function main(): Promise<void> {
   }
   render();
   void refreshAurawrite();
+  void refreshHistory();
   void checkProposalFlow();
   await listen("aurawrite:proposal-arrived", () => void checkProposalFlow());
   window.addEventListener("aurawrite:refresh-requested", () => void refreshAurawrite());
   window.addEventListener("aurawrite:open-catalog-book", (e) => {
     const detail = (e as CustomEvent<{ path: string }>).detail;
     void openCatalogBook(detail.path);
+  });
+  window.addEventListener("history:refresh-requested", () => void refreshHistory());
+  window.addEventListener("history:open-job", (e) => {
+    const detail = (e as CustomEvent<{ dir: string }>).detail;
+    void openJob(detail.dir);
   });
   await listen("engine-status-changed", () => {
     refreshAll().then(async () => {

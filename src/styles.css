@@ -445,3 +445,62 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   font-weight: 600;
   width: 40%;
 }
+
+/* Job history / AuraWrite jobs table (A7) */
+.history-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  margin: 8px 0 12px;
+  font-size: 13px;
+}
+
+.history-table th,
+.history-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-table th:first-child,
+.history-table td:first-child {
+  border-left: none;
+}
+
+.history-table thead th {
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-weight: 600;
+  text-align: left;
+  border-bottom: 2px solid var(--border);
+}
+
+/* Fixed column widths, identical for History and the AuraWrite panel.
+   No runtime adjustment: these are the only values. */
+.history-table thead th:nth-child(1) { width: 20%; }
+.history-table thead th:nth-child(2) { width: 20%; }
+.history-table thead th:nth-child(3) { width: 9%; }
+.history-table thead th:nth-child(4) { width: 18%; }
+.history-table thead th:nth-child(5) { width: 13%; }
+.history-table thead th:nth-child(6) { width: 10%; }
+
+.history-table tbody tr:hover {
+  background: var(--bg-elevated);
+}
+
+.history-title,
+.history-engine {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-note {
+  color: var(--text-dim);
+  white-space: nowrap;
+}

@@ -911,6 +911,31 @@ pub async fn start_generation(
     let app_for_task = app.clone();
     let extra_map = extra.unwrap_or_default();
 
+    // A7: record this generation in the jobs history before starting.
+    let source_path = epub_path.to_string_lossy().to_string();
+    let (book_title, chapter_titles) = match crate::input::parse_document(&epub_path) {
+        Ok(b) => (
+            b.title.clone(),
+            b.chapters.iter().map(|c| c.title.clone()).collect::<Vec<_>>(),
+        ),
+        Err(_) => (String::new(), Vec::new()),
+    };
+    let aurawrite_id = crate::aurawrite::aurawrite_book_id_for_path(&source_path);
+    let ref_transcript = extra_map.get("ref_text").cloned();
+    crate::history::note_generation_started(crate::history::GenerationSettings {
+        book_dir: &output_dir,
+        source_document: Some(&source_path),
+        title: &book_title,
+        engine_id: Some(&engine_id),
+        voice: voice.as_deref(),
+        language: language.as_deref(),
+        reference_audio: reference_audio.as_deref(),
+        reference_transcript: ref_transcript.as_deref(),
+        params: extra_map.clone(),
+        chapter_titles,
+        aurawrite_book_id: aurawrite_id,
+    });
+
     STOP_FLAG.store(false, Ordering::SeqCst);
 
     let max_chars_resolved = max_chars.unwrap_or(800);
@@ -951,6 +976,7 @@ pub async fn start_generation(
         // Keep the registry in sync: the book stays registered only while it
         // has pending recovery work (failed chunks or a pending merge).
         update_registry_for_book(&output_dir, Some(&engine_id));
+        crate::history::sync_converted_from_disk(&output_dir);
         return result.map_err(|e| format!("book synthesis failed: {e:#}"));
     }
 
@@ -986,6 +1012,7 @@ pub async fn start_generation(
         // Keep the registry in sync: the book stays registered only while it
         // has pending recovery work (failed chunks or a pending merge).
         update_registry_for_book(&output_dir, Some(&engine_id));
+        crate::history::sync_converted_from_disk(&output_dir);
         return result.map_err(|e| format!("book synthesis failed: {e:#}"));
     }
 
@@ -1019,6 +1046,7 @@ pub async fn start_generation(
         // Keep the registry in sync: the book stays registered only while it
         // has pending recovery work (failed chunks or a pending merge).
         update_registry_for_book(&output_dir, Some(&engine_id));
+        crate::history::sync_converted_from_disk(&output_dir);
         return result.map_err(|e| format!("book synthesis failed: {e:#}"));
     }
 

@@ -109,3 +109,16 @@ pub fn aurawrite_catalog() -> Result<Option<Value>, String> {
     Ok(read_catalog())
 }
 
+/// Find the AuraWrite catalog id of a book given its source file path.
+/// Used when a generation starts, to link the job to the AuraWrite catalog.
+pub(crate) fn aurawrite_book_id_for_path(path: &str) -> Option<String> {
+    let catalog = read_catalog()?;
+    let books = catalog.get("books")?.as_array()?;
+    for b in books {
+        if b.get("path").and_then(|v| v.as_str()) == Some(path) {
+            return b.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
+        }
+    }
+    None
+}
+
