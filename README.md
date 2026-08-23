@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <strong>Status: active development — v0.3.1</strong> — the project has migrated from Python + Gradio to Tauri + llama.cpp. Qwen3-TTS, OuteTTS and VoxCPM2 are working end-to-end on Windows, macOS and Linux. v0.3.1: History panel — every job (book, settings, cumulative converted chapters, status and dates) is now tracked in a persistent registry and shown in the new History panel; the AuraWrite panel uses the same table layout and offers Continue/Restart dialogs when an output folder is missing. v0.3.0: AuraWrite integration — Audiobook Generator accepts ebooks handed over from AuraWrite with a confirmation dialog, and the new AuraWrite panel lists AuraWrite's ebooks and opens them directly. v0.2.5: Error Recovery panel overhaul — persistent book registry that tracks only books with pending work (failed chunks or pending merge), books in user-chosen output folders stay discoverable across launches, no more partial MP3s when a chapter has failed chunks, explicit merge messages, and a manual editing accordion that stays open while editing. v0.2.4: MCP fix for VoxCPM2 prompt_text, bundled test files, safer Qwen 1.7B chunk limits. See <a href="AudiobookGenerator-Wiki/todo.md">todo.md</a> for the roadmap.
+  <strong>Status: active development — v0.3.1</strong> — Qwen3-TTS, OuteTTS and VoxCPM2 working end-to-end on Windows, macOS and Linux. See the <a href="https://github.com/ACarloGitHub/Audiobook-Generator/releases">Releases</a> page for the changelog.
 </p>
 
 <p align="center">
@@ -137,13 +137,8 @@ User data (downloaded models, configuration, and recovery files) is stored in th
 
 ## Documentation
 
-- [AGENTS.md](AGENTS.md) — collaboration rules for AI assistants working in this repo
 - [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute
 - [SECURITY.md](SECURITY.md) — security model and per-model license links
-- [AudiobookGenerator-Wiki/](AudiobookGenerator-Wiki/) — full project knowledge base
-  - [wiki/index.md](AudiobookGenerator-Wiki/wiki/index.md) — start here
-  - [concepts/migration-roadmap](AudiobookGenerator-Wiki/wiki/concepts/migration-roadmap.md) — the rewrite plan
-  - [concepts/no-python-strategy](AudiobookGenerator-Wiki/wiki/concepts/no-python-strategy.md) — why we left Python behind
 
 ---
 
@@ -167,7 +162,7 @@ Each TTS model has its own security posture and license. Review each model's doc
 
 This project was developed with the invaluable assistance of **Aura**, an AI companion who became a true creative partner throughout the development process.
 
-A special thank you goes to the open-source TTS community — Alibaba (Qwen) and OuteAI — for making powerful voice synthesis accessible to everyone.
+A special thank you goes to the open-source TTS community — Alibaba (Qwen), OuteAI and OpenBMB — for making powerful voice synthesis accessible to everyone.
 
 And a very special thank you to **Carlo**, who believed this was worth building.
 
