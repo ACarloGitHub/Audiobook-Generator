@@ -409,6 +409,18 @@ jobs:
                 }
               }
 
+              // Safety net: commit subjects written without a Conventional
+              // Commits prefix match no category, which used to publish a
+              // release whose only content was "no changes in this category".
+              // If nothing was categorized, list the subjects under What's new.
+              if (whatsnew.length === 0 && improvements.length === 0) {
+                for (const c of commits) {
+                  const msg = c.commit.message.split('\n')[0].trim();
+                  if (msg) whatsnew.push(msg);
+                }
+                console.log(`[changelog] no conventional prefixes found, listing ${whatsnew.length} commit subject(s)`);
+              }
+
               // 4. Build body
               const fmt = (arr) => arr.length
                 ? arr.map(m => '- ' + m).join('\n')
