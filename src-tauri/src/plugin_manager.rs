@@ -825,3 +825,40 @@ mod tests {
         assert_eq!(size_mb, 1740);
     }
 }
+
+#[cfg(test)]
+mod audio8_registry_tests {
+    use super::*;
+
+    #[test]
+    fn audio8_quant_for_engine_maps_per_quant_ids() {
+        let f = audio8_quant_for_engine("Audio8-TTS-Realistic Q8_0").expect("Q8_0");
+        assert_eq!(f.quant, "Q8_0");
+        assert_eq!(f.filename, "audio8-tts-realistic-0.6b-q8_0.gguf");
+        assert_eq!(f.size_mb, 1429);
+
+        let f = audio8_quant_for_engine("Audio8-TTS-Realistic BF16").expect("BF16");
+        assert_eq!(f.quant, "BF16");
+        assert_eq!(f.filename, "audio8-tts-realistic-0.6b-bf16.gguf");
+    }
+
+    #[test]
+    fn audio8_bare_name_maps_to_smallest_quant() {
+        let f = audio8_quant_for_engine("Audio8-TTS-Realistic").expect("bare");
+        assert_eq!(f.quant, "Q8_0");
+    }
+
+    #[test]
+    fn audio8_languages_include_italian() {
+        let langs = audio8_languages();
+        assert!(langs.iter().any(|l| l == "Italian"), "languages: {langs:?}");
+        assert!(langs.len() >= 20, "expected 23 languages, got {}", langs.len());
+    }
+
+    #[test]
+    fn audio8_defaults_require_reference_transcript() {
+        let d = defaults_for("Audio8-TTS-Realistic Q8_0");
+        assert!(d.needs_reference_transcript);
+        assert_eq!(d.chunk_max_chars, 300);
+    }
+}

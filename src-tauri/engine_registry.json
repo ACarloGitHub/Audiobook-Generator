@@ -933,7 +933,7 @@
       "max_sequence_length": 2048,
       "variants": [
         {
-          "name": "Audio8-TTS-Realistic-0.6B",
+          "name": "Audio8-TTS-Realistic",
           "size": "0.6B",
           "mode": "clone",
           "mode_label": "Voice Clone",
