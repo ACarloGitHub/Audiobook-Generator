@@ -99,7 +99,7 @@ jobs:
           # See wiki/concepts/release-procedure.md for the rebuild procedure.
           $dst = "src-tauri\sidecars\bundled"
           New-Item -ItemType Directory -Path $dst -Force | Out-Null
-          foreach ($n in @("qwentts", "voxcpm2", "llama.cpp", "cuda-shared")) {
+          foreach ($n in @("qwentts", "voxcpm2", "audio8", "llama.cpp", "cuda-shared")) {
             $url = "https://github.com/ACarloGitHub/Audiobook-Generator/releases/download/engine-bins/$n-windows-x64.zip"
             # curl.exe streams to disk: reliable for large files (unlike Invoke-WebRequest)
             curl.exe -fL --retry 3 --retry-delay 10 -o "$n.zip" $url
@@ -109,6 +109,7 @@ jobs:
           if (-not (Test-Path "$dst\qwentts\qwen-tts.exe")) { throw "qwen-tts.exe missing" }
           if (-not (Test-Path "$dst\voxcpm2\voxcpm2-cli.exe")) { throw "voxcpm2-cli.exe missing" }
           if (-not (Test-Path "$dst\llama.cpp\llama-server.exe")) { throw "llama-server.exe missing" }
+          if (-not (Test-Path "$dst\audio8\audiocpp_cli.exe")) { throw "audiocpp_cli.exe missing" }
           if (-not (Test-Path "$dst\cuda-shared\cublasLt64_12.dll")) { throw "cuda-shared DLLs missing" }
           Get-ChildItem $dst -Recurse -File | Format-Table FullName, Length
 
