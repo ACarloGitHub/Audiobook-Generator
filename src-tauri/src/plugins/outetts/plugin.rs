@@ -659,6 +659,7 @@ pub fn synthesize_book(
     let _ = recovery_state.save(output_dir);
     let mut done_count = 0usize;
     let mut failed_count = 0usize;
+    let mut rate_guard = crate::audio_check::RateGuard::new();
 
     for (i, chapter) in chapters.iter().enumerate() {
         if crate::commands::is_stop_requested() {
@@ -689,15 +690,35 @@ pub fn synthesize_book(
             }
             let wav_path = chapter_dir.join(format!("chunk_{:04}.wav", j + 1));
             if recovery_state.is_done(&chapter.title, j) && wav_path.exists() {
+                if let Some(secs) = crate::audio_check::wav_duration_seconds(&wav_path) {
+                    let _ = rate_guard.observe(chunk_text.chars().count(), secs);
+                }
                 wavs.push(wav_path);
                 continue;
             }
 
             match plugin.synthesize_chunk_internal(chunk_text, &wav_path, extra) {
                 Ok(()) => {
-                    recovery_state.mark_done(&chapter.title, j);
-                    wavs.push(wav_path);
-                    done_count += 1;
+                    let suspicion = crate::audio_check::wav_duration_seconds(&wav_path)
+                        .and_then(|secs| {
+                            rate_guard.observe(chunk_text.chars().count(), secs)
+                        });
+                    if let Some(reason) = suspicion {
+                        failed_count += 1;
+                        warn!("chunk {}/{} looks incomplete: {reason}", j + 1, chunks.len());
+                        if let Some(cb) = progress.as_deref_mut() {
+                            cb(&format!(
+                                "WARN: chunk {}/{} looks incomplete ({reason}). Retry it in Error Recovery.",
+                                j + 1,
+                                chunks.len()
+                            ));
+                        }
+                        recovery_state.mark_failed(&chapter.title, j, chunk_text, &reason);
+                    } else {
+                        recovery_state.mark_done(&chapter.title, j);
+                        wavs.push(wav_path);
+                        done_count += 1;
+                    }
                 }
                 Err(e) => {
                     failed_count += 1;

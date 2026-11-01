@@ -1,5 +1,6 @@
 use tauri::{Emitter, Manager};
 
+pub mod audio_check;
 pub mod aurawrite;
 pub mod base_plugin;
 pub mod book_registry;
