@@ -78,7 +78,109 @@ pub fn chunk_text(text: &str, max_words: usize, max_chars: usize) -> Vec<String>
     final_chunks
 }
 
+/// Words that open a new clause in Italian narrative prose. Splitting before
+/// them keeps the break on a natural pause instead of an arbitrary word.
+const CONJUNCTIONS: [&str; 14] = [
+    "e", "o", "ma", "però", "pero", "quindi", "dunque", "allora", "cioè", "cioe", "infatti",
+    "mentre", "poiché", "poiche",
+];
+
+/// Characters that may close a quotation or a parenthetical right after the
+/// final punctuation mark, before the space that starts the next sentence.
+const SENTENCE_CLOSERS: [char; 9] = ['»', '"', '\'', ')', ']', '”', '’', '›', '’'];
+
+/// Break an over-long fragment at the most natural boundary available.
+///
+/// Mirrors the legacy `split_long_sentence` cascade: first after a comma,
+/// semicolon or colon, then before a conjunction, and only as a last resort
+/// between words. Every returned part is at most `max_chars` characters.
 fn hard_split(text: &str, max_chars: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    for phrase in pack_units(&split_after_punctuation(text), max_chars) {
+        if phrase.chars().count() <= max_chars {
+            out.push(phrase);
+            continue;
+        }
+        for clause in pack_units(&split_before_conjunction(&phrase), max_chars) {
+            if clause.chars().count() <= max_chars {
+                out.push(clause);
+            } else {
+                out.extend(split_words(&clause, max_chars));
+            }
+        }
+    }
+    out
+}
+
+/// Split after `,` `;` `:`, keeping the punctuation attached to the piece it
+/// closes.
+fn split_after_punctuation(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut current = String::new();
+    for c in text.chars() {
+        current.push(c);
+        if matches!(c, ',' | ';' | ':') {
+            let trimmed = current.trim().to_string();
+            if !trimmed.is_empty() {
+                out.push(trimmed);
+            }
+            current.clear();
+        }
+    }
+    let trimmed = current.trim().to_string();
+    if !trimmed.is_empty() {
+        out.push(trimmed);
+    }
+    if out.is_empty() {
+        out.push(text.trim().to_string());
+    }
+    out
+}
+
+/// Split before a conjunction, so the conjunction opens the next fragment.
+fn split_before_conjunction(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut current: Vec<&str> = Vec::new();
+    for word in text.split_whitespace() {
+        let bare = word.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase();
+        let starts_clause = CONJUNCTIONS.contains(&bare.as_str());
+        if starts_clause && !current.is_empty() {
+            out.push(current.join(" "));
+            current.clear();
+        }
+        current.push(word);
+    }
+    if !current.is_empty() {
+        out.push(current.join(" "));
+    }
+    if out.is_empty() {
+        out.push(text.trim().to_string());
+    }
+    out
+}
+
+/// Greedily join units with a single space while the budget allows.
+fn pack_units(units: &[String], max_chars: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut current = String::new();
+    for unit in units {
+        let unit_len = unit.chars().count();
+        if !current.is_empty() && current.chars().count() + unit_len + 1 > max_chars {
+            out.push(std::mem::take(&mut current));
+        }
+        if !current.is_empty() {
+            current.push(' ');
+        }
+        current.push_str(unit);
+    }
+    if !current.is_empty() {
+        out.push(current);
+    }
+    out
+}
+
+/// Last-resort split between words.
+fn split_words(text: &str, max_chars: usize) -> Vec<String> {
     let mut out = Vec::new();
     let mut current = String::new();
     for word in text.split_whitespace() {
@@ -169,23 +271,30 @@ pub fn split_sentences(text: &str) -> Vec<String> {
         if c == '.' || c == '!' || c == '?' {
             // Skip ellipses: if the previous char was also punctuation, don't split
             let prev_is_punct = i > 0 && (chars[i - 1] == '.' || chars[i - 1] == '!' || chars[i - 1] == '?');
-            // Check that the next non-trailing char is whitespace
-            let next_is_ws = i + 1 >= chars.len() || chars[i + 1].is_whitespace();
-            if !prev_is_punct && next_is_ws {
-                // Include the punctuation in the sentence
-                let sentence: String = chars[start..=i].iter().collect();
-                let trimmed = sentence.trim().to_string();
-                if !trimmed.is_empty() {
-                    out.push(trimmed);
+            if !prev_is_punct {
+                // A sentence may close with a quotation mark or a bracket right
+                // after the punctuation («Non lo so.» / "Basta." / (davvero.)).
+                let mut end = i;
+                while end + 1 < chars.len() && SENTENCE_CLOSERS.contains(&chars[end + 1]) {
+                    end += 1;
                 }
-                // Skip trailing whitespace
-                let mut j = i + 1;
-                while j < chars.len() && chars[j].is_whitespace() {
-                    j += 1;
+                let next_is_ws = end + 1 >= chars.len() || chars[end + 1].is_whitespace();
+                if next_is_ws {
+                    // Include the punctuation and any closing quotes in the sentence
+                    let sentence: String = chars[start..=end].iter().collect();
+                    let trimmed = sentence.trim().to_string();
+                    if !trimmed.is_empty() {
+                        out.push(trimmed);
+                    }
+                    // Skip trailing whitespace
+                    let mut j = end + 1;
+                    while j < chars.len() && chars[j].is_whitespace() {
+                        j += 1;
+                    }
+                    start = j;
+                    i = j;
+                    continue;
                 }
-                start = j;
-                i = j;
-                continue;
             }
         }
         i += 1;
@@ -310,5 +419,78 @@ mod tests {
         let parts = split_text_balanced("hello", 3);
         assert_eq!(parts.len(), 1);
         assert_eq!(parts[0], "hello");
+    }
+
+    #[test]
+    fn hard_split_breaks_after_commas_first() {
+        let text = "aaa bbb ccc, ddd eee fff, ggg hhh iii, lll mmm nnn";
+        let out = hard_split(text, 20);
+        assert_eq!(out.len(), 4, "parts: {out:?}");
+        for part in out.iter().take(3) {
+            assert!(part.ends_with(','), "expected a comma break, got: {part}");
+        }
+        assert_eq!(out.join(" "), text);
+    }
+
+    #[test]
+    fn hard_split_falls_back_to_conjunctions() {
+        let text = "alpha beta gamma e delta epsilon zeta e eta theta iota";
+        let out = hard_split(text, 20);
+        assert!(out.len() >= 2, "parts: {out:?}");
+        for part in out.iter().skip(1) {
+            assert!(part.starts_with("e "), "expected a conjunction break, got: {part}");
+        }
+        for part in &out {
+            assert!(part.chars().count() <= 20, "over budget: {part}");
+        }
+        assert_eq!(out.join(" "), text);
+    }
+
+    #[test]
+    fn hard_split_uses_words_as_last_resort() {
+        let text = "one two three four five six";
+        let out = hard_split(text, 10);
+        assert_eq!(out, vec!["one two", "three four", "five six"]);
+        for part in &out {
+            assert!(part.chars().count() <= 10);
+        }
+    }
+
+    #[test]
+    fn sentences_split_after_guillemets() {
+        let text = "«Non lo so.» Disse che sarebbe tornato.";
+        let out = split_sentences(text);
+        assert_eq!(out.len(), 2, "parts: {out:?}");
+        assert_eq!(out[0], "«Non lo so.»");
+        assert_eq!(out[1], "Disse che sarebbe tornato.");
+    }
+
+    #[test]
+    fn sentences_split_after_closing_quote() {
+        let text = "\"Basta.\" Poi uscì senza dire altro.";
+        let out = split_sentences(text);
+        assert_eq!(out.len(), 2, "parts: {out:?}");
+        assert_eq!(out[0], "\"Basta.\"");
+    }
+
+    #[test]
+    fn sentences_do_not_split_inside_numbers() {
+        let text = "Il numero 3.14 è famoso.";
+        let out = split_sentences(text);
+        assert_eq!(out.len(), 1, "parts: {out:?}");
+    }
+
+    #[test]
+    fn chunk_text_ends_every_chunk_at_a_sentence_boundary() {
+        let text = "Prima frase abbastanza lunga per contare. Seconda frase altrettanto lunga qui. Terza frase finale.";
+        let out = chunk_text(text, 1000, 60);
+        assert!(out.len() >= 2, "chunks: {out:?}");
+        for chunk in &out {
+            assert!(
+                chunk.ends_with('.') || chunk.ends_with('!') || chunk.ends_with('?'),
+                "chunk does not end at a sentence boundary: {chunk}"
+            );
+        }
+        assert_eq!(out.join(" "), text);
     }
 }
