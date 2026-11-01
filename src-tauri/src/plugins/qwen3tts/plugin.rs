@@ -188,7 +188,7 @@ pub fn synthesize_book(
     output_dir: &Path,
     max_words: usize,
     max_chars: usize,
-    ffmpeg: &Path,
+    ffmpeg: Option<&Path>,
     voice: Option<&str>,
     language: Option<&str>,
     reference_audio: Option<&str>,
@@ -198,6 +198,11 @@ pub fn synthesize_book(
 ) -> Result<usize> {
     if let Some(cb) = progress.as_deref_mut() {
         cb("Reading EPUB...");
+    }
+    if ffmpeg.is_none() {
+        if let Some(cb) = progress.as_deref_mut() {
+            cb("ffmpeg not found — chapters will be saved as WAV with the fallback merger.");
+        }
     }
     let chapters = crate::input::extract_chapters_from(epub_path)?;
     // Keep only the chapters selected in the Generate panel (None/empty = all).
@@ -340,21 +345,23 @@ pub fn synthesize_book(
                 ));
             }
         } else if !wavs.is_empty() {
-            let mp3_path = output_dir.join(format!(
-                "{}.mp3",
-                crate::utils::sanitize_filename(&chapter.title)
-            ));
-            if let Err(e) = merger::merge_wavs_to_mp3(&wavs, &mp3_path, ffmpeg) {
-                warn!("merge failed for {}: {e:#}", chapter.title);
-                if let Some(cb) = progress.as_deref_mut() {
-                    cb(&format!("ERROR: merge failed for {}: {}", chapter.title, e));
+            let base = crate::utils::sanitize_filename(&chapter.title);
+            match merger::merge_chapter(&wavs, output_dir, &base, ffmpeg) {
+                Ok(path) => {
+                    if let Some(cb) = progress.as_deref_mut() {
+                        cb(&format!(
+                            "Merged {} chunk(s) into {}",
+                            wavs.len(),
+                            path.display()
+                        ));
+                    }
                 }
-            } else if let Some(cb) = progress.as_deref_mut() {
-                cb(&format!(
-                    "Merged {} chunk(s) into {}.mp3",
-                    wavs.len(),
-                    crate::utils::sanitize_filename(&chapter.title)
-                ));
+                Err(e) => {
+                    warn!("merge failed for {}: {e:#}", chapter.title);
+                    if let Some(cb) = progress.as_deref_mut() {
+                        cb(&format!("ERROR: merge failed for {}: {}", chapter.title, e));
+                    }
+                }
             }
         }
 

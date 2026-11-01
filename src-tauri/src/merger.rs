@@ -68,6 +68,98 @@ pub fn merge_wavs_to_mp3(wavs: &[PathBuf], out_mp3: &Path, ffmpeg: &Path) -> Res
     Ok(())
 }
 
+/// Concatenate PCM WAV files into a single WAV without any external tool.
+///
+/// Fallback used when ffmpeg is not available: every chunk produced by an
+/// engine has the same format (one engine per book), so concatenating the
+/// samples is enough. The result is lossless but much larger than MP3.
+pub fn merge_wavs_pure(wavs: &[PathBuf], out_wav: &Path) -> Result<()> {
+    if wavs.is_empty() {
+        anyhow::bail!("cannot merge zero WAV files");
+    }
+
+    let first = hound::WavReader::open(&wavs[0])
+        .with_context(|| format!("open first chunk {}", wavs[0].display()))?;
+    let spec = first.spec();
+    drop(first);
+
+    let mut writer = hound::WavWriter::create(out_wav, spec)
+        .with_context(|| format!("create {}", out_wav.display()))?;
+    let mut samples_written: u64 = 0;
+
+    for path in wavs {
+        let mut reader =
+            hound::WavReader::open(path).with_context(|| format!("open chunk {}", path.display()))?;
+        let chunk = reader.spec();
+        if chunk.channels != spec.channels
+            || chunk.sample_rate != spec.sample_rate
+            || chunk.bits_per_sample != spec.bits_per_sample
+            || chunk.sample_format != spec.sample_format
+        {
+            anyhow::bail!(
+                "chunk {} has a different audio format ({} Hz, {} ch, {}-bit) from the first one \
+                 ({} Hz, {} ch, {}-bit); cannot merge without ffmpeg",
+                path.display(),
+                chunk.sample_rate,
+                chunk.channels,
+                chunk.bits_per_sample,
+                spec.sample_rate,
+                spec.channels,
+                spec.bits_per_sample
+            );
+        }
+        match spec.sample_format {
+            hound::SampleFormat::Int => {
+                for sample in reader.samples::<i32>() {
+                    writer.write_sample(sample?)?;
+                    samples_written += 1;
+                }
+            }
+            hound::SampleFormat::Float => {
+                for sample in reader.samples::<f32>() {
+                    writer.write_sample(sample?)?;
+                    samples_written += 1;
+                }
+            }
+        }
+    }
+
+    writer.finalize().context("finalize merged WAV")?;
+    debug!(
+        "merged {} chunk(s), {} samples at {} Hz into {}",
+        wavs.len(),
+        samples_written,
+        spec.sample_rate,
+        out_wav.display()
+    );
+    Ok(())
+}
+
+/// Merge a chapter's chunks into the best container available.
+///
+/// With ffmpeg the chapter becomes an MP3 (small, what users expect); without
+/// it the chunks are concatenated into a WAV in pure Rust, so a book is never
+/// lost just because the encoder is missing.
+pub fn merge_chapter(
+    wavs: &[PathBuf],
+    out_dir: &Path,
+    base_name: &str,
+    ffmpeg: Option<&Path>,
+) -> Result<PathBuf> {
+    match ffmpeg {
+        Some(ffmpeg) => {
+            let mp3 = out_dir.join(format!("{base_name}.mp3"));
+            merge_wavs_to_mp3(wavs, &mp3, ffmpeg)?;
+            Ok(mp3)
+        }
+        None => {
+            let wav = out_dir.join(format!("{base_name}.wav"));
+            merge_wavs_pure(wavs, &wav)?;
+            Ok(wav)
+        }
+    }
+}
+
 /// Concatenate the given WAV files into a single WAV at `out_wav`,
 /// using the ffmpeg binary at `ffmpeg`. Used by the demo which outputs
 /// WAV (not MP3).
@@ -221,6 +313,71 @@ mod tests {
         for n in names {
             std::fs::write(dir.join(n), b"RIFF").unwrap();
         }
+    }
+
+    fn write_pcm_wav(path: &Path, samples: &[i16]) {
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 16_000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut w = hound::WavWriter::create(path, spec).unwrap();
+        for s in samples {
+            w.write_sample(*s).unwrap();
+        }
+        w.finalize().unwrap();
+    }
+
+    #[test]
+    fn pure_merge_concatenates_samples() {
+        let dir = std::env::temp_dir().join(format!("merger_test_{}_pure", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        write_pcm_wav(&dir.join("a.wav"), &[1, 2, 3]);
+        write_pcm_wav(&dir.join("b.wav"), &[4, 5]);
+        let out = dir.join("merged.wav");
+
+        merge_wavs_pure(&[dir.join("a.wav"), dir.join("b.wav")], &out).unwrap();
+
+        let mut r = hound::WavReader::open(&out).unwrap();
+        let samples: Vec<i16> = r.samples::<i16>().map(|s| s.unwrap()).collect();
+        assert_eq!(samples, vec![1, 2, 3, 4, 5]);
+        assert_eq!(r.spec().sample_rate, 16_000);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pure_merge_rejects_mismatched_formats() {
+        let dir = std::env::temp_dir().join(format!("merger_test_{}_mismatch", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        write_pcm_wav(&dir.join("a.wav"), &[1, 2]);
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 44_100,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut w = hound::WavWriter::create(dir.join("b.wav"), spec).unwrap();
+        w.write_sample(3i16).unwrap();
+        w.finalize().unwrap();
+
+        let err = merge_wavs_pure(&[dir.join("a.wav"), dir.join("b.wav")], &dir.join("out.wav"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("different audio format"), "error: {err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn merge_chapter_falls_back_to_wav_without_ffmpeg() {
+        let dir = std::env::temp_dir().join(format!("merger_test_{}_chapter", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        write_pcm_wav(&dir.join("c1.wav"), &[7, 8]);
+
+        let out = merge_chapter(&[dir.join("c1.wav")], &dir, "chapter", None).unwrap();
+        assert_eq!(out.extension().unwrap(), "wav");
+        assert!(out.exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

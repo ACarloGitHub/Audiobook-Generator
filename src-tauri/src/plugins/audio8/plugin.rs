@@ -299,7 +299,7 @@ pub fn synthesize_book(
     output_dir: &Path,
     max_words: usize,
     max_chars: usize,
-    ffmpeg: &Path,
+    ffmpeg: Option<&Path>,
     reference_audio: Option<&str>,
     only: Option<&[String]>,
     extra: &std::collections::HashMap<String, String>,
@@ -307,6 +307,11 @@ pub fn synthesize_book(
 ) -> Result<usize> {
     if let Some(cb) = progress.as_deref_mut() {
         cb("Reading EPUB...");
+    }
+    if ffmpeg.is_none() {
+        if let Some(cb) = progress.as_deref_mut() {
+            cb("ffmpeg not found — chapters will be saved as WAV with the fallback merger.");
+        }
     }
     let chapters = crate::input::extract_chapters_from(epub_path)?;
     let chapters: Vec<_> = match only {
@@ -462,13 +467,14 @@ pub fn synthesize_book(
                 ));
             }
         } else if !wavs.is_empty() {
-            let mp3_path = output_dir.join(format!(
-                "{}.mp3",
-                crate::utils::sanitize_filename(&chapter.title)
-            ));
-            merger::merge_wavs_to_mp3(&wavs, &mp3_path, ffmpeg)?;
+            let base = crate::utils::sanitize_filename(&chapter.title);
+            let merged = merger::merge_chapter(&wavs, output_dir, &base, ffmpeg)?;
             if let Some(cb) = progress.as_deref_mut() {
-                cb(&format!("Merged chapter {} -> {}", chapter.title, mp3_path.display()));
+                cb(&format!(
+                    "Merged {} chunk(s) into {}",
+                    wavs.len(),
+                    merged.display()
+                ));
             }
         }
 

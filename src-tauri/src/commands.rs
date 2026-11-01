@@ -914,7 +914,9 @@ pub async fn start_generation(
 
     let _ = app.emit("generation-progress", format!("Model loaded: {}", engine_id));
 
-    let ffmpeg = merger::find_ffmpeg().map_err(|e| e.to_string())?;
+    // ffmpeg is optional: without it chapters are merged into WAV in pure Rust
+    // instead of MP3 (see merger::merge_chapter).
+    let ffmpeg = merger::find_ffmpeg().ok();
     let epub = epub_path.clone();
     let out = output_dir.clone();
     let app_for_task = app.clone();
@@ -966,7 +968,7 @@ pub async fn start_generation(
                 let _ = app_for_task.emit("generation-progress", msg.to_string());
             });
             crate::plugins::qwen3tts::synthesize_book(
-                &q, &epub, &out, max_words, max_chars_resolved, &ffmpeg,
+                &q, &epub, &out, max_words, max_chars_resolved, ffmpeg.as_deref(),
                 voice_task.as_deref(),
                 lang_task.as_deref(),
                 ref_audio_task.as_deref(),
@@ -1004,7 +1006,7 @@ pub async fn start_generation(
                 let _ = app_for_task.emit("generation-progress", msg.to_string());
             });
             crate::plugins::audio8::synthesize_book(
-                &p, &epub, &out, max_words, max_chars_resolved, &ffmpeg,
+                &p, &epub, &out, max_words, max_chars_resolved, ffmpeg.as_deref(),
                 ref_audio_task.as_deref(),
                 only_task.as_deref(),
                 &extra_task,
@@ -1038,7 +1040,7 @@ pub async fn start_generation(
                 let _ = app_for_task.emit("generation-progress", msg.to_string());
             });
             crate::plugins::voxcpm2::synthesize_book(
-                &p, &epub, &out, max_words, max_chars_resolved, &ffmpeg,
+                &p, &epub, &out, max_words, max_chars_resolved, ffmpeg.as_deref(),
                 ref_audio_task.as_deref(),
                 only_task.as_deref(),
                 &extra_task,
@@ -1073,7 +1075,7 @@ pub async fn start_generation(
                 let _ = app_for_task.emit("generation-progress", msg.to_string());
             });
             crate::plugins::outetts::synthesize_book(
-                &p, &epub, &out, max_words, max_chars_resolved, &ffmpeg,
+                &p, &epub, &out, max_words, max_chars_resolved, ffmpeg.as_deref(),
                 only_task.as_deref(),
                 &extra_task,
                 Some(cb),

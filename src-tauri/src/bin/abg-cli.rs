@@ -1477,7 +1477,7 @@ async fn run_internal_generate(job_id: String) -> Result<String> {
     let params = state.gen_params
         .ok_or_else(|| anyhow::anyhow!("job '{job_id}' has no gen_params"))?;
 
-    let ffmpeg = merger::find_ffmpeg()?;
+    let ffmpeg = merger::find_ffmpeg().ok();
 
     let job_id_cb = job_id.clone();
     let cb: Box<dyn FnMut(&str) + Send> =
@@ -1493,7 +1493,7 @@ async fn run_internal_generate(job_id: String) -> Result<String> {
         tokio::task::spawn_blocking(move || {
             let q = audiobook_generator_lib::plugins::qwen3tts::QwenPlugin::new(paths, &engine_c);
             audiobook_generator_lib::plugins::qwen3tts::synthesize_book(
-                &q, &epub, &out, params.max_words, params.max_chars, &ffmpeg,
+                &q, &epub, &out, params.max_words, params.max_chars, ffmpeg.as_deref(),
                 params.voice.as_deref(), params.language.as_deref(),
                 params.reference.as_deref(), params.only.as_deref(),
                 &params.extra, Some(cb),
@@ -1509,7 +1509,7 @@ async fn run_internal_generate(job_id: String) -> Result<String> {
         tokio::task::spawn_blocking(move || {
             let p = audiobook_generator_lib::plugins::voxcpm2::VoxCpm2Plugin::new(paths, &engine_c);
             audiobook_generator_lib::plugins::voxcpm2::synthesize_book(
-                &p, &epub, &out, params.max_words, params.max_chars, &ffmpeg,
+                &p, &epub, &out, params.max_words, params.max_chars, ffmpeg.as_deref(),
                 params.reference.as_deref(), params.only.as_deref(),
                 &params.extra, Some(cb),
             )
@@ -1524,7 +1524,7 @@ async fn run_internal_generate(job_id: String) -> Result<String> {
         tokio::task::spawn_blocking(move || {
             let p = audiobook_generator_lib::plugins::outetts::OuteTTSPlugin::new(models_dir, &engine_c);
             audiobook_generator_lib::plugins::outetts::synthesize_book(
-                &p, &epub, &out, params.max_words, params.max_chars, &ffmpeg,
+                &p, &epub, &out, params.max_words, params.max_chars, ffmpeg.as_deref(),
                 params.only.as_deref(), &params.extra, Some(cb),
             )
         })
