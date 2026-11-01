@@ -38,6 +38,20 @@ pub struct GpuInfo {
 
 static STOP_FLAG: AtomicBool = AtomicBool::new(false);
 
+/// Engine currently loaded by the app, so the UI strip can show it instead of
+/// "No engine loaded" (the command used to hardcode None).
+static ACTIVE_ENGINE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+pub fn set_active_engine(engine_id: Option<String>) {
+    if let Ok(mut slot) = ACTIVE_ENGINE.lock() {
+        *slot = engine_id;
+    }
+}
+
+fn active_engine() -> Option<String> {
+    ACTIVE_ENGINE.lock().ok().and_then(|slot| slot.clone())
+}
+
 pub fn is_stop_requested() -> bool {
     STOP_FLAG.load(Ordering::SeqCst)
 }
@@ -46,8 +60,8 @@ pub fn is_stop_requested() -> bool {
 pub fn engine_status(pm: State<'_, Arc<PluginManager>>) -> EngineStatus {
     let engines = pm.catalogue();
     EngineStatus {
-        active_engine: None,
-        active_model: None,
+        active_engine: active_engine(),
+        active_model: active_engine(),
         vram_bytes: None,
         loaded_at: None,
         engines,
@@ -70,8 +84,10 @@ pub fn load_engine(
         .get_plugin(&engine_id)
         .ok_or_else(|| format!("unknown engine '{engine_id}'"))?;
 
-    tauri::async_runtime::block_on(plugin.load_model(&model_id))
-        .map_err(|e| format!("load failed: {e:#}"))
+    let loaded = tauri::async_runtime::block_on(plugin.load_model(&model_id))
+        .map_err(|e| format!("load failed: {e:#}"))?;
+    set_active_engine(Some(engine_id));
+    Ok(loaded)
 }
 
 #[tauri::command]
@@ -90,6 +106,7 @@ pub async fn unload_engine(
             .await
             .map_err(|e| format!("unload failed: {e:#}"))?;
     }
+    set_active_engine(None);
     Ok(())
 }
 
@@ -913,6 +930,7 @@ pub async fn start_generation(
         .map_err(|e| format!("load failed: {e:#}"))?;
 
     let _ = app.emit("generation-progress", format!("Model loaded: {}", engine_id));
+    set_active_engine(Some(engine_id.clone()));
 
     // ffmpeg is optional: without it chapters are merged into WAV in pure Rust
     // instead of MP3 (see merger::merge_chapter).
