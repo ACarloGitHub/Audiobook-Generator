@@ -16,7 +16,7 @@ Audiobook Generator processes everything **locally on your machine**. No data is
 The application is composed of:
 
 - A Tauri shell (TypeScript frontend + Rust native core)
-- Native sidecar binaries downloaded on first run by the built-in wizard: `llama-server` and `voxcpm2-cli` (load GGUF models) and `ffmpeg` (audio processing)
+- Native sidecar binaries shipped inside the installer: `llama-server`, `qwen-tts`, `voxcpm2-cli` and `audiocpp_cli` (load GGUF models). `ffmpeg` is optional: the app uses the system one when present, otherwise chapters are merged into WAV by the in-app fallback merger
 - An `ort`-backed ONNX Runtime for audio codec decoding (DAC speech codec for OuteTTS)
 - User-downloaded GGUF / ONNX model files in the per-user data directory
 

@@ -117,7 +117,7 @@ async function refreshRuntimeStatus(): Promise<void> {
   try {
     const deps = await invoke<{ ffmpeg_installed: boolean; llama_server_installed: boolean; audio8_installed?: boolean }>("check_dependencies");
     el.innerHTML = `
-      FFmpeg: ${deps.ffmpeg_installed ? "✅ installed" : "❌ missing (run wizard)"}<br/>
+      FFmpeg: ${deps.ffmpeg_installed ? "✅ installed" : "not found — chapters will be saved as WAV"}<br/>
       llama-server: ${deps.llama_server_installed ? "✅ installed" : "❌ missing (run wizard)"}<br/>
       audiocpp_cli (Audio8): ${deps.audio8_installed ? "✅ installed" : "❌ missing (reinstall the app)"}
     `;

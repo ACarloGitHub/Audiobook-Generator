@@ -206,8 +206,9 @@ fn detect_hardware_impl() -> HardwareInfo {
 #[tauri::command]
 pub fn check_dependencies(_app: AppHandle) -> DependencyStatus {
     let ffmpeg_exe = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
-    // ffmpeg ships inside the installer (resources/ffmpeg); PATH and the
-    // legacy per-user bin dir are kept as fallbacks for dev setups.
+    // ffmpeg is optional and is never downloaded by us: it may come from the
+    // app resources, the per-user data dir or PATH. Without it the chapter
+    // merge falls back to WAV (merger::merge_chapter).
     let ffmpeg_path = which::which("ffmpeg")
         .ok()
         .or_else(|| sidecars::sidecar_binary("ffmpeg", ffmpeg_exe))
@@ -286,7 +287,7 @@ pub fn get_wizard_steps() -> Vec<WizardStep> {
         WizardStep {
             id: "components".into(),
             title: "Bundled Components".into(),
-            description: "Verifying the engine binaries shipped with the installer (ffmpeg, llama-server, qwen-tts, voxcpm2-cli, audiocpp_cli).".into(),
+            description: "Verifying the engine binaries shipped with the installer (llama-server, qwen-tts, voxcpm2-cli, audiocpp_cli). ffmpeg is optional and never downloaded.".into(),
             completed: false,
         },
         WizardStep {

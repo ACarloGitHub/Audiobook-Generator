@@ -33,8 +33,9 @@ permissions:
 #               ubuntu-vulkan-x64 binaries (Vulkan, GPU-only).
 #               All pinned to b9756.
 #
-# ffmpeg is NOT bundled (Carlo, 2026-07-20): it is downloaded per-user at
-# runtime, as before the bundling change.
+# ffmpeg is NOT bundled and is NOT downloaded at runtime: the app uses the
+# system ffmpeg when it finds one (PATH or the app resources) and otherwise
+# merges chapters into WAV with the in-app fallback merger (merger.rs).
 #
 # Windows engine rebuild (when upstream changes): build locally with CUDA,
 # zip the qwentts/ and voxcpm2/ staging dirs, upload to the "engine-bins"
