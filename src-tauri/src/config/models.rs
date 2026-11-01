@@ -138,6 +138,47 @@ pub fn tts_model_config() -> HashMap<&'static str, TtsModelConfig> {
         },
     );
 
+    m.insert(
+        "Audio8-TTS-Realistic Q8_0",
+        TtsModelConfig {
+            mode: Some("Voice Clone".into()),
+            supported_modes: Some(vec!["Voice Clone".into()]),
+            note: Some("Audio8-TTS-Realistic 0.6B: voice cloning from a reference recording plus its exact transcript. 23 languages, 44.1 kHz.".into()),
+            // Measured 2026-11-01 with audiocpp_cli on CUDA: 300 chars per call
+            // is stable, 400 is the ceiling, and the runtime's own splitter
+            // loses text, so the plugin sends one block and disables it.
+            char_limit_recommended: Some(300),
+            char_limit_max: Some(400),
+            char_limits_by_lang: None,
+            separator: ".".into(),
+            replace_guillemets: false,
+            chunking_strategy: "Character Limit".into(),
+            force_char_limit_chunking: Some(true),
+            time_warning: None,
+            voice_cloning: Some(true),
+            needs_reference_transcript: Some(true),
+        },
+    );
+
+    m.insert(
+        "Audio8-TTS-Realistic BF16",
+        TtsModelConfig {
+            mode: Some("Voice Clone".into()),
+            supported_modes: Some(vec!["Voice Clone".into()]),
+            note: Some("Audio8-TTS-Realistic 0.6B at BF16 precision: voice cloning from a reference recording plus its exact transcript.".into()),
+            char_limit_recommended: Some(300),
+            char_limit_max: Some(400),
+            char_limits_by_lang: None,
+            separator: ".".into(),
+            replace_guillemets: false,
+            chunking_strategy: "Character Limit".into(),
+            force_char_limit_chunking: Some(true),
+            time_warning: None,
+            voice_cloning: Some(true),
+            needs_reference_transcript: Some(true),
+        },
+    );
+
     m
 }
 

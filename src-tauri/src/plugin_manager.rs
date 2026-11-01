@@ -136,6 +136,22 @@ impl PluginManager {
                 }
             }
         }
+        // Audio8-TTS (external process: audiocpp_cli sidecar from audio.cpp)
+        let audio8_paths = Audio8Paths::from_app_data(&crate::config::paths::storage_dir());
+        for variant in &self.registry {
+            if variant.engine_id == "audio8" {
+                let plugin =
+                    crate::plugins::audio8::Audio8Plugin::new(audio8_paths.clone(), &variant.name);
+                if plugin.is_installed() {
+                    eprintln!(
+                        "[PluginManager] registering {} (model files present)",
+                        variant.name
+                    );
+                    self.plugins
+                        .insert(variant.name.clone(), Arc::new(plugin));
+                }
+            }
+        }
     }
 
     pub fn list_available_models(&self) -> Vec<String> {
@@ -278,6 +294,36 @@ impl PluginManager {
             });
         }
 
+        for entry in &self.registry {
+            if entry.engine_id != "audio8" {
+                continue;
+            }
+
+            let audio8_base = crate::config::paths::models_dir().join("audio8");
+            let Some(quant_file) = audio8_quant_for_engine(&entry.name) else {
+                continue;
+            };
+            let installed = audio8_base.join(&quant_file.filename).exists()
+                && crate::sidecars::sidecar_binary(
+                    "audio8",
+                    if cfg!(windows) { "audiocpp_cli.exe" } else { "audiocpp_cli" },
+                )
+                .is_some();
+
+            out.push(EngineInfo {
+                id: entry.name.clone(),
+                display_name: format!("Audio8-TTS-Realistic 0.6B {}", quant_file.quant),
+                format: "GGUF".into(),
+                voice_cloning: true,
+                hardware: vec!["CUDA".into(), "Vulkan".into()],
+                license: "Apache 2.0".into(),
+                languages: audio8_languages(),
+                installed,
+                size_mb: quant_file.size_mb,
+                voices: Vec::new(),
+            });
+        }
+
         out
     }
 
@@ -295,6 +341,8 @@ fn read_generation_params(engine_id: &str) -> serde_json::Map<String, serde_json
         "outetts"
     } else if engine_id.starts_with("VoxCPM2") {
         "voxcpm2"
+    } else if engine_id.starts_with("Audio8") {
+        "audio8"
     } else {
         return serde_json::Map::new();
     };
@@ -470,9 +518,102 @@ pub fn voxcpm2_acoustic_file() -> Option<(String, u32)> {
     Some((filename, size_mb))
 }
 
+/// Audio8 GGUF files declared in engine_registry.json, smallest first.
+pub fn audio8_registry_files() -> Vec<VoxQuantFile> {
+    let Ok(raw) = serde_json::from_str::<serde_json::Value>(ENGINE_REGISTRY_JSON) else {
+        return Vec::new();
+    };
+    let Some(variant) = raw
+        .get("engines")
+        .and_then(|e| e.get("audio8"))
+        .and_then(|e| e.get("variants"))
+        .and_then(|v| v.as_array())
+        .and_then(|v| v.first())
+    else {
+        return Vec::new();
+    };
+    let Some(base_name) = variant.get("name").and_then(|n| n.as_str()) else {
+        return Vec::new();
+    };
+    let Some(file) = variant.get("files").and_then(|f| f.as_array()).and_then(|f| f.first()) else {
+        return Vec::new();
+    };
+    let Some(template) = file.get("filename_template").and_then(|t| t.as_str()) else {
+        return Vec::new();
+    };
+    let Some(quants) = file.get("quants").and_then(|q| q.as_object()) else {
+        return Vec::new();
+    };
+    let mut out: Vec<VoxQuantFile> = quants
+        .iter()
+        .map(|(quant, info)| VoxQuantFile {
+            base_name: base_name.to_string(),
+            quant: quant.clone(),
+            filename: template.replace("{quant}", &quant.to_lowercase()),
+            size_mb: info.get("size_mb").and_then(|s| s.as_u64()).unwrap_or(0) as u32,
+        })
+        .collect();
+    out.sort_by_key(|f| f.size_mb);
+    out
+}
+
+/// Map an audio8 engine id (e.g. "Audio8-TTS-Realistic Q8_0") to its GGUF.
+pub fn audio8_quant_for_engine(engine_id: &str) -> Option<VoxQuantFile> {
+    let files = audio8_registry_files();
+    if let Some(f) = files
+        .iter()
+        .find(|f| format!("{} {}", f.base_name, f.quant) == engine_id)
+    {
+        return Some(f.clone());
+    }
+    if files.first().map(|f| f.base_name.as_str()) == Some(engine_id) {
+        return files.into_iter().next();
+    }
+    None
+}
+
+/// Languages advertised by the Audio8 engine, read from engine_registry.json.
+pub fn audio8_languages() -> Vec<String> {
+    let raw: serde_json::Value = match serde_json::from_str(ENGINE_REGISTRY_JSON) {
+        Ok(v) => v,
+        Err(_) => return vec!["Auto".into()],
+    };
+    raw.get("engines")
+        .and_then(|e| e.get("audio8"))
+        .and_then(|e| e.get("languages"))
+        .and_then(|l| l.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|s| s.as_str())
+                .map(|s| s.to_string())
+                .collect()
+        })
+        .unwrap_or_else(|| vec!["Auto".into()])
+}
+
 pub fn defaults_for(engine_id: &str) -> EngineDefaults {
     let configs = models::tts_model_config();
     let generation = read_generation_params(engine_id);
+
+    if engine_id.starts_with("Audio8-TTS") {
+        return EngineDefaults {
+            engine_id: engine_id.into(),
+            chunk_strategy: "Character Limit".into(),
+            chunk_min_words: None,
+            chunk_max_words: None,
+            // Measured 2026-11-01: 300 chars per call is stable, 400 is the
+            // ceiling, and the runtime's own splitter must never engage.
+            chunk_max_chars: 300,
+            chunk_max_chars_by_lang: HashMap::new(),
+            separator: ".".into(),
+            replace_guillemets: false,
+            voice_cloning: true,
+            needs_reference_transcript: true,
+            supported_languages: audio8_languages(),
+            voices: Vec::new(),
+            generation,
+        };
+    }
 
     if engine_id.starts_with("VoxCPM2") {
         return EngineDefaults {
@@ -600,6 +741,19 @@ fn qwen_preset_voices() -> Vec<(String, String, String)> {
         .iter()
         .map(|s| (s.to_string(), s.replace('_', " "), "unknown".to_string()))
         .collect()
+}
+
+#[derive(Debug, Clone)]
+pub struct Audio8Paths {
+    pub models_dir: PathBuf,
+}
+
+impl Audio8Paths {
+    pub fn from_app_data(app_data: &std::path::Path) -> Self {
+        Self {
+            models_dir: app_data.join("models").join("audio8"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

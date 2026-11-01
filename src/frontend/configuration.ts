@@ -28,9 +28,11 @@ export function renderConfiguration(status: EngineStatus): string {
     const isQwen = state.selectedEngineId.startsWith("Qwen3-TTS");
     const isOute = state.selectedEngineId.startsWith("OuteTTS");
     const isVox = state.selectedEngineId.startsWith("VoxCPM2");
+    const isAudio8 = state.selectedEngineId.startsWith("Audio8");
     const qwenControls = isQwen ? renderQwenControls() : "";
     const outeControls = isOute ? renderOuteControls() : "";
     const voxControls = isVox ? renderVoxControls() : "";
+    const audio8Controls = isAudio8 ? renderAudio8Controls() : "";
 
     return `
     ${renderEngineStrip(status)}
@@ -46,6 +48,7 @@ export function renderConfiguration(status: EngineStatus): string {
       ${qwenControls}
       ${outeControls}
       ${voxControls}
+      ${audio8Controls}
     </div>
   `;
 }
@@ -265,6 +268,35 @@ function renderVoxControls(): string {
     `;
 }
 
+// Audio8-TTS-Realistic: one mode only (voice clone). The reference recording
+// and its exact transcript are both mandatory: the runtime refuses to start
+// with a reference and no transcript, and without a reference the model invents
+// a different voice on every call.
+function renderAudio8Controls(): string {
+    return `
+      <p class="field-help">Audio8-TTS-Realistic auto-detects the language from the input text (23 languages) and copies the pace of the reference voice. Output is 44.1 kHz.</p>
+      <div class="field-row">
+        <label class="field-label">Reference Audio (WAV, 10-30 s)</label>
+        <button class="btn-secondary" id="pick-reference-wav-btn">${state.referenceWavPath ? escapeHtml(state.referenceWavPath) : "Click to select a WAV file"}</button>
+      </div>
+      <div class="field-row">
+        <label class="field-label">Reference Transcription (required — exact text of the reference audio)</label>
+        <textarea class="text-input" rows="2" id="audio8-ref-text" placeholder="Exact transcription of the reference audio">${escapeHtml(state.referenceTranscript || "")}</textarea>
+      </div>
+      <details class="accordion">
+        <summary>Advanced Settings</summary>
+        ${paramSlider("audio8-temperature", "Temperature", "temperature")}
+        ${paramSlider("audio8-top-p", "Top P", "top_p")}
+        ${paramSlider("audio8-top-k", "Top K", "top_k")}
+        ${paramSlider("audio8-max-tokens", "Max Tokens per Block", "max_tokens")}
+        <div class="field-row">
+          <label class="field-label">Seed (empty = random)</label>
+          <input type="number" class="num-input" id="audio8-seed" placeholder="random" />
+        </div>
+      </details>
+    `;
+}
+
 export async function applyEngineDefaults(engineId: string): Promise<void> {
     try {
         const d = await invoke<EngineDefaults>("engine_defaults", { engineId });
@@ -441,6 +473,13 @@ export function attachConfigurationListeners(render: () => void): void {
     if (voxRefTextInput) {
         voxRefTextInput.addEventListener("input", () => {
             state.referenceTranscript = voxRefTextInput.value;
+        });
+    }
+
+    const audio8RefTextInput = document.getElementById("audio8-ref-text") as HTMLTextAreaElement | null;
+    if (audio8RefTextInput) {
+        audio8RefTextInput.addEventListener("input", () => {
+            state.referenceTranscript = audio8RefTextInput.value;
         });
     }
 

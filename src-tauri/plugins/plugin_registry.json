@@ -56,6 +56,20 @@
     "license": "Apache-2.0"
   },
   {
+    "name": "Audio8-TTS-Realistic Q8_0",
+    "type": "external_process",
+    "engine_id": "audio8",
+    "description": "Audio8-TTS-Realistic 0.6B Q8_0 — zero-shot voice cloning from a reference recording plus its transcript, 23 languages, 44.1 kHz, via audiocpp_cli (audio.cpp)",
+    "license": "Apache-2.0"
+  },
+  {
+    "name": "Audio8-TTS-Realistic BF16",
+    "type": "external_process",
+    "engine_id": "audio8",
+    "description": "Audio8-TTS-Realistic 0.6B BF16 — same model at the original checkpoint precision, larger download",
+    "license": "Apache-2.0"
+  },
+  {
     "name": "NeuTTS-Air-q4",
     "type": "external_process",
     "engine_id": "neuttsair",

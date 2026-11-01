@@ -55,6 +55,65 @@ fn parse_voxcpm2_engine() -> Result<VoxEngineDef, String> {
         .map_err(|e| format!("parse voxcpm2 engine definition: {e}"))
 }
 
+/// Parse the audio8 engine from the registry JSON. Audio8 has one variant and
+/// per-quantisation GGUFs, no shared files; parsing is isolated like the other
+/// engines so a change in one JSON structure cannot break the others.
+fn parse_audio8_engine() -> Result<Audio8EngineDef, String> {
+    let raw: serde_json::Value = serde_json::from_str(ENGINE_REGISTRY)
+        .map_err(|e| format!("parse engine_registry.json: {e}"))?;
+    let val = raw
+        .get("engines")
+        .and_then(|e| e.get("audio8"))
+        .ok_or_else(|| "audio8 not found in engine_registry.json".to_string())?;
+    serde_json::from_value(val.clone())
+        .map_err(|e| format!("parse audio8 engine definition: {e}"))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Audio8EngineDef {
+    variants: Vec<VoxVariantDef>,
+    #[serde(flatten)]
+    _extra: std::collections::HashMap<String, serde_json::Value>,
+}
+
+/// Default Audio8 quantization for downloads.
+const AUDIO8_DEFAULT_QUANT: &str = "Q8_0";
+
+/// Map a Models-panel row name ("Audio8-TTS-Realistic Q8_0") to its
+/// (variant, quant) pair.
+fn audio8_row_quant<'a>(
+    name: &str,
+    def: &'a Audio8EngineDef,
+) -> Option<(&'a VoxVariantDef, String)> {
+    for variant in &def.variants {
+        let file = variant.files.first()?;
+        if name == variant.name {
+            return Some((variant, AUDIO8_DEFAULT_QUANT.to_string()));
+        }
+        if let Some(quant) = name.strip_prefix(&format!("{} ", variant.name)) {
+            if file.quants.contains_key(quant) {
+                return Some((variant, quant.to_string()));
+            }
+        }
+    }
+    None
+}
+
+/// Local filename for a quantisation. The registry template is
+/// "audio8-tts-realistic-0.6b-{quant}.gguf" and the published files are
+/// lowercase ("...-q8_0.gguf"), so the quant is lowercased here.
+fn audio8_filename(variant: &VoxVariantDef, quant: &str) -> Option<String> {
+    variant
+        .files
+        .first()
+        .map(|f| f.filename_template.replace("{quant}", &quant.to_lowercase()))
+}
+
+/// Directory holding the Audio8 GGUFs.
+fn audio8_dir(app: &AppHandle) -> PathBuf {
+    app_models_root(app).join("audio8")
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct VoxEngineDef {
     variants: Vec<VoxVariantDef>,
@@ -380,6 +439,35 @@ pub fn list_models(app: &AppHandle) -> Vec<ModelListEntry> {
         }
     }
 
+    if let Ok(a8) = parse_audio8_engine() {
+        for variant in &a8.variants {
+            let dir = audio8_dir(app);
+            let Some(file) = variant.files.first() else {
+                continue;
+            };
+            let mut quants: Vec<(&String, &QuantInfo)> = file.quants.iter().collect();
+            quants.sort_by_key(|(_, q)| q.size_mb);
+
+            for (quant_name, quant) in quants {
+                let local_name = audio8_filename(variant, quant_name).unwrap_or_default();
+                let present = dir.join(&local_name).exists();
+
+                out.push(ModelListEntry {
+                    name: format!("{} {}", variant.name, quant_name),
+                    engine_id: "audio8".into(),
+                    format: "GGUF".into(),
+                    license: "Apache 2.0".into(),
+                    size_mb: quant.size_mb,
+                    installed: present,
+                    essential_present: present,
+                    dest: dir.to_string_lossy().to_string(),
+                    supported: true,
+                    note: None,
+                });
+            }
+        }
+    }
+
     out
 }
 
@@ -390,6 +478,19 @@ pub fn is_model_installed(name: &str, app: &AppHandle) -> bool {
 }
 
 pub fn remove_model(name: &str, app: &AppHandle) -> Result<(), String> {
+    // Audio8 per-quant rows: each row is one standalone GGUF.
+    if let Ok(a8) = parse_audio8_engine() {
+        if let Some((variant, quant)) = audio8_row_quant(name, &a8) {
+            if let Some(local_name) = audio8_filename(variant, &quant) {
+                let path = audio8_dir(app).join(&local_name);
+                if path.exists() {
+                    std::fs::remove_file(&path)
+                        .map_err(|e| format!("failed to remove {}: {e}", path.display()))?;
+                }
+            }
+            return Ok(());
+        }
+    }
     // VoxCPM2 per-quant rows: remove only that row's BaseLM file; the shared
     // Acoustic GGUF is removed only when no BaseLM quant remains installed
     // (same shared-file rule as the Qwen3-TTS tokenizer).
@@ -453,6 +554,12 @@ pub async fn download_model(
     name: &str,
     app: &AppHandle,
 ) -> Result<ModelDownloadResult, String> {
+    if let Ok(a8) = parse_audio8_engine() {
+        if let Some((variant, quant)) = audio8_row_quant(name, &a8) {
+            return download_audio8_model(variant, &quant, app).await;
+        }
+    }
+
     if let Ok(vox) = parse_voxcpm2_engine() {
         if let Some((variant, quant)) = vox_row_quant(name, &vox) {
             return download_voxcpm2_model(variant, &quant, &vox, app).await;
@@ -555,6 +662,58 @@ pub async fn download_model(
 /// Download BaseLM GGUF (selected quantization) + shared Acoustic GGUF
 /// for a VoxCPM2 variant. The Acoustic file is shared between quants and
 /// is skipped when already on disk.
+async fn download_audio8_model(
+    variant: &VoxVariantDef,
+    quant_name: &str,
+    app: &AppHandle,
+) -> Result<ModelDownloadResult, String> {
+    let name = variant.name.as_str();
+    let dest_root = audio8_dir(app);
+    std::fs::create_dir_all(&dest_root).map_err(|e| format!("create dest dir: {e}"))?;
+
+    let file = variant
+        .files
+        .first()
+        .ok_or_else(|| format!("audio8 variant '{}' declares no files", variant.name))?;
+    let quant = file.quants.get(quant_name).ok_or_else(|| {
+        format!(
+            "quant '{}' not found for audio8 variant '{}'",
+            quant_name, variant.name
+        )
+    })?;
+    let local_name = audio8_filename(variant, quant_name)
+        .ok_or_else(|| "audio8 filename_template missing in the registry".to_string())?;
+    let dest = dest_root.join(&local_name);
+
+    if dest.exists() {
+        let _ = app.emit(
+            "model-progress",
+            serde_json::json!({
+                "model": name, "file": local_name, "phase": "already_present",
+                "bytes": 0, "total": 0, "speed_bps": 0, "eta_seconds": null
+            }),
+        );
+    } else {
+        download_to_file_async(
+            app,
+            &format!("{}:{}", name, local_name),
+            &local_name,
+            &quant.url,
+            &dest,
+        )
+        .await?;
+    }
+
+    let total_bytes = std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
+    Ok(ModelDownloadResult {
+        model_name: name.to_string(),
+        installed: true,
+        total_bytes,
+        files: vec![local_name],
+        path: dest.to_string_lossy().to_string(),
+    })
+}
+
 async fn download_voxcpm2_model(
     variant: &VoxVariantDef,
     quant_name: &str,

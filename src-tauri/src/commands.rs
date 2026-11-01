@@ -733,6 +733,15 @@ fn get_or_create_plugin(
         eprintln!("[commands] creating qwen plugin on-the-fly for {}", engine_id);
         return Some(Arc::new(qwen_plugin));
     }
+    if engine_id.starts_with("Audio8") {
+        let paths =
+            plugin_manager::Audio8Paths::from_app_data(&crate::config::paths::storage_dir());
+        let audio8_plugin = crate::plugins::audio8::Audio8Plugin::new(paths, engine_id);
+        if audio8_plugin.is_installed() {
+            eprintln!("[commands] creating audio8 plugin on-the-fly for {}", engine_id);
+            return Some(Arc::new(audio8_plugin));
+        }
+    }
     if engine_id.starts_with("VoxCPM2") {
         let vox_paths = plugin_manager::VoxCpm2Paths::from_app_data(&crate::config::paths::storage_dir());
         let vox_plugin = crate::plugins::voxcpm2::VoxCpm2Plugin::new(vox_paths, engine_id);
@@ -975,6 +984,40 @@ pub async fn start_generation(
         }
         // Keep the registry in sync: the book stays registered only while it
         // has pending recovery work (failed chunks or a pending merge).
+        update_registry_for_book(&output_dir, Some(&engine_id));
+        crate::history::sync_converted_from_disk(&output_dir);
+        return result.map_err(|e| format!("book synthesis failed: {e:#}"));
+    }
+
+    // Audio8 path
+    let audio8_any = plugin.as_any();
+    if let Some(audio8_plugin) = audio8_any.downcast_ref::<crate::plugins::audio8::Audio8Plugin>() {
+        let variant_name = audio8_plugin.variant_name.clone();
+        let audio8_paths = audio8_plugin.paths.clone();
+        let ref_audio_task = reference_audio.clone();
+        let extra_task = extra_map.clone();
+        let only_task = only_chapters.clone();
+
+        let result = tokio::task::spawn_blocking(move || {
+            let p = crate::plugins::audio8::Audio8Plugin::new(audio8_paths, &variant_name);
+            let cb: Box<dyn FnMut(&str) + Send> = Box::new(move |msg: &str| {
+                let _ = app_for_task.emit("generation-progress", msg.to_string());
+            });
+            crate::plugins::audio8::synthesize_book(
+                &p, &epub, &out, max_words, max_chars_resolved, &ffmpeg,
+                ref_audio_task.as_deref(),
+                only_task.as_deref(),
+                &extra_task,
+                Some(cb),
+            )
+        })
+        .await
+        .map_err(|e| format!("synthesis task panicked: {e}"))?;
+
+        let _ = app.emit("generation-complete", ());
+        if result.is_ok() {
+            cleanup_intermediate_chunks(&output_dir, delete_intermediate_chunks.unwrap_or(false), &app);
+        }
         update_registry_for_book(&output_dir, Some(&engine_id));
         crate::history::sync_converted_from_disk(&output_dir);
         return result.map_err(|e| format!("book synthesis failed: {e:#}"));

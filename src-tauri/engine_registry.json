@@ -876,6 +876,162 @@
       ],
       "notes": "Both GGUF files (BaseLM + Acoustic) are required. VRAM ~4.5-6 GB measured on RTX 3090 (Q8_0 + F16 acoustic). RTF 0.21-0.24 measured on RTX 3090. Voice Design results vary between runs; 1-3 attempts recommended by upstream. Voice consistency across chunks (official usage guide): without a reference audio the model generates a RANDOM voice on every call - to keep one timbre across a whole book, reuse the same reference audio (cloning modes) or accept variation (Voice Design). REMOVED 2026-07-23 (owner decision): the --temperature knob is undocumented upstream (the official Python API does not expose it) so it is no longer exposed; the engine always runs with its runtime default 1.0."
     },
+    "audio8": {
+      "display_name": "Audio8-TTS-Realistic 0.6B",
+      "license": "Apache-2.0",
+      "languages": [
+        "Arabic",
+        "Cantonese",
+        "Chinese",
+        "Dutch",
+        "English",
+        "Finnish",
+        "French",
+        "German",
+        "Hindi",
+        "Indonesian",
+        "Italian",
+        "Japanese",
+        "Korean",
+        "Malay",
+        "Norwegian",
+        "Polish",
+        "Portuguese",
+        "Russian",
+        "Spanish",
+        "Swedish",
+        "Thai",
+        "Turkish",
+        "Vietnamese"
+      ],
+      "voice_cloning": true,
+      "runtime": "audiocpp_cli (sidecar binary, compiled from unmodified upstream sources)",
+      "runtime_repo": "https://github.com/0xShug0/audio.cpp",
+      "runtime_commit": "c0cd77fa80285f8113883e0de06ffc781cf502f6",
+      "runtime_binary": "audiocpp_cli",
+      "runtime_build_commands": {
+        "windows_cuda": ".\\scripts\\build_windows.ps1 -Preset windows-cuda-release -Target audiocpp_cli -ModelSet custom -Models \"audio8_tts\" -CudaArchitectures auto",
+        "macos_metal": "TODO: build with metal backend and AUDIOCPP_MODEL_SET=custom AUDIOCPP_MODELS=audio8_tts",
+        "linux_vulkan": "TODO: build with vulkan backend and AUDIOCPP_MODEL_SET=custom AUDIOCPP_MODELS=audio8_tts"
+      },
+      "runtime_help": "Usage: audiocpp_cli --task clon --family audio8_tts --model <gguf> --voice-ref <wav> --reference-text \"<transcript>\" --text \"<text>\" --out <wav>",
+      "runtime_args": {
+        "--task": "tts | clon (clon requires --voice-ref and --reference-text)",
+        "--family": "audio8_tts (required)",
+        "--model": "Standalone GGUF (required)",
+        "--backend": "cuda | vulkan | cpu | best",
+        "--text": "Text to synthesize",
+        "--voice-ref": "Reference WAV for voice cloning",
+        "--reference-text": "Exact transcript of the reference WAV (mandatory with --voice-ref)",
+        "--request-option": "Per-request options (temperature, top_p, top_k, max_tokens, text_chunk_size, seed)",
+        "--out": "Output WAV path (44.1 kHz mono)",
+        "--metrics": "Print RTF and audio duration on stdout"
+      },
+      "architecture": "DualAR: slow semantic transformer (24 layers, 896 wide, 14 heads) + fast codebook transformer (4 layers) + neural codec, 601M parameters excluding the codec",
+      "sample_rate": 44100,
+      "lm_token_rate_hz": 21.53,
+      "max_sequence_length": 2048,
+      "variants": [
+        {
+          "name": "Audio8-TTS-Realistic-0.6B",
+          "size": "0.6B",
+          "mode": "clone",
+          "mode_label": "Voice Clone",
+          "description": "Zero-shot voice cloning from a reference recording plus its exact transcript; 23 languages, 44.1 kHz output",
+          "supported_modes": [
+            "Voice Clone"
+          ],
+          "char_limit_recommended": 300,
+          "char_limit_max": 400,
+          "char_limit_note": "Measured 2026-11-01 with audiocpp_cli (audio.cpp c0cd77fa, CUDA, RTX 3090, Italian text, Q8_0 GGUF) sending the whole text in ONE call: 200/300/350/400 chars were stable (3 seeds each, 24-27 s of audio at the reference pace); 400 chars in a multi-block input and 450 chars in one call were unreliable (one 450-char run produced 8 s instead of ~30 s). The runtime ALSO splits text internally at text_chunk_size (default 200 chars) and that internal splitter loses text at the seams: the same 448-char text produced 24.7 s when split into 3 blocks by the runtime versus 30.0 s as a single block (expected ~32 s at the measured pace). The plugin therefore chunks at 300 chars itself and passes text_chunk_size equal to the chunk length, so the runtime never splits.",
+          "requires_speaker_reference": true,
+          "requires_reference_transcript": true,
+          "gguf_repo": "audio-cpp/Audio8-TTS-Realistic-0.6b-GGUF",
+          "files": [
+            {
+              "name": "audio8_tts",
+              "filename_template": "audio8-tts-realistic-0.6b-{quant}.gguf",
+              "quants": {
+                "Q8_0": {
+                  "size_mb": 1429,
+                  "url": "https://huggingface.co/audio-cpp/Audio8-TTS-Realistic-0.6b-GGUF/resolve/main/audio8-tts-realistic-0.6b-q8_0.gguf"
+                },
+                "BF16": {
+                  "size_mb": 1890,
+                  "url": "https://huggingface.co/audio-cpp/Audio8-TTS-Realistic-0.6b-GGUF/resolve/main/audio8-tts-realistic-0.6b-bf16.gguf"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "parameters": {
+        "temperature": {
+          "type": "float",
+          "default": 0.8,
+          "min": 0.0,
+          "max": 2.0,
+          "step": 0.05,
+          "description": "Semantic-token sampling temperature (audiocpp_cli --request-option temperature). Official model card example: 0.8. audio.cpp default: 0.8",
+          "cli_flag": "--request-option temperature"
+        },
+        "top_p": {
+          "type": "float",
+          "default": 0.95,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.05,
+          "description": "Nucleus sampling (audiocpp_cli --request-option top_p). Official model card example: 0.95. The audio.cpp port defaults to 0.8, the official value wins",
+          "cli_flag": "--request-option top_p"
+        },
+        "top_k": {
+          "type": "int",
+          "default": 50,
+          "min": 1,
+          "max": 100,
+          "step": 1,
+          "description": "Top-k sampling (audiocpp_cli --request-option top_k). Official model card example: 50. The audio.cpp port defaults to 30, the official value wins",
+          "cli_flag": "--request-option top_k"
+        },
+        "max_tokens": {
+          "type": "int",
+          "default": 1024,
+          "min": 64,
+          "max": 2048,
+          "step": 64,
+          "description": "Maximum semantic steps per block (audiocpp_cli --request-option max_tokens). 1024 steps is the runtime default; at 21.53 steps/s it caps a block at ~47 s of audio, above the 400-char limit",
+          "cli_flag": "--request-option max_tokens"
+        },
+        "seed": {
+          "type": "int",
+          "default": -1,
+          "description": "Sampling seed, -1 = random (audiocpp_cli --request-option seed)",
+          "cli_flag": "--request-option seed"
+        }
+      },
+      "mode_specific_params": {
+        "voice_clone": {
+          "ref_audio": {
+            "type": "file",
+            "required": true,
+            "description": "Reference recording (WAV, 10-30 s recommended). The engine copies the speaking pace of this recording"
+          },
+          "ref_text": {
+            "type": "string",
+            "required": true,
+            "description": "Exact transcript of the reference recording. The runtime refuses to start with a reference and no transcript ('requires reference_text option')"
+          }
+        }
+      },
+      "sources": [
+        "https://huggingface.co/Edge0/Audio8-TTS-Realistic-0.6b (official model card: Apache-2.0, 23 languages incl. Italian, 44.1 kHz, DualAR 601M, sampling example temperature 0.8 / top_p 0.95 / top_k 50, context 2048, 21.5 frames/s — verified 2026-11-01)",
+        "https://github.com/Edge0-AI/Audio8_TTS (official code, Apache-2.0, arXiv 2610.14776)",
+        "https://huggingface.co/audio-cpp/Audio8-TTS-Realistic-0.6b-GGUF (GGUF published by the runtime author, verified 2026-11-01: Q8_0 1,429,460,800 bytes, BF16 1,890,480,128 bytes)",
+        "https://github.com/0xShug0/audio.cpp (runtime, Apache-2.0, commit c0cd77fa; family audio8_tts, community port by @jasonchen31)",
+        "Local measurement 2026-11-01: RTF 0.23-0.28 on RTX 3090 with the Q8_0 build, ~5 GB VRAM, Italian text, two reference voices"
+      ],
+      "notes": "Voice cloning only: without a reference recording the model invents a new voice on every call, which is unusable for a book, so the plugin always requires a reference plus its transcript. The engine reproduces the reference's speaking pace, so the audio length depends on the narrator, not on the text alone. audio.cpp exposes no repetition-penalty knob in this family; loop tests on 2026-11-01 showed the observed incoherences came from the internal text chunker, not from the sampler. Not yet exercised: Linux/macOS builds, 30 s reference with a 400-char block (context budget), streaming mode."
+    },
     "voxtral": {
       "display_name": "Voxtral TTS 4B",
       "license": "Apache-2.0",

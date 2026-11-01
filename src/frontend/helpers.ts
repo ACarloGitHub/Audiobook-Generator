@@ -106,6 +106,15 @@ export function collectParamExtras(): Record<string, string> {
     }
     const ctx = state.engineGeneration["ctx_size"]?.default;
     if (ctx !== undefined && ctx !== null) extra["ctx_size"] = String(ctx);
+  } else if (state.selectedEngineId.startsWith("Audio8")) {
+    // Reference + transcript are both mandatory for this engine.
+    const refText = paramValue("audio8-ref-text") || state.referenceTranscript?.trim();
+    if (refText) extra["ref_text"] = refText;
+    put("audio8-temperature", "temperature", "temperature");
+    put("audio8-top-p", "top_p", "top_p");
+    put("audio8-top-k", "top_k", "top_k");
+    put("audio8-max-tokens", "max_tokens", "max_tokens");
+    put("audio8-seed", "seed");
   } else if (state.selectedEngineId.startsWith("VoxCPM2")) {
     extra["voice_mode"] = state.voxMode;
     if (state.voxMode === "design") {
