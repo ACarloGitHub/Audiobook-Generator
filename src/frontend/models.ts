@@ -115,10 +115,11 @@ async function refreshRuntimeStatus(): Promise<void> {
   const el = document.getElementById("models-runtime-status");
   if (!el) return;
   try {
-    const deps = await invoke<{ ffmpeg_installed: boolean; llama_server_installed: boolean }>("check_dependencies");
+    const deps = await invoke<{ ffmpeg_installed: boolean; llama_server_installed: boolean; audio8_installed?: boolean }>("check_dependencies");
     el.innerHTML = `
       FFmpeg: ${deps.ffmpeg_installed ? "✅ installed" : "❌ missing (run wizard)"}<br/>
-      llama-server: ${deps.llama_server_installed ? "✅ installed" : "❌ missing (run wizard)"}
+      llama-server: ${deps.llama_server_installed ? "✅ installed" : "❌ missing (run wizard)"}<br/>
+      audiocpp_cli (Audio8): ${deps.audio8_installed ? "✅ installed" : "❌ missing (reinstall the app)"}
     `;
   } catch (e) {
     el.textContent = `Error checking runtime: ${e}`;

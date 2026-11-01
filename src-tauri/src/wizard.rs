@@ -69,6 +69,8 @@ pub struct DependencyStatus {
     pub qwentts_path: Option<String>,
     pub voxcpm2_installed: bool,
     pub voxcpm2_path: Option<String>,
+    pub audio8_installed: bool,
+    pub audio8_path: Option<String>,
     pub ort_installed: bool,
     pub cudnn_installed: bool,
 }
@@ -229,6 +231,10 @@ pub fn check_dependencies(_app: AppHandle) -> DependencyStatus {
     let voxcpm2_path = sidecars::sidecar_binary("voxcpm2", vox_exe);
     let voxcpm2_installed = voxcpm2_path.is_some();
 
+    let audio8_exe = if cfg!(windows) { "audiocpp_cli.exe" } else { "audiocpp_cli" };
+    let audio8_path = sidecars::sidecar_binary("audio8", audio8_exe);
+    let audio8_installed = audio8_path.is_some();
+
     // ONNX Runtime is a Rust dependency (ort crate); if the app is running it is available.
     let ort_installed = true;
 
@@ -255,6 +261,8 @@ pub fn check_dependencies(_app: AppHandle) -> DependencyStatus {
         qwentts_path: qwentts_path.map(|p| p.to_string_lossy().to_string()),
         voxcpm2_installed,
         voxcpm2_path: voxcpm2_path.map(|p| p.to_string_lossy().to_string()),
+        audio8_installed,
+        audio8_path: audio8_path.map(|p| p.to_string_lossy().to_string()),
         ort_installed,
         cudnn_installed,
     }
@@ -278,7 +286,7 @@ pub fn get_wizard_steps() -> Vec<WizardStep> {
         WizardStep {
             id: "components".into(),
             title: "Bundled Components".into(),
-            description: "Verifying the engine binaries shipped with the installer (ffmpeg, llama-server, qwen-tts, voxcpm2-cli).".into(),
+            description: "Verifying the engine binaries shipped with the installer (ffmpeg, llama-server, qwen-tts, voxcpm2-cli, audiocpp_cli).".into(),
             completed: false,
         },
         WizardStep {
