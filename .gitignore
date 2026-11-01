@@ -154,3 +154,6 @@ target/
 
 # Temporary sidecar download staging (local only)
 _sidecar_downloads/
+
+# Local dev shortcuts to bundled sidecars (binaries never live in git)
+src-tauri/resources/

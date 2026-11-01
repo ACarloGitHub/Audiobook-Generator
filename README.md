@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <strong>Status: active development — v0.3.1</strong> — Qwen3-TTS, OuteTTS and VoxCPM2 working end-to-end on Windows, macOS and Linux. See the <a href="https://github.com/ACarloGitHub/Audiobook-Generator/releases">Releases</a> page for the changelog.
+  <strong>Status: active development — v0.4.0</strong> — Qwen3-TTS, OuteTTS, VoxCPM2 and Audio8-TTS working end-to-end (Audio8 on Windows for now). See the <a href="https://github.com/ACarloGitHub/Audiobook-Generator/releases">Releases</a> page for the changelog.
 </p>
 
 <p align="center">
@@ -39,13 +39,14 @@
 
 ## Supported TTS Engines
 
-All engines run locally through native C++ sidecar binaries (`llama-server` and `voxcpm2-cli`, built from the official [llama.cpp-omni](https://github.com/tc-mb/llama.cpp-omni) sources). There is no Python and no per-engine virtual environment to manage.
+All engines run locally through native C++ sidecar binaries (`llama-server`, `qwen-tts`, `voxcpm2-cli` and `audiocpp_cli`, built from the official [llama.cpp-omni](https://github.com/tc-mb/llama.cpp-omni), [qwentts.cpp](https://github.com/ServeurpersoCom/qwentts.cpp) and [audio.cpp](https://github.com/0xShug0/audio.cpp) sources). There is no Python and no per-engine virtual environment to manage.
 
 | Engine | License | Format | Quality | Languages | Voice Cloning | Status |
 |--------|---------|--------|---------|-----------|---------------|--------|
 | **Qwen3-TTS** (Alibaba) | Apache 2.0 | GGUF | Excellent | Multilingual | Yes (3 s ref) | Working |
 | **OuteTTS 1.0 0.6B** (OuteAI) | Apache 2.0 | GGUF | Good | Multilingual | Yes (10 s ref) | Working |
 | **VoxCPM2** (OpenBMB) | Apache 2.0 | GGUF | Excellent | 30 languages, 48 kHz | 3 modes: Controllable Cloning, Ultimate Cloning, Voice Design | Working |
+| **Audio8-TTS-Realistic 0.6B** (Edge0-AI) | Apache 2.0 | GGUF | Excellent | 23 languages | Yes (reference sample **and** its exact transcript, both required) | Windows (macOS/Linux runtime not built yet) |
 
 Each model has its own license. You are responsible for reviewing and accepting the license of any model you download. See [SECURITY.md](SECURITY.md) for the per-model links.
 
@@ -60,6 +61,7 @@ Each model has its own license. You are responsible for reviewing and accepting 
 - **Recovery Mode** — Resume interrupted generations from where they left off, with full manual control: retry failed chunks, split long chunks and retry, or merge chunks by hand
 - **User-chosen quantization** — Pick the model quantization that fits your hardware (e.g. VoxCPM2 Q8_0 vs F16)
 - **Custom storage folder** — Move models and engines (several GB) to any drive you like, from the Models panel
+- **Finished books in a visible folder** — chapters land in `Documents/Audiobook Generator/<book title>/` (any folder can be picked instead). Without ffmpeg the chapters are merged into WAV by the built-in fallback, so a book is never lost just because the encoder is missing
 - **Live VRAM bar** — Per-GPU free/total memory in the status bar, works the same on NVIDIA, AMD, Intel and Apple Silicon
 - **CLI and MCP server** — `abg-cli` synthesizes speech and reports status from the command line, and doubles as an MCP server so AI agents (e.g. in LM Studio) can drive Audiobook Generator directly
 - **AuraWrite integration** — receive an ebook exported from AuraWrite (confirmation dialog), and open AuraWrite's ebooks directly from the AuraWrite panel
@@ -91,7 +93,7 @@ Then:
 # 3. Drop in a book (EPUB, TXT, Markdown or DOCX), click Generate
 ```
 
-The installer bundles the app, all native engine binaries (`llama-server`, `qwen-tts`, `voxcpm2-cli`) and the `abg-cli` companion (command-line tool and MCP server — see the "AI Agents" panel in the app), so everything works offline out of the box. Only the TTS model weights (GGUF) are downloaded on demand from inside the app. There is no Python, no `pip install`, no virtual environment to manage.
+The installer bundles the app, all native engine binaries (`llama-server`, `qwen-tts`, `voxcpm2-cli`, `audiocpp_cli`) and the `abg-cli` companion (command-line tool and MCP server — see the "AI Agents" panel in the app), so everything works offline out of the box. Only the TTS model weights (GGUF) are downloaded on demand from inside the app. There is no Python, no `pip install`, no virtual environment to manage.
 
 ### Where is `abg-cli`?
 
