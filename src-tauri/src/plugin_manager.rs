@@ -601,9 +601,10 @@ pub fn defaults_for(engine_id: &str) -> EngineDefaults {
             chunk_strategy: "Character Limit".into(),
             chunk_min_words: None,
             chunk_max_words: None,
-            // Measured 2026-11-01: 300 chars per call is stable, 400 is the
-            // ceiling, and the runtime's own splitter must never engage.
-            chunk_max_chars: 300,
+            // Measured 2026-11-01: 400 chars per call is stable; 450 collapses
+            // in one run out of three. Fewer, longer chunks also mean fewer
+            // audible seams, so we sit at the ceiling and never above it.
+            chunk_max_chars: 400,
             chunk_max_chars_by_lang: HashMap::new(),
             separator: ".".into(),
             replace_guillemets: false,
@@ -859,6 +860,6 @@ mod audio8_registry_tests {
     fn audio8_defaults_require_reference_transcript() {
         let d = defaults_for("Audio8-TTS-Realistic Q8_0");
         assert!(d.needs_reference_transcript);
-        assert_eq!(d.chunk_max_chars, 300);
+        assert_eq!(d.chunk_max_chars, 400);
     }
 }

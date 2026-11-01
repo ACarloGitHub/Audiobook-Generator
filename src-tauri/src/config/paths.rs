@@ -85,6 +85,16 @@ pub fn reference_voices_dir() -> PathBuf {
     app_data_dir().join("Reference_Voices")
 }
 
+/// Root folder for finished audiobooks. Deliberately a visible place (the
+/// user's Documents folder), not the hidden app-data directory: users must be
+/// able to find their books with the file manager.
+pub fn audiobooks_dir() -> PathBuf {
+    dirs::document_dir()
+        .or_else(dirs::audio_dir)
+        .unwrap_or_else(app_data_dir)
+        .join("Audiobook Generator")
+}
+
 pub fn output_base_dir() -> PathBuf {
     app_data_dir().join("Generated_Audiobooks")
 }

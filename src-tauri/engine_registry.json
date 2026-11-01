@@ -941,7 +941,7 @@
           "supported_modes": [
             "Voice Clone"
           ],
-          "char_limit_recommended": 300,
+          "char_limit_recommended": 400,
           "char_limit_max": 400,
           "char_limit_note": "Measured 2026-11-01 with audiocpp_cli (audio.cpp c0cd77fa, CUDA, RTX 3090, Italian text, Q8_0 GGUF) sending the whole text in ONE call: 200/300/350/400 chars were stable (3 seeds each, 24-27 s of audio at the reference pace); 400 chars in a multi-block input and 450 chars in one call were unreliable (one 450-char run produced 8 s instead of ~30 s). The runtime ALSO splits text internally at text_chunk_size (default 200 chars) and that internal splitter loses text at the seams: the same 448-char text produced 24.7 s when split into 3 blocks by the runtime versus 30.0 s as a single block (expected ~32 s at the measured pace). The plugin therefore chunks at 300 chars itself and passes text_chunk_size equal to the chunk length, so the runtime never splits.",
           "requires_speaker_reference": true,

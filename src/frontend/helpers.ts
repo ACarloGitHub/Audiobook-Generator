@@ -28,7 +28,7 @@ export function bytesToGB(n: number | null): string {
 
 export function pickOutputDir(bookTitle: string): string {
   const safe = bookTitle.replace(/[^a-zA-Z0-9-_ ]/g, "_").trim() || "audiobook";
-  return `Generated_Audiobooks/${safe}`;
+  return safe;
 }
 
 export function hardwareLine(status: import("./types").EngineStatus): string {

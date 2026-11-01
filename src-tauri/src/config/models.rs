@@ -147,7 +147,7 @@ pub fn tts_model_config() -> HashMap<&'static str, TtsModelConfig> {
             // Measured 2026-11-01 with audiocpp_cli on CUDA: 300 chars per call
             // is stable, 400 is the ceiling, and the runtime's own splitter
             // loses text, so the plugin sends one block and disables it.
-            char_limit_recommended: Some(300),
+            char_limit_recommended: Some(400),
             char_limit_max: Some(400),
             char_limits_by_lang: None,
             separator: ".".into(),
@@ -166,7 +166,7 @@ pub fn tts_model_config() -> HashMap<&'static str, TtsModelConfig> {
             mode: Some("Voice Clone".into()),
             supported_modes: Some(vec!["Voice Clone".into()]),
             note: Some("Audio8-TTS-Realistic 0.6B at BF16 precision: voice cloning from a reference recording plus its exact transcript.".into()),
-            char_limit_recommended: Some(300),
+            char_limit_recommended: Some(400),
             char_limit_max: Some(400),
             char_limits_by_lang: None,
             separator: ".".into(),

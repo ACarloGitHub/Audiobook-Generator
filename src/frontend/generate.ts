@@ -38,7 +38,7 @@ export function renderGenerate(status: EngineStatus, bookInfo: BookInfo | null):
     <div class="card">
       <div class="btn-row">
         <button class="btn-secondary" id="gen-pick-output-btn">Choose output path...</button>
-        <span class="field-help" id="gen-output-path">${state.generateOutputPath ? escapeHtml(state.generateOutputPath) : "Default: app data folder / Generated_Audiobooks"}</span>
+        <span class="field-help" id="gen-output-path">${state.generateOutputPath ? escapeHtml(state.generateOutputPath) : "Default: Documents / Audiobook Generator"}</span>
       </div>
       <div class="btn-row btn-row-large">
         <button class="btn-primary" id="generate-btn" ${canGenerate ? "" : "disabled"}>Generate Audiobook</button>

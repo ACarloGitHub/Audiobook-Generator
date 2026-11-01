@@ -1102,15 +1102,15 @@ fn resolve_output_path(path: &std::path::Path) -> PathBuf {
     if path.is_absolute() {
         path.to_path_buf()
     } else {
-        crate::config::paths::app_data_dir().join(path)
+        crate::config::paths::audiobooks_dir().join(path)
     }
 }
 
 #[tauri::command]
 pub fn get_default_output_dir(kind: String) -> String {
     match kind.as_str() {
-        "demo" => crate::config::paths::demo_output_dir(),
-        _ => crate::config::paths::output_base_dir(),
+        "demo" => crate::config::paths::audiobooks_dir().join("Demo"),
+        _ => crate::config::paths::audiobooks_dir(),
     }
     .to_string_lossy()
     .to_string()
@@ -1313,7 +1313,7 @@ pub fn get_models_path() -> String {
 /// Live GPU devices with total/free memory, for the VRAM bar in the UI.
 /// Probed via `llama-server --list-devices` (same ggml backends for all
 /// engines, every GPU vendor). Empty vec when probing fails.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn get_gpu_memory() -> Vec<crate::gpu_guard::GpuDevice> {
     crate::gpu_guard::gpu_devices().unwrap_or_default()
 }

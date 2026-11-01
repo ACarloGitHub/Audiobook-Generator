@@ -86,51 +86,11 @@ impl Audio8Plugin {
         crate::sidecars::sidecar_dir("cuda-shared")
     }
 
-    /// Re-encode a UTF-8 string so it survives the Windows ANSI (CP1252) argv
-    /// conversion performed by the MSVC CRT in the child process. Same trick as
-    /// the VoxCPM2 plugin, verified there on 2026-07-19: accented Italian text
-    /// arrives intact instead of being corrupted.
-    #[cfg(windows)]
-    fn to_ansi_argv(text: &str) -> String {
-        text.bytes()
-            .map(|b| match b {
-                0x80 => '\u{20AC}',
-                0x82 => '\u{201A}',
-                0x83 => '\u{0192}',
-                0x84 => '\u{201E}',
-                0x85 => '\u{2026}',
-                0x86 => '\u{2020}',
-                0x87 => '\u{2021}',
-                0x88 => '\u{02C6}',
-                0x89 => '\u{2030}',
-                0x8A => '\u{0160}',
-                0x8B => '\u{2039}',
-                0x8C => '\u{0152}',
-                0x8E => '\u{017D}',
-                0x91 => '\u{2018}',
-                0x92 => '\u{2019}',
-                0x93 => '\u{201C}',
-                0x94 => '\u{201D}',
-                0x95 => '\u{2022}',
-                0x96 => '\u{2013}',
-                0x97 => '\u{2014}',
-                0x98 => '\u{02DC}',
-                0x99 => '\u{2122}',
-                0x9A => '\u{0161}',
-                0x9B => '\u{203A}',
-                0x9C => '\u{0153}',
-                0x9E => '\u{017E}',
-                0x9F => '\u{0178}',
-                _ => b as char,
-            })
-            .collect()
-    }
-
-    #[cfg(not(windows))]
-    fn to_ansi_argv(text: &str) -> String {
-        text.to_string()
-    }
-
+    // NOTE (2026-11-01): the text is passed as-is. audiocpp_cli is built with
+    // /utf-8 and receives the command line as UTF-8, unlike voxcpm2-cli which
+    // needs the CP1252 round-trip trick: applying that trick here doubled the
+    // audio length on an accented sentence (1.9 s vs 4.8 s for the same text),
+    // i.e. the model was reading mojibake instead of Italian.
     fn build_command(
         &self,
         gguf: &Path,
@@ -175,9 +135,9 @@ impl Audio8Plugin {
         cmd.arg("--family").arg("audio8_tts");
         cmd.arg("--model").arg(gguf);
         cmd.arg("--backend").arg("cuda");
-        cmd.arg("--text").arg(Self::to_ansi_argv(&request.text));
+        cmd.arg("--text").arg(&request.text);
         cmd.arg("--voice-ref").arg(ref_wav);
-        cmd.arg("--reference-text").arg(Self::to_ansi_argv(ref_text));
+        cmd.arg("--reference-text").arg(ref_text);
         cmd.arg("--out").arg(output_path);
         cmd.arg("--metrics");
 
