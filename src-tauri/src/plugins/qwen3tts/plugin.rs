@@ -276,6 +276,44 @@ pub fn synthesize_book(
         anyhow::bail!("no chapters left after applying the chapter selection");
     }
     let total_chapters = chapters.len();
+    // Reference preflight: Qwen clones with the x-vector of the clip and, when
+    // a transcript is given, switches to ICL (reference text + codes). A
+    // mismatched transcript or a clip with long pauses degrades every chunk.
+    if let Some(path) = reference_audio {
+        if let Some(info) = crate::audio_check::reference_info(Path::new(path)) {
+            let mut messages: Vec<String> = Vec::new();
+            if info.duration_seconds < 3.0 || info.duration_seconds > 20.0 {
+                messages.push(format!(
+                    "reference is {:.1}s: Qwen voice cloning is designed for 3-20s clips",
+                    info.duration_seconds
+                ));
+            }
+            if info.longest_silence_seconds > 1.5 {
+                messages.push(format!(
+                    "reference contains a {:.1}s pause: the model imitates the sample's delivery",
+                    info.longest_silence_seconds
+                ));
+            }
+            if let Some(text) = extra.get("ref_text") {
+                let words = text.split_whitespace().count();
+                if words > 0 {
+                    let rate = words as f64 / info.duration_seconds.max(0.1);
+                    if !(0.5..=6.0).contains(&rate) {
+                        messages.push(format!(
+                            "reference transcript looks mismatched: {words} words in {:.1}s ({rate:.1} words/s); the transcript is used verbatim in ICL mode, so it must be exact",
+                            info.duration_seconds
+                        ));
+                    }
+                }
+            }
+            for message in messages {
+                warn!("[qwen3tts] {message}");
+                if let Some(cb) = progress.as_deref_mut() {
+                    cb(&format!("WARN: {message}"));
+                }
+            }
+        }
+    }
     std::fs::create_dir_all(output_dir)?;
     let recovery_path = output_dir.join("failed_chunks.json");
 

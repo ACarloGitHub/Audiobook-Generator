@@ -297,6 +297,33 @@ pub fn synthesize_book(
     }
     let total_chapters = chapters.len();
 
+    // Reference preflight: VoxCPM2 conditions on the sample (and, in Ultimate
+    // mode, on its transcript), so a long clip or a pause-riddled one is
+    // copied into every chunk.
+    if let Some(path) = reference_audio {
+        if let Some(info) = crate::audio_check::reference_info(Path::new(path)) {
+            let mut messages: Vec<String> = Vec::new();
+            if info.duration_seconds > 30.0 {
+                messages.push(format!(
+                    "reference is {:.1}s: VoxCPM2 cloning works best with 10-30s clips",
+                    info.duration_seconds
+                ));
+            }
+            if info.longest_silence_seconds > 1.5 {
+                messages.push(format!(
+                    "reference contains a {:.1}s pause: the model imitates the sample's delivery",
+                    info.longest_silence_seconds
+                ));
+            }
+            for message in messages {
+                warn!("[voxcpm2] {message}");
+                if let Some(cb) = progress.as_deref_mut() {
+                    cb(&format!("WARN: {message}"));
+                }
+            }
+        }
+    }
+
     // One seed per book: when the user did not set one, pick it here so
     // every chunk of the same book shares it — otherwise each chunk gets
     // a random seed and the voice changes from chunk to chunk.
