@@ -19,7 +19,7 @@
 use anyhow::{bail, Context, Result};
 use audiobook_generator_lib::base_plugin::{BaseTTSPlugin, SynthesizeRequest};
 use audiobook_generator_lib::plugin_manager::{
-    defaults_for, PluginManager, QwenPaths, VoxCpm2Paths,
+    defaults_for, Audio8Paths, PluginManager, QwenPaths, VoxCpm2Paths,
 };
 use audiobook_generator_lib::{chunker, config, gpu_guard, input, merger, recovery, utils};
 use serde::{Deserialize, Serialize};
@@ -187,6 +187,15 @@ fn create_plugin(engine_id: &str) -> Option<Arc<dyn audiobook_generator_lib::bas
         let oute = plugins::outetts::OuteTTSPlugin::new(oute_dir, engine_id);
         if oute.is_installed() {
             return Some(Arc::new(oute));
+        }
+    }
+    if engine_id.starts_with("Audio8") {
+        let audio8 = plugins::audio8::Audio8Plugin::new(
+            Audio8Paths::from_app_data(&config::paths::storage_dir()),
+            engine_id,
+        );
+        if audio8.is_installed() {
+            return Some(Arc::new(audio8));
         }
     }
     None
@@ -1525,6 +1534,21 @@ async fn run_internal_generate(job_id: String) -> Result<String> {
             let p = audiobook_generator_lib::plugins::outetts::OuteTTSPlugin::new(models_dir, &engine_c);
             audiobook_generator_lib::plugins::outetts::synthesize_book(
                 &p, &epub, &out, params.max_words, params.max_chars, ffmpeg.as_deref(),
+                params.only.as_deref(), &params.extra, Some(cb),
+            )
+        })
+        .await
+        .context("synthesis task panicked")??
+    } else if params.engine.starts_with("Audio8") {
+        let paths = Audio8Paths::from_app_data(&config::paths::storage_dir());
+        let engine_c = params.engine.clone();
+        let epub = PathBuf::from(&params.epub);
+        let out = PathBuf::from(&params.output_dir);
+        tokio::task::spawn_blocking(move || {
+            let p = audiobook_generator_lib::plugins::audio8::Audio8Plugin::new(paths, &engine_c);
+            audiobook_generator_lib::plugins::audio8::synthesize_book(
+                &p, &epub, &out, params.max_words, params.max_chars, ffmpeg.as_deref(),
+                params.reference.as_deref(), params.language.as_deref(),
                 params.only.as_deref(), &params.extra, Some(cb),
             )
         })

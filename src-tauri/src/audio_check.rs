@@ -24,6 +24,10 @@ pub const MIN_CHARS_PER_SECOND: f64 = 4.0;
 pub const RELATIVE_TOLERANCE: f64 = 0.30;
 /// Number of chunks needed before the median test becomes meaningful.
 pub const MIN_SAMPLES_FOR_MEDIAN: usize = 4;
+/// Very short chunks (a closing line, a chapter tail) have a naturally noisy
+/// rate: comparing them to the job median produces false positives, so only
+/// the absolute bounds apply below this length.
+pub const MIN_CHARS_FOR_MEDIAN_COMPARISON: usize = 80;
 
 /// Tracks the speaking rate of the chunks generated for one job and reports the
 /// ones that do not look like the text they came from.
@@ -53,17 +57,21 @@ impl RateGuard {
             Some(format!(
                 "audio far longer than the text: {chars} chars in {seconds:.1}s ({rate:.1} chars/s)"
             ))
-        } else if let Some(median) = median {
-            if rate > median * (1.0 + RELATIVE_TOLERANCE) {
-                Some(format!(
-                    "audio shorter than the rest of the job: {chars} chars in {seconds:.1}s \
-                     ({rate:.1} chars/s vs {median:.1} typical)"
-                ))
-            } else if rate < median * (1.0 - RELATIVE_TOLERANCE) {
-                Some(format!(
-                    "audio longer than the rest of the job: {chars} chars in {seconds:.1}s \
-                     ({rate:.1} chars/s vs {median:.1} typical)"
-                ))
+        } else if chars >= MIN_CHARS_FOR_MEDIAN_COMPARISON {
+            if let Some(median) = median {
+                if rate > median * (1.0 + RELATIVE_TOLERANCE) {
+                    Some(format!(
+                        "audio shorter than the rest of the job: {chars} chars in {seconds:.1}s \
+                         ({rate:.1} chars/s vs {median:.1} typical)"
+                    ))
+                } else if rate < median * (1.0 - RELATIVE_TOLERANCE) {
+                    Some(format!(
+                        "audio longer than the rest of the job: {chars} chars in {seconds:.1}s \
+                         ({rate:.1} chars/s vs {median:.1} typical)"
+                    ))
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -214,6 +222,19 @@ mod tests {
         let mut guard = RateGuard::new();
         let reason = guard.observe(60, 40.0).expect("expected a flag");
         assert!(reason.contains("longer"), "reason: {reason}");
+    }
+
+    #[test]
+    fn short_chunks_skip_the_median_comparison() {
+        let mut guard = RateGuard::new();
+        for _ in 0..5 {
+            assert!(guard.observe(300, 20.0).is_none());
+        }
+        // 30 chars in 2.6 s is a normal closing line: the noisy short rate
+        // must not be compared with the 15 chars/s median.
+        assert!(guard.observe(30, 2.6).is_none());
+        // The absolute bound still applies: 30 chars in 0.5 s is impossible.
+        assert!(guard.observe(30, 0.5).is_some());
     }
 
     #[test]
