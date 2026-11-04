@@ -19,6 +19,15 @@ fn legacy_chunker_version() -> u32 {
     1
 }
 
+/// Metadata for recovery files that predate the field: treat them as the
+/// first chunking version so their chunk indices are discarded.
+fn legacy_meta() -> RecoveryMeta {
+    RecoveryMeta {
+        chunker_version: legacy_chunker_version(),
+        ..RecoveryMeta::default()
+    }
+}
+
 /// Generation metadata captured when a book is synthesized, so the recovery
 /// commands can re-synthesize failed chunks with the same engine and
 /// parameters. All fields are optional: recovery files written before this
@@ -59,7 +68,7 @@ impl Default for RecoveryMeta {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct RecoveryState {
-    #[serde(default)]
+    #[serde(default = "legacy_meta")]
     pub meta: RecoveryMeta,
     pub done: HashMap<String, Vec<usize>>,
     pub failed: HashMap<String, Vec<FailedChunk>>,

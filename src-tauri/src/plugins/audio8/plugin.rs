@@ -545,3 +545,19 @@ pub fn synthesize_book(
     }
     Ok(done_count)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_registry_language_labels_to_runtime_codes() {
+        assert_eq!(language_code(Some("Italian")), Some("it"));
+        assert_eq!(language_code(Some("English")), Some("en"));
+        assert_eq!(language_code(Some("Chinese")), Some("zh"));
+        assert_eq!(language_code(Some("Cantonese")), Some("yue"));
+        assert_eq!(language_code(Some("auto")), None);
+        assert_eq!(language_code(Some("Arabic")), None);
+        assert_eq!(language_code(None), None);
+    }
+}

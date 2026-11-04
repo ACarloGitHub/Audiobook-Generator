@@ -580,3 +580,27 @@ impl BaseTTSPlugin for QwenPlugin {
         self
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_language_labels_and_falls_back_to_auto() {
+        assert_eq!(qwen_language(Some("Italian")), "Italian");
+        assert_eq!(qwen_language(Some("italian")), "Italian");
+        assert_eq!(qwen_language(Some("Auto")), "auto");
+        assert_eq!(qwen_language(None), "auto");
+        // A label the GGUF does not declare must not reach the runtime.
+        assert_eq!(qwen_language(Some("Dutch")), "auto");
+    }
+
+    #[test]
+    fn parses_boolean_flags() {
+        let mut extra = std::collections::HashMap::new();
+        assert!(!extra_flag(&extra, "greedy"));
+        extra.insert("greedy".to_string(), "true".to_string());
+        assert!(extra_flag(&extra, "greedy"));
+        extra.insert("greedy".to_string(), "off".to_string());
+        assert!(!extra_flag(&extra, "greedy"));
+    }
+}
