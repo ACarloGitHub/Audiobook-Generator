@@ -1,6 +1,6 @@
 {
-  "version": "1.5.0",
-  "last_verified": "2026-07-23",
+  "version": "1.6.0",
+  "last_verified": "2026-11-04",
   "engines": {
     "qwen3tts": {
       "display_name": "Qwen3-TTS",
@@ -1099,7 +1099,7 @@
         "https://github.com/0xShug0/audio.cpp (runtime, Apache-2.0, commit c0cd77fa; family audio8_tts, community port by @jasonchen31)",
         "Local measurement 2026-11-01: RTF 0.23-0.28 on RTX 3090 with the Q8_0 build, ~5 GB VRAM, Italian text, two reference voices"
       ],
-      "notes": "Voice cloning only: without a reference recording the model invents a new voice on every call, which is unusable for a book, so the plugin always requires a reference plus its transcript. The engine reproduces the reference's speaking pace, so the audio length depends on the narrator, not on the text alone. audio.cpp exposes no repetition-penalty knob in this family; loop tests on 2026-11-01 showed the observed incoherences came from the internal text chunker, not from the sampler. Not yet exercised: Linux/macOS builds, 30 s reference with a 400-char block (context budget), streaming mode."
+      "notes": "Voice cloning only: without a reference recording the model invents a new voice on every call, which is unusable for a book, so the plugin always requires a reference plus its transcript. The engine reproduces the reference's speaking pace and pauses, so the audio length depends on the narrator, not on the text alone; use a 10-30 s continuous recording with about 20-30 spoken words, because pauses in the sample are copied and a longer sample eats the 2048-token context. audio.cpp exposes no repetition-penalty knob in this family; loop tests on 2026-11-01 showed the observed incoherences came from the internal text chunker, not from the sampler. Not yet exercised: Linux/macOS builds, 30 s reference with a 400-char block (context budget), streaming mode."
     },
     "voxtral": {
       "display_name": "Voxtral TTS 4B",

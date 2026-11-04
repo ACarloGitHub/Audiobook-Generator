@@ -217,11 +217,7 @@ impl PluginManager {
                 voice_cloning: entry.name.contains("Base"),
                 hardware: vec!["CPU".into(), "CUDA".into(), "Vulkan".into()],
                 license: "Apache 2.0".into(),
-                languages: vec![
-                    "Auto".into(), "Chinese".into(), "English".into(), "German".into(),
-                    "Italian".into(), "Portuguese".into(), "Spanish".into(), "Japanese".into(),
-                    "Korean".into(), "French".into(), "Russian".into(),
-                ],
+                languages: qwen_languages(),
                 installed,
                 size_mb,
                 voices,
@@ -591,6 +587,37 @@ pub fn audio8_languages() -> Vec<String> {
         .unwrap_or_else(|| vec!["Auto".into()])
 }
 
+/// Languages advertised by an engine, read from engine_registry.json.
+fn registry_languages(engine_key: &str) -> Option<Vec<String>> {
+    let raw: serde_json::Value = serde_json::from_str(ENGINE_REGISTRY_JSON).ok()?;
+    raw.get("engines")?
+        .get(engine_key)?
+        .get("languages")?
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|s| s.as_str())
+                .map(|s| s.to_string())
+                .collect()
+        })
+}
+
+/// Qwen3-TTS languages with "Auto" first (the engine accepts `auto` plus the
+/// names in the GGUF language table).
+pub fn qwen_languages() -> Vec<String> {
+    let mut langs = registry_languages("qwen3tts").unwrap_or_else(|| {
+        vec![
+            "Chinese".into(), "English".into(), "German".into(), "Italian".into(),
+            "Portuguese".into(), "Spanish".into(), "Japanese".into(), "Korean".into(),
+            "French".into(), "Russian".into(),
+        ]
+    });
+    if !langs.iter().any(|l| l == "Auto") {
+        langs.insert(0, "Auto".into());
+    }
+    langs
+}
+
 pub fn defaults_for(engine_id: &str) -> EngineDefaults {
     let configs = models::tts_model_config();
     let generation = read_generation_params(engine_id);
@@ -688,11 +715,7 @@ pub fn defaults_for(engine_id: &str) -> EngineDefaults {
         replace_guillemets,
         voice_cloning,
         needs_reference_transcript: needs_ref,
-        supported_languages: vec![
-            "Auto".into(), "Chinese".into(), "English".into(), "German".into(),
-            "Italian".into(), "Portuguese".into(), "Spanish".into(), "Japanese".into(),
-            "Korean".into(), "French".into(), "Russian".into(),
-        ],
+        supported_languages: qwen_languages(),
         voices,
         generation,
     }
@@ -854,6 +877,14 @@ mod audio8_registry_tests {
         let langs = audio8_languages();
         assert!(langs.iter().any(|l| l == "Italian"), "languages: {langs:?}");
         assert!(langs.len() >= 20, "expected 23 languages, got {}", langs.len());
+    }
+
+    #[test]
+    fn qwen_languages_come_from_the_registry_with_auto_first() {
+        let langs = qwen_languages();
+        assert_eq!(langs.first().map(String::as_str), Some("Auto"));
+        assert!(langs.iter().any(|l| l == "Italian"), "languages: {langs:?}");
+        assert!(langs.len() >= 11, "expected Auto + 10 languages, got {}", langs.len());
     }
 
     #[test]
