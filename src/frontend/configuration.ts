@@ -152,6 +152,11 @@ function renderReferenceInfo(transcriptId?: string, maxSeconds = 30): string {
     }
     if (info.longest_silence_seconds > 1.5) {
         warnings.push(`It contains a ${info.longest_silence_seconds.toFixed(1)} s pause: the model imitates it, which is the usual cause of long pauses after a few words. Prefer a continuous reading.`);
+    } else if (info.silence_ratio > 0.35) {
+        warnings.push(`${(info.silence_ratio * 100).toFixed(0)}% of the sample is silence: a continuous reading gives a steadier narration.`);
+    }
+    if (info.peak > 0.98) {
+        warnings.push("The recording is close to clipping: lower its level before cloning, clipped samples degrade the voice.");
     }
     if (info.peak < 0.05) {
         warnings.push(`The recording is very quiet (peak ${(info.peak * 100).toFixed(0)}%): normalize it before cloning.`);

@@ -323,6 +323,17 @@ pub fn synthesize_book(
                     "reference contains a {:.1}s pause: the model imitates it, which is the usual cause of long pauses after a few words",
                     info.longest_silence_seconds
                 ));
+            } else if info.silence_ratio > 0.35 {
+                messages.push(format!(
+                    "{:.0}% of the reference is silence: a continuous reading gives a steadier narration",
+                    info.silence_ratio * 100.0
+                ));
+            }
+            if info.peak > 0.98 {
+                messages.push(
+                    "reference is close to clipping: lower its level, clipped samples degrade the cloned voice"
+                        .to_string(),
+                );
             }
             let words = extra
                 .get("ref_text")
