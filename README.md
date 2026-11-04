@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <strong>Status: active development — v0.4.0</strong> — Qwen3-TTS, OuteTTS, VoxCPM2 and Audio8-TTS working end-to-end (Audio8 on Windows for now). See the <a href="https://github.com/ACarloGitHub/Audiobook-Generator/releases">Releases</a> page for the changelog.
+  <strong>Status: active development — v0.5.0</strong> — Qwen3-TTS, OuteTTS, VoxCPM2 and Audio8-TTS working end-to-end (Audio8 on Windows for now). See the <a href="https://github.com/ACarloGitHub/Audiobook-Generator/releases">Releases</a> page for the changelog.
 </p>
 
 <p align="center">
