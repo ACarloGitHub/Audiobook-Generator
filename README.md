@@ -56,8 +56,8 @@ Each model has its own license. You are responsible for reviewing and accepting 
 
 - **Multiple input formats** — EPUB, TXT, Markdown, DOCX and JSON books are all converted to chapters automatically
 - **Multiple TTS Engines** — Choose the best model for your needs, switch any time
-- **Voice Cloning** — Clone your own voice for a personal narrated audiobook (3-10 seconds of reference audio, depending on the engine)
-- **Multilingual** — The TTS models auto-detect the language of the input text. No language picker in the UI
+- **Voice Cloning** — Clone your own voice for a personal narrated audiobook (3-30 seconds of reference audio, depending on the engine; Audio8-TTS also needs the exact transcript and copies the pace and pauses of the sample)
+- **Multilingual** — the language is read from the book metadata (EPUB `dc:language`) and passed to the engines that accept it: Qwen3-TTS (`--lang`) and Audio8-TTS (language hint) expose a language picker in Configuration; OuteTTS and VoxCPM2 auto-detect the language from the text
 - **Recovery Mode** — Resume interrupted generations from where they left off, with full manual control: retry failed chunks, split long chunks and retry, or merge chunks by hand
 - **User-chosen quantization** — Pick the model quantization that fits your hardware (e.g. VoxCPM2 Q8_0 vs F16)
 - **Custom storage folder** — Move models and engines (several GB) to any drive you like, from the Models panel
