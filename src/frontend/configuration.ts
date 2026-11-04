@@ -221,6 +221,11 @@ function renderQwenControls(): string {
         `;
     } else if (mode === "Voice Design") {
         modeControls = `
+          <p class="field-help">
+            Voice Design invents a new voice on every run, so it cannot guarantee the same timbre across a book.
+            Use it to create a short reference WAV, then switch to the Base model (Voice Clone) and use that WAV
+            as the reference for the whole book.
+          </p>
           <div class="field-row">
             <label class="field-label">Voice Description (in English)</label>
             <textarea class="text-input" rows="3" id="qwen-instruct-input">${escapeHtml(state.qwenInstruct || "A calm middle-aged male announcer with a deep voice")}</textarea>
@@ -307,6 +312,11 @@ function renderVoxControls(): string {
     let descControls = "";
     if (mode === "design") {
         descControls = `
+      <p class="field-help">
+        Voice Design invents a new voice on every run and cannot guarantee the same timbre across a book.
+        Use it to generate a short sample, then switch to Controllable Cloning and use that WAV as the
+        reference for the whole book.
+      </p>
       <div class="field-row">
         <label class="field-label">Voice Description (in English, required)</label>
         <textarea class="text-input" rows="2" id="vox-voice-description">${escapeHtml(state.voxVoiceDescription || "A calm middle-aged male narrator with a deep voice")}</textarea>
