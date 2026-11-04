@@ -11,6 +11,34 @@ use crate::merger;
 use crate::recovery;
 use crate::plugin_manager::QwenPaths;
 
+/// Boolean engine flags are carried as strings in `extra`; accept the usual
+/// spellings so the CLI, the GUI and the MCP server agree.
+fn extra_flag(extra: &std::collections::HashMap<String, String>, key: &str) -> bool {
+    extra
+        .get(key)
+        .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes" | "on"))
+        .unwrap_or(false)
+}
+
+/// Canonical `--lang` label accepted by qwen-tts. The runtime knows exactly
+/// these labels (plus `auto`); anything else makes it exit, so unknown
+/// labels fall back to autodetect.
+fn qwen_language(label: Option<&str>) -> &'static str {
+    match label.map(|s| s.trim().to_ascii_lowercase()).as_deref() {
+        Some("italian") => "Italian",
+        Some("english") => "English",
+        Some("french") => "French",
+        Some("german") => "German",
+        Some("spanish") => "Spanish",
+        Some("portuguese") => "Portuguese",
+        Some("russian") => "Russian",
+        Some("japanese") => "Japanese",
+        Some("korean") => "Korean",
+        Some("chinese") => "Chinese",
+        _ => "auto",
+    }
+}
+
 pub struct QwenPlugin {
     pub paths: QwenPaths,
     pub variant_name: String,
@@ -115,9 +143,11 @@ impl QwenPlugin {
         cmd.arg("--codec").arg(tokenizer);
         cmd.arg("-o").arg(output_path);
 
-        // Language
-        let lang = request.language.as_deref().unwrap_or("auto");
-        cmd.arg("--lang").arg(lang);
+        // Language. qwen-tts matches the label against the GGUF language
+        // table and exits with "unknown language" on a label it does not
+        // know; an unknown label therefore degrades to autodetect instead of
+        // failing the chunk.
+        cmd.arg("--lang").arg(qwen_language(request.language.as_deref()));
 
         // Mode-specific args
         let mode = self.parse_variant_mode();
@@ -172,6 +202,35 @@ impl QwenPlugin {
         if let Some(v) = request.extra.get("max_new") {
             cmd.arg("--max-new").arg(v);
         }
+        // Sub-talker (Code Predictor) sampling: separate stack, official
+        // defaults 0.9 / 50 / 1.0.
+        if let Some(v) = request.extra.get("sub_temp") {
+            cmd.arg("--sub-temp").arg(v);
+        }
+        if let Some(v) = request.extra.get("sub_top_k") {
+            cmd.arg("--sub-top-k").arg(v);
+        }
+        if let Some(v) = request.extra.get("sub_top_p") {
+            cmd.arg("--sub-top-p").arg(v);
+        }
+        // Codec decode window: a chunk longer than this is decoded in
+        // several passes (each seam leaves a small residual), and the window
+        // is also a VRAM knob.
+        if let Some(v) = request.extra.get("codec_chunk_dur") {
+            cmd.arg("--codec-chunk-dur").arg(v);
+        }
+        if let Some(v) = request.extra.get("codec_left_dur") {
+            cmd.arg("--codec-left-dur").arg(v);
+        }
+        if extra_flag(&request.extra, "greedy") {
+            cmd.arg("--greedy");
+        }
+        if extra_flag(&request.extra, "no_fa") {
+            cmd.arg("--no-fa");
+        }
+        if extra_flag(&request.extra, "clamp_fp16") {
+            cmd.arg("--clamp-fp16");
+        }
 
         // Text goes to stdin
         cmd.stdin(std::process::Stdio::piped());
@@ -225,6 +284,8 @@ pub fn synthesize_book(
     }
 
     let mut recovery_state = recovery::RecoveryState::load(output_dir).unwrap_or_default();
+
+    let chunking_changed = recovery_state.reset_if_chunking_changed();
     recovery_state.set_meta(recovery::RecoveryMeta {
         engine_id: Some(plugin.variant_name.clone()),
         reference_audio: reference_audio.map(|s| s.to_string()),
@@ -232,10 +293,16 @@ pub fn synthesize_book(
         language: language.map(|s| s.to_string()),
         extra: extra.clone(),
         generated_at: Some(recovery::now_stamp()),
+        chunker_version: recovery::CURRENT_CHUNKER_VERSION,
     });
     // Persist immediately so the retry commands can resolve the engine even
     // if the very first chapter fails or is stopped.
     let _ = recovery_state.save(output_dir);
+    if chunking_changed {
+        if let Some(cb) = progress.as_deref_mut() {
+            cb("Text extraction/chunking changed: previous chunk records were discarded, the book will be re-synthesized.");
+        }
+    }
     let mut done_count = 0usize;
     let mut failed_count = 0usize;
     let mut rate_guard = crate::audio_check::RateGuard::new();

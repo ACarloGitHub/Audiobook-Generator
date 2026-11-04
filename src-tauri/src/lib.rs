@@ -105,6 +105,7 @@ pub fn run() {
             commands::unload_engine,
             commands::stop_generation,
             commands::load_epub,
+            commands::inspect_reference_audio,
             commands::check_recovery,
             commands::scan_recovery_books,
             commands::scan_recovery_all,

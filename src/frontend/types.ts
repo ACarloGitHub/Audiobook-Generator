@@ -85,7 +85,19 @@ export interface ChapterSummary {
 
 export interface BookInfo {
   title: string;
+  /** English language label resolved from the document metadata. */
+  language?: string | null;
   chapters: ChapterSummary[];
+}
+
+/** Result of `inspect_reference_audio`. */
+export interface ReferenceInfo {
+  duration_seconds: number;
+  sample_rate: number;
+  channels: number;
+  peak: number;
+  longest_silence_seconds: number;
+  silence_ratio: number;
 }
 
 export interface BookErrorSummary {

@@ -270,6 +270,16 @@ impl OuteTTSPlugin {
         let max_tokens: i64 = extra.get("max_tokens")
             .and_then(|v| v.parse().ok())
             .unwrap_or(8192);
+        let seed: i64 = extra.get("seed")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(-1);
+        // OuteTTS 1.0 requires the repetition penalty on a 64-token recent
+        // window; penalising the whole context breaks the model. The value is
+        // exposed so it can be restored if a user changes it by mistake, but
+        // the default and the warning stay.
+        let repeat_last_n: i64 = extra.get("repeat_last_n")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(64);
 
         let body = serde_json::json!({
             "prompt": prompt,
@@ -278,7 +288,8 @@ impl OuteTTSPlugin {
             "top_p": top_p,
             "min_p": min_p,
             "repeat_penalty": rep_pen,
-            "repeat_last_n": 64,
+            "repeat_last_n": repeat_last_n,
+            "seed": seed,
             "n_predict": max_tokens,
             "stop": ["<|im_end|>"],
             "stream": true,
@@ -641,6 +652,25 @@ pub fn synthesize_book(
         anyhow::bail!("no chapters left after applying the chapter selection");
     }
     let total_chapters = chapters.len();
+    // One seed per book: OuteTTS changes prosody between generations, and a
+    // random seed per chunk makes the narration drift from chunk to chunk.
+    let mut extra_owned = extra.clone();
+    let seed_missing = extra_owned
+        .get("seed")
+        .map(|s| s.trim().is_empty() || s.trim() == "-1")
+        .unwrap_or(true);
+    if seed_missing {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(42);
+        let seed = (nanos ^ (nanos >> 32)) % 9_999_999 + 1;
+        extra_owned.insert("seed".to_string(), seed.to_string());
+        if let Some(cb) = progress.as_deref_mut() {
+            cb(&format!("Auto seed for this book: {seed}"));
+        }
+    }
+    let extra = &extra_owned;
     std::fs::create_dir_all(output_dir)?;
     let recovery_path = output_dir.join("failed_chunks.json");
 
@@ -651,6 +681,8 @@ pub fn synthesize_book(
     plugin.ensure_server_running()?;
 
     let mut recovery_state = recovery::RecoveryState::load(output_dir).unwrap_or_default();
+
+    let chunking_changed = recovery_state.reset_if_chunking_changed();
     recovery_state.set_meta(recovery::RecoveryMeta {
         engine_id: Some(plugin.variant_name.clone()),
         reference_audio: None,
@@ -658,10 +690,16 @@ pub fn synthesize_book(
         language: None,
         extra: extra.clone(),
         generated_at: Some(recovery::now_stamp()),
+        chunker_version: recovery::CURRENT_CHUNKER_VERSION,
     });
     // Persist immediately so the retry commands can resolve the engine even
     // if the very first chapter fails or is stopped.
     let _ = recovery_state.save(output_dir);
+    if chunking_changed {
+        if let Some(cb) = progress.as_deref_mut() {
+            cb("Text extraction/chunking changed: previous chunk records were discarded, the book will be re-synthesized.");
+        }
+    }
     let mut done_count = 0usize;
     let mut failed_count = 0usize;
     let mut rate_guard = crate::audio_check::RateGuard::new();

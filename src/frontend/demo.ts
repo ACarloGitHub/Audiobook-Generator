@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { escapeHtml, ts, appendLog, setLog, collectParamExtras } from "./helpers";
+import { escapeHtml, ts, appendLog, setLog, collectParamExtras, effectiveLanguage } from "./helpers";
 import { state } from "./state";
 import type { EngineStatus } from "./types";
 
@@ -77,7 +77,7 @@ export function attachDemoListeners(): void {
           engineId: state.selectedEngineId,
           text,
           voice: state.selectedVoiceId || null,
-          language: state.selectedLanguage || null,
+          language: effectiveLanguage(),
           speed: state.speed,
           outputWav: out,
           extra,
@@ -175,7 +175,7 @@ export function attachDemoListeners(): void {
           await invoke("start_generation", {
             engineId: state.selectedEngineId,
             voice: state.selectedVoiceId || null,
-            language: state.selectedLanguage || null,
+            language: effectiveLanguage(),
             speed: state.speed,
             epubPath: testEpubPath,
             outputDir,

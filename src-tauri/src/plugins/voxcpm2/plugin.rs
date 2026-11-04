@@ -231,9 +231,13 @@ impl VoxCpm2Plugin {
             }
         }
 
-        // Sampling parameters (from extra). NOTE: --temperature was removed
-        // on 2026-07-23 (owner decision): it is undocumented upstream, so the
-        // engine always runs with its runtime default (1.0).
+        // Sampling parameters (from extra). `--temperature` is documented by
+        // the CLI (default 1.0). It was hidden in 2026-07 because the Python
+        // API did not expose it and early tests at very low values produced
+        // empty audio; it is exposed again from 0.2 upward.
+        if let Some(v) = request.extra.get("temperature") {
+            cmd.arg("--temperature").arg(v);
+        }
         if let Some(v) = request.extra.get("cfg") {
             cmd.arg("--cfg").arg(v);
         }
@@ -321,6 +325,8 @@ pub fn synthesize_book(
     }
 
     let mut recovery_state = recovery::RecoveryState::load(output_dir).unwrap_or_default();
+
+    let chunking_changed = recovery_state.reset_if_chunking_changed();
     recovery_state.set_meta(recovery::RecoveryMeta {
         engine_id: Some(plugin.variant_name.clone()),
         reference_audio: reference_audio.map(|s| s.to_string()),
@@ -328,10 +334,16 @@ pub fn synthesize_book(
         language: None,
         extra: extra.clone(),
         generated_at: Some(recovery::now_stamp()),
+        chunker_version: recovery::CURRENT_CHUNKER_VERSION,
     });
     // Persist immediately so the retry commands can resolve the engine even
     // if the very first chapter fails or is stopped.
     let _ = recovery_state.save(output_dir);
+    if chunking_changed {
+        if let Some(cb) = progress.as_deref_mut() {
+            cb("Text extraction/chunking changed: previous chunk records were discarded, the book will be re-synthesized.");
+        }
+    }
     let mut done_count = 0usize;
     let mut failed_count = 0usize;
     let mut rate_guard = crate::audio_check::RateGuard::new();

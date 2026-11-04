@@ -72,6 +72,29 @@ export function paramValue(id: string, registryKey?: string): string | undefined
   return undefined;
 }
 
+// Boolean parameters (checkboxes) follow the same resolution order as the
+// numeric sliders: live DOM, saved override, registry default.
+export function boolParam(id: string, registryKey?: string): boolean {
+  const el = document.getElementById(id) as HTMLInputElement | null;
+  if (el) return el.checked;
+  const override = state.engineParamOverrides[id];
+  if (override !== undefined) return override === "true";
+  if (registryKey) return state.engineGeneration[registryKey]?.default === true;
+  return false;
+}
+
+// Language actually sent to the engine: the selected label when the engine
+// declares it, otherwise "Auto" (null). Without this, a Qwen book in an
+// unsupported language makes qwen-tts exit with "unknown language".
+export function effectiveLanguage(): string | null {
+  const selected = state.selectedLanguage;
+  if (!selected || selected === "Auto") return null;
+  if (state.engineSupportedLanguages.length > 0 && !state.engineSupportedLanguages.includes(selected)) {
+    return null;
+  }
+  return selected;
+}
+
 // Build the `extra` parameter map for the selected engine from the shared
 // paramValue resolver. Used by Demo, Test and Generate so all three send
 // exactly the same values the user sees in Configuration.
@@ -80,6 +103,9 @@ export function collectParamExtras(): Record<string, string> {
   const put = (id: string, key: string, regKey?: string) => {
     const v = paramValue(id, regKey);
     if (v) extra[key] = v;
+  };
+  const flag = (id: string, key: string, regKey?: string) => {
+    if (boolParam(id, regKey)) extra[key] = "true";
   };
   if (state.selectedEngineId.startsWith("Qwen3-TTS")) {
     const instruct = paramValue("qwen-instruct-input") || state.qwenInstruct?.trim();
@@ -91,14 +117,24 @@ export function collectParamExtras(): Record<string, string> {
     put("qwen-top-p", "top_p", "top_p");
     put("qwen-rep-pen", "rep_pen", "rep_pen");
     put("qwen-max-new", "max_new", "max_new");
+    put("qwen-sub-temp", "sub_temp", "sub_temp");
+    put("qwen-sub-top-k", "sub_top_k", "sub_top_k");
+    put("qwen-sub-top-p", "sub_top_p", "sub_top_p");
+    put("qwen-codec-chunk-dur", "codec_chunk_dur", "codec_chunk_dur");
+    put("qwen-codec-left-dur", "codec_left_dur", "codec_left_dur");
     put("qwen-seed", "seed");
+    flag("qwen-greedy", "greedy", "greedy");
+    flag("qwen-no-fa", "no_fa", "no_fa");
+    flag("qwen-clamp-fp16", "clamp_fp16", "clamp_fp16");
   } else if (state.selectedEngineId.startsWith("OuteTTS")) {
     put("oute-temperature", "temperature", "temperature");
     put("oute-top-k", "top_k", "top_k");
     put("oute-top-p", "top_p", "top_p");
     put("oute-min-p", "min_p", "min_p");
     put("oute-rep-pen", "repetition_penalty", "repetition_penalty");
+    put("oute-repeat-last-n", "repeat_last_n", "repeat_last_n");
     put("oute-max-tokens", "max_tokens", "max_tokens");
+    put("oute-seed", "seed");
     if (state.outeSpeakerJsonPath) {
       extra["speaker_json"] = state.outeSpeakerJsonPath;
     } else if (state.selectedVoiceId) {
@@ -125,6 +161,7 @@ export function collectParamExtras(): Record<string, string> {
       const refText = paramValue("vox-ref-text") || state.referenceTranscript?.trim();
       if (refText) extra["prompt_text"] = refText;
     }
+    put("vox-temperature", "temperature", "temperature");
     put("vox-cfg", "cfg", "cfg");
     put("vox-timesteps", "timesteps", "timesteps");
     put("vox-steps", "steps", "steps");

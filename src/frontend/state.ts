@@ -15,6 +15,7 @@ export interface AppState {
   speed: number;
   referenceWavPath: string | null;
   referenceTranscript: string;
+  referenceInfo: import("./types").ReferenceInfo | null;
   epubPath: string | null;
   audioBookTitle: string;
   deleteIntermediateChunks: boolean;
@@ -44,7 +45,7 @@ export interface AppState {
 export const state: AppState = {
   currentPanel: "generate",
   selectedEngineId: "Qwen3-TTS-12Hz-0.6B-CustomVoice",
-  selectedLanguage: "Italian",
+  selectedLanguage: "Auto",
   selectedVoiceId: "Serena",
   selectedSeparator: ".",
   replaceGuillemets: false,
@@ -56,6 +57,7 @@ export const state: AppState = {
   speed: 1.0,
   referenceWavPath: null,
   referenceTranscript: "",
+  referenceInfo: null,
   epubPath: null,
   audioBookTitle: "",
   deleteIntermediateChunks: false,

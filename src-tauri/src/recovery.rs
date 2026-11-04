@@ -10,12 +10,21 @@ use std::path::Path;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
+/// Bump when text extraction or chunking changes the chunk boundaries.
+/// Chunk indices from an older version no longer describe the same audio,
+/// so resuming would splice the wrong pieces together.
+pub const CURRENT_CHUNKER_VERSION: u32 = 2;
+
+fn legacy_chunker_version() -> u32 {
+    1
+}
+
 /// Generation metadata captured when a book is synthesized, so the recovery
 /// commands can re-synthesize failed chunks with the same engine and
 /// parameters. All fields are optional: recovery files written before this
 /// struct existed deserialize with `None` everywhere, and the retry commands
 /// fall back to the currently selected engine in that case.
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecoveryMeta {
     #[serde(default)]
     pub engine_id: Option<String>,
@@ -29,6 +38,23 @@ pub struct RecoveryMeta {
     pub extra: HashMap<String, String>,
     #[serde(default)]
     pub generated_at: Option<String>,
+    /// Text-extraction/chunking version this record belongs to.
+    #[serde(default = "legacy_chunker_version")]
+    pub chunker_version: u32,
+}
+
+impl Default for RecoveryMeta {
+    fn default() -> Self {
+        Self {
+            engine_id: None,
+            reference_audio: None,
+            voice: None,
+            language: None,
+            extra: HashMap::new(),
+            generated_at: None,
+            chunker_version: CURRENT_CHUNKER_VERSION,
+        }
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -85,6 +111,20 @@ impl RecoveryState {
 
     pub fn set_meta(&mut self, meta: RecoveryMeta) {
         self.meta = meta;
+    }
+
+    /// Discard chunk records written by an older chunking version: their
+    /// indices and saved texts describe different audio, so reusing them
+    /// would merge unrelated pieces. Returns true when records were dropped.
+    pub fn reset_if_chunking_changed(&mut self) -> bool {
+        if self.meta.chunker_version >= CURRENT_CHUNKER_VERSION {
+            return false;
+        }
+        let had_records = !self.done.is_empty() || !self.failed.is_empty();
+        self.done.clear();
+        self.failed.clear();
+        self.meta.chunker_version = CURRENT_CHUNKER_VERSION;
+        had_records
     }
 
     pub fn is_done(&self, chapter: &str, chunk_index: usize) -> bool {
@@ -209,6 +249,7 @@ mod tests {
             language: Some("Italian".to_string()),
             extra,
             generated_at: Some("2026-07-20T10:00:00Z".to_string()),
+            chunker_version: CURRENT_CHUNKER_VERSION,
         });
         state.mark_failed("Cap 1", 5, "hello", "boom");
         state.save(&dir).unwrap();
@@ -268,5 +309,21 @@ mod tests {
             "failed map should not be empty -> cleanup must be skipped"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn changing_chunking_version_discards_old_chunk_records() {
+        let mut state = RecoveryState::default();
+        state.meta.chunker_version = 1;
+        state.mark_done("Chapter 1", 0);
+        state.mark_failed("Chapter 2", 3, "old text", "old error");
+        assert!(state.reset_if_chunking_changed());
+        assert!(state.done.is_empty());
+        assert!(state.failed.is_empty());
+        assert_eq!(state.meta.chunker_version, CURRENT_CHUNKER_VERSION);
+        // A second run on the current version keeps the records.
+        state.mark_done("Chapter 1", 0);
+        assert!(!state.reset_if_chunking_changed());
+        assert!(!state.done.is_empty());
     }
 }

@@ -30,6 +30,29 @@ pub struct Audio8Plugin {
     pub variant_name: String,
 }
 
+/// Map an English language label from the UI/registry to the ISO code the
+/// `audio8_tts` runtime declares (`model_specs/audio8_tts.json`). `None`
+/// means "do not send a hint" (autodetect, or a language the runtime's
+/// language option does not cover).
+fn language_code(label: Option<&str>) -> Option<&'static str> {
+    let label = label?.trim().to_ascii_lowercase();
+    let code = match label.as_str() {
+        "italian" => "it",
+        "english" => "en",
+        "french" => "fr",
+        "german" => "de",
+        "spanish" => "es",
+        "dutch" => "nl",
+        "polish" => "pl",
+        "chinese" => "zh",
+        "cantonese" => "yue",
+        "japanese" => "ja",
+        "korean" => "ko",
+        _ => return None,
+    };
+    Some(code)
+}
+
 impl Audio8Plugin {
     pub fn new(paths: Audio8Paths, variant_name: &str) -> Self {
         Self {
@@ -140,6 +163,14 @@ impl Audio8Plugin {
         cmd.arg("--reference-text").arg(ref_text);
         cmd.arg("--out").arg(output_path);
         cmd.arg("--metrics");
+
+        // Language hint. The runtime expects an ISO code, while the UI and the
+        // registry use English labels. Only the codes declared by the
+        // audio8_tts model spec are sent; anything else is left to autodetect
+        // instead of risking a rejected request.
+        if let Some(code) = language_code(request.language.as_deref()) {
+            cmd.arg("--language").arg(code);
+        }
 
         // The runtime has its own splitter and loses text at its seams, so the
         // chunk we send is exactly one block for it.
@@ -261,6 +292,7 @@ pub fn synthesize_book(
     max_chars: usize,
     ffmpeg: Option<&Path>,
     reference_audio: Option<&str>,
+    language: Option<&str>,
     only: Option<&[String]>,
     extra: &std::collections::HashMap<String, String>,
     mut progress: Option<Box<dyn FnMut(&str) + Send>>,
@@ -271,6 +303,52 @@ pub fn synthesize_book(
     if ffmpeg.is_none() {
         if let Some(cb) = progress.as_deref_mut() {
             cb("ffmpeg not found — chapters will be saved as WAV with the fallback merger.");
+        }
+    }
+    // Reference-quality preflight. Audio8 copies the pace and the pauses of
+    // the reference recording, so a long or pause-riddled sample is the first
+    // suspect when the narration stalls after a few words. The recording also
+    // shares the 2048-token context with the text.
+    if let Some(path) = reference_audio {
+        if let Some(info) = crate::audio_check::reference_info(Path::new(path)) {
+            let mut messages: Vec<String> = Vec::new();
+            if info.duration_seconds > 30.0 {
+                messages.push(format!(
+                    "reference is {:.1}s: Audio8 copies its pace and shares the 2048-token context, so keep it within 10-30s (~30 words)",
+                    info.duration_seconds
+                ));
+            }
+            if info.longest_silence_seconds > 1.5 {
+                messages.push(format!(
+                    "reference contains a {:.1}s pause: the model imitates it, which is the usual cause of long pauses after a few words",
+                    info.longest_silence_seconds
+                ));
+            }
+            let words = extra
+                .get("ref_text")
+                .map(|t| t.split_whitespace().count())
+                .unwrap_or(0);
+            if words == 0 {
+                messages.push("reference transcript is empty (the runtime requires it)".to_string());
+            } else if words > 40 {
+                messages.push(format!(
+                    "reference transcript has {words} words: keep the sample around 25-40 words for a stable clone"
+                ));
+            } else {
+                let words_per_second = words as f64 / info.duration_seconds.max(0.1);
+                if !(0.8..=5.0).contains(&words_per_second) {
+                    messages.push(format!(
+                        "reference transcript looks mismatched: {words} words in {:.1}s ({words_per_second:.1} words/s)",
+                        info.duration_seconds
+                    ));
+                }
+            }
+            for message in messages {
+                warn!("[audio8] {message}");
+                if let Some(cb) = progress.as_deref_mut() {
+                    cb(&format!("WARN: {message}"));
+                }
+            }
         }
     }
     let chapters = crate::input::extract_chapters_from(epub_path)?;
@@ -311,15 +389,23 @@ pub fn synthesize_book(
     }
 
     let mut recovery_state = recovery::RecoveryState::load(output_dir).unwrap_or_default();
+
+    let chunking_changed = recovery_state.reset_if_chunking_changed();
     recovery_state.set_meta(recovery::RecoveryMeta {
         engine_id: Some(plugin.variant_name.clone()),
         reference_audio: reference_audio.map(|s| s.to_string()),
         voice: None,
-        language: None,
+        language: language.map(|s| s.to_string()),
         extra: extra.clone(),
         generated_at: Some(recovery::now_stamp()),
+        chunker_version: recovery::CURRENT_CHUNKER_VERSION,
     });
     let _ = recovery_state.save(output_dir);
+    if chunking_changed {
+        if let Some(cb) = progress.as_deref_mut() {
+            cb("Text extraction/chunking changed: previous chunk records were discarded, the book will be re-synthesized.");
+        }
+    }
     let mut done_count = 0usize;
     let mut failed_count = 0usize;
     let mut rate_guard = crate::audio_check::RateGuard::new();
@@ -367,7 +453,7 @@ pub fn synthesize_book(
                 text: chunk_text.clone(),
                 output_path: wav_path.to_string_lossy().to_string(),
                 reference_audio: reference_audio.map(|s| s.to_string()),
-                language: None,
+                language: language.map(|s| s.to_string()),
                 voice: None,
                 extra: extra.clone(),
             };

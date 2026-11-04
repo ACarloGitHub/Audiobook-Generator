@@ -118,6 +118,8 @@ pub fn stop_generation() {
 #[derive(Debug, Serialize, Clone)]
 pub struct BookInfo {
     pub title: String,
+    /// English language label resolved from the document metadata, when known.
+    pub language: Option<String>,
     pub chapters: Vec<ChapterSummary>,
 }
 
@@ -135,6 +137,7 @@ pub fn load_epub(path: PathBuf) -> Result<BookInfo, String> {
         .map_err(|e| format!("failed to load document: {e:#}"))?;
     Ok(BookInfo {
         title: book.title,
+        language: book.language,
         chapters: book
             .chapters
             .iter()
@@ -144,6 +147,11 @@ pub fn load_epub(path: PathBuf) -> Result<BookInfo, String> {
             })
             .collect(),
     })
+}
+
+#[tauri::command]
+pub fn inspect_reference_audio(path: PathBuf) -> Option<crate::audio_check::ReferenceInfo> {
+    crate::audio_check::reference_info(&path)
 }
 
 #[tauri::command]
@@ -1015,6 +1023,7 @@ pub async fn start_generation(
         let variant_name = audio8_plugin.variant_name.clone();
         let audio8_paths = audio8_plugin.paths.clone();
         let ref_audio_task = reference_audio.clone();
+        let lang_task = language.clone();
         let extra_task = extra_map.clone();
         let only_task = only_chapters.clone();
 
@@ -1026,6 +1035,7 @@ pub async fn start_generation(
             crate::plugins::audio8::synthesize_book(
                 &p, &epub, &out, max_words, max_chars_resolved, ffmpeg.as_deref(),
                 ref_audio_task.as_deref(),
+                lang_task.as_deref(),
                 only_task.as_deref(),
                 &extra_task,
                 Some(cb),

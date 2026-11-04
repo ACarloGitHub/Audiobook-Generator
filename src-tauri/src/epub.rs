@@ -19,6 +19,9 @@ pub struct Chapter {
 /// to the EPUB file stem if the OPF metadata has no `dc:title`.
 pub struct Book {
     pub title: String,
+    /// English label of the document language (e.g. "Italian"), resolved
+    /// from `dc:language` / `<html lang>` when available.
+    pub language: Option<String>,
     pub chapters: Vec<Chapter>,
 }
 
@@ -128,6 +131,92 @@ fn sanitize_title(s: &str) -> String {
         .collect::<String>()
         .trim()
         .replace(' ', "_")
+}
+
+/// Document language of the book, as the English label the TTS engines use
+/// (e.g. "Italian"). Read from the OPF `dc:language` (EPUB 2 and 3) and
+/// resolved through [`language_label`]. Returns `None` for non-EPUB inputs
+/// or when the metadata is missing/unknown.
+pub fn read_language(path: &Path) -> Option<String> {
+    let ext = path
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    if ext != "epub" {
+        return None;
+    }
+    let file = File::open(path).ok()?;
+    let mut zip = zip::ZipArchive::new(file).ok()?;
+    let (_opf_path, opf_bytes) = read_container_xml(&mut zip).ok()?;
+    let opf = String::from_utf8(opf_bytes).ok()?;
+    let patterns = [
+        r"(?is)<dc:language[^>]*>\s*([^<]+?)\s*</dc:language>",
+        r#"(?is)\bxml:lang=["']([^"']+)["']"#,
+        r#"(?is)<html[^>]*\blang=["']([^"']+)["']"#,
+    ];
+    for pattern in patterns {
+        let Ok(re) = regex::Regex::new(pattern) else {
+            continue;
+        };
+        if let Some(caps) = re.captures(&opf) {
+            if let Some(code) = caps.get(1) {
+                if let Some(label) = language_label(code.as_str()) {
+                    return Some(label);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Map an ISO-639 code ("it", "it-IT", "en_US") to the English label used
+/// in `engine_registry.json`. Unknown languages return `None` so callers
+/// can fall back to "Auto" instead of sending a label the engine rejects.
+pub fn language_label(raw: &str) -> Option<String> {
+    let code = raw
+        .trim()
+        .split(['-', '_'])
+        .next()
+        .unwrap_or(raw)
+        .to_ascii_lowercase();
+    let label = match code.as_str() {
+        "it" => "Italian",
+        "en" => "English",
+        "fr" => "French",
+        "de" => "German",
+        "es" => "Spanish",
+        "pt" => "Portuguese",
+        "ru" => "Russian",
+        "ja" => "Japanese",
+        "ko" => "Korean",
+        "zh" => "Chinese",
+        "nl" => "Dutch",
+        "pl" => "Polish",
+        "hu" => "Hungarian",
+        "lv" => "Latvian",
+        "ka" => "Georgian",
+        "ar" => "Arabic",
+        "hi" => "Hindi",
+        "tr" => "Turkish",
+        "sv" => "Swedish",
+        "no" | "nb" | "nn" => "Norwegian",
+        "da" => "Danish",
+        "fi" => "Finnish",
+        "el" => "Greek",
+        "he" => "Hebrew",
+        "th" => "Thai",
+        "vi" => "Vietnamese",
+        "id" => "Indonesian",
+        "ms" => "Malay",
+        "my" => "Burmese",
+        "km" => "Khmer",
+        "lo" => "Lao",
+        "sw" => "Swahili",
+        "tl" => "Filipino",
+        "yue" => "Cantonese",
+        _ => return None,
+    };
+    Some(label.to_string())
 }
 
 fn read_container_xml<R: std::io::Read + std::io::Seek>(
@@ -454,7 +543,10 @@ fn resolve_path(opf_path: &str, href: &str) -> String {
 fn html_to_text(html: &str) -> String {
     let mut out = String::with_capacity(html.len());
     let mut reader = Reader::from_str(html);
-    reader.config_mut().trim_text(true);
+    // Keep whitespace: the spaces between inline tags (`<span>di </span>`)
+    // carry word boundaries, and paragraph breaks are rebuilt from block
+    // tags below. Trimming here fused words and paragraphs together.
+    reader.config_mut().trim_text(false);
     let mut buf = Vec::new();
 
     let skip_tags: &[&[u8]] = &[
@@ -464,6 +556,11 @@ fn html_to_text(html: &str) -> String {
     ];
     let mut skip_depth: usize = 0;
     let break_tags: &[&[u8]] = &[b"br", b"hr"];
+    let block_tags: &[&[u8]] = &[
+        b"p", b"div", b"h1", b"h2", b"h3", b"h4", b"h5", b"h6",
+        b"li", b"ul", b"ol", b"blockquote", b"section", b"article",
+        b"tr", b"td", b"th", b"table", b"pre", b"dd", b"dt", b"figcaption",
+    ];
 
     loop {
         match reader.read_event_into(&mut buf) {
@@ -471,13 +568,22 @@ fn html_to_text(html: &str) -> String {
                 let name = e.name().as_ref().to_vec();
                 if skip_tags.iter().any(|t| *t == name.as_slice()) {
                     skip_depth += 1;
-                } else if break_tags.iter().any(|t| *t == name.as_slice()) {
-                    out.push('\n');
+                } else if skip_depth == 0 {
+                    if break_tags.iter().any(|t| *t == name.as_slice())
+                        || block_tags.iter().any(|t| *t == name.as_slice())
+                    {
+                        out.push('\n');
+                    }
                 }
             }
-            Ok(Event::End(_)) => {
+            Ok(Event::End(e)) => {
                 if skip_depth > 0 {
                     skip_depth -= 1;
+                } else {
+                    let name = e.name().as_ref().to_vec();
+                    if block_tags.iter().any(|t| *t == name.as_slice()) {
+                        out.push('\n');
+                    }
                 }
             }
             Ok(Event::Empty(e)) => {
@@ -491,12 +597,12 @@ fn html_to_text(html: &str) -> String {
             Ok(Event::Text(t)) => {
                 if skip_depth == 0 {
                     let unescaped = t.unescape().unwrap_or_default();
-                    out.push_str(&unescaped);
+                    push_collapsed_text(&mut out, &unescaped);
                 }
             }
             Ok(Event::CData(c)) => {
                 if skip_depth == 0 {
-                    out.push_str(std::str::from_utf8(c.as_ref()).unwrap_or(""));
+                    push_collapsed_text(&mut out, std::str::from_utf8(c.as_ref()).unwrap_or(""));
                 }
             }
             Ok(Event::Eof) => break,
@@ -509,28 +615,122 @@ fn html_to_text(html: &str) -> String {
         buf.clear();
     }
 
-    let mut collapsed = String::with_capacity(out.len());
-    let mut prev_space = false;
-    let mut prev_newline = false;
-    for c in out.chars() {
-        if c == '\n' {
-            if !prev_newline {
-                collapsed.push('\n');
+    normalize_text(&out)
+}
+
+/// Append one text node, collapsing every whitespace run (including the
+/// newlines used to indent the XHTML source) to a single space. Paragraph
+/// breaks are added separately from block tags, so the indentation of the
+/// source must not leak into the paragraph structure.
+fn push_collapsed_text(out: &mut String, text: &str) {
+    let mut pending_space = false;
+    for c in text.chars() {
+        match c {
+            // Soft hyphen and zero-width characters only confuse the model.
+            '\u{00AD}' | '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{FEFF}' => continue,
+            c if c.is_whitespace() => pending_space = true,
+            c => {
+                if pending_space && !out.is_empty() && !out.ends_with([' ', '\n']) {
+                    out.push(' ');
+                }
+                pending_space = false;
+                out.push(c);
             }
-            prev_newline = true;
-            prev_space = false;
-        } else if c == ' ' || c == '\t' {
-            if !prev_space && !prev_newline {
-                collapsed.push(' ');
-            }
-            prev_space = true;
-            prev_newline = false;
-        } else {
-            collapsed.push(c);
-            prev_space = false;
-            prev_newline = false;
         }
     }
+    if pending_space && !out.is_empty() && !out.ends_with([' ', '\n']) {
+        out.push(' ');
+    }
+}
 
-    collapsed.trim().to_string()
+/// Final normalisation: collapse spaces, turn runs of newlines into a single
+/// paragraph break, and trim the ends.
+fn normalize_text(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut pending_space = false;
+    let mut pending_newline = false;
+    for c in raw.chars() {
+        if c == '\n' {
+            pending_newline = true;
+            pending_space = false;
+        } else if c.is_whitespace() {
+            if !pending_newline {
+                pending_space = true;
+            }
+        } else {
+            if pending_newline {
+                if !out.is_empty() {
+                    out.push('\n');
+                }
+                pending_newline = false;
+            } else if pending_space && !out.is_empty() && !out.ends_with('\n') {
+                out.push(' ');
+            }
+            pending_space = false;
+            out.push(c);
+        }
+    }
+    out.trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keeps_spaces_between_inline_tags() {
+        let html = "<p><span>con l'umore di </span><span>Elia</span><span>. Era seduto</span></p>";
+        assert_eq!(html_to_text(html), "con l'umore di Elia. Era seduto");
+    }
+
+    #[test]
+    fn keeps_whitespace_only_spans_as_word_separator() {
+        let html = "<p><span>14 marzo 1952.</span><span> </span><span>La citta</span></p>";
+        assert_eq!(html_to_text(html), "14 marzo 1952. La citta");
+    }
+
+    #[test]
+    fn paragraphs_become_newlines_not_fused_sentences() {
+        let html = "<h2><span>Titolo</span></h2><p><span>Prima.</span></p><p><span>Seconda.</span></p>";
+        assert_eq!(html_to_text(html), "Titolo\nPrima.\nSeconda.");
+    }
+
+    #[test]
+    fn source_indentation_does_not_create_paragraphs() {
+        let html = "<p>\n  <span>Una</span>\n  <span>frase.</span>\n</p>";
+        assert_eq!(html_to_text(html), "Una frase.");
+    }
+
+    #[test]
+    fn skips_scripts_and_links_but_keeps_surrounding_text() {
+        let html = "<p>Prima <a href=\"#n\">nota</a> dopo.<script>x</script></p>";
+        assert_eq!(html_to_text(html), "Prima dopo.");
+    }
+
+    #[test]
+    fn removes_soft_hyphens() {
+        assert_eq!(html_to_text("<p>im\u{00AD}portante</p>"), "importante");
+    }
+
+    #[test]
+    fn maps_iso_codes_to_engine_labels() {
+        assert_eq!(language_label("it").as_deref(), Some("Italian"));
+        assert_eq!(language_label("en-US").as_deref(), Some("English"));
+        assert_eq!(language_label("pt_BR").as_deref(), Some("Portuguese"));
+        assert_eq!(language_label("xx"), None);
+    }
+
+    #[test]
+    fn real_epub_has_no_fused_words() {
+        let path = Path::new("../test_files/test_ebook_it.epub");
+        if !path.exists() {
+            return;
+        }
+        let chapters = extract_chapters(path).expect("extract test epub");
+        assert_eq!(read_language(path).as_deref(), Some("Italian"));
+        let text = &chapters[0].text;
+        assert!(!text.contains("diElia"), "fused word still present: {text:.200}");
+        assert!(text.contains("di Elia"), "expected 'di Elia' in: {text:.200}");
+        assert!(text.contains('\n'), "expected paragraph breaks in chapter text");
+    }
 }

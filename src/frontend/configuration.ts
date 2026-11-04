@@ -92,15 +92,92 @@ function paramSlider(id: string, label: string, regKey: string): string {
     `;
 }
 
+function paramCheckbox(id: string, label: string, regKey: string): string {
+    const def = state.engineGeneration[regKey]?.default;
+    const override = state.engineParamOverrides[id];
+    const checked = override !== undefined ? override === "true" : def === true;
+    const desc = state.engineGeneration[regKey]?.description
+        ? `<p class="param-desc">${escapeHtml(state.engineGeneration[regKey]!.description!)}</p>`
+        : "";
+    return `
+      <div class="field-row param-row">
+        <label class="checkbox-row">
+          <input type="checkbox" id="${id}" ${checked ? "checked" : ""} />
+          <span>${label}</span>
+        </label>
+        ${desc}
+      </div>
+    `;
+}
+
+/** Languages available for the selected engine, with "Auto" first. */
+function languageOptions(): string[] {
+    const base = state.engineSupportedLanguages.length > 0
+        ? [...state.engineSupportedLanguages]
+        : ["Auto", "Chinese", "English", "German", "Italian", "Portuguese", "Spanish", "Japanese", "Korean", "French", "Russian"];
+    if (!base.includes("Auto")) base.unshift("Auto");
+    return base;
+}
+
+function renderLanguageSelect(id: string, label: string, help?: string): string {
+    const langs = languageOptions();
+    // If the book language is not supported by this engine, show "Auto"
+    // instead of an arbitrary first entry.
+    const current = langs.includes(state.selectedLanguage) ? state.selectedLanguage : "Auto";
+    const options = langs
+        .map((l) => `<option value="${escapeHtml(l)}" ${current === l ? "selected" : ""}>${escapeHtml(l)}</option>`)
+        .join("");
+    return `
+      <div class="field-row">
+        <label class="field-label">${label}</label>
+        <select class="select" id="${id}">${options}</select>
+        ${help ? `<p class="field-help">${help}</p>` : ""}
+      </div>
+    `;
+}
+
+/** Reference recording summary + warnings (duration, pauses, transcript). */
+function renderReferenceInfo(transcriptId?: string, maxSeconds = 30): string {
+    if (!state.referenceWavPath) return "";
+    const info = state.referenceInfo;
+    if (!info) {
+        return `<p class="field-help">Reference selected, but it is not a readable PCM WAV.</p>`;
+    }
+    const warnings: string[] = [];
+    if (info.duration_seconds < 3) {
+        warnings.push(`The reference is only ${info.duration_seconds.toFixed(1)} s: use at least 3 s of continuous speech.`);
+    }
+    if (info.duration_seconds > maxSeconds) {
+        warnings.push(`The reference is ${info.duration_seconds.toFixed(1)} s: keep it within 3-${maxSeconds} s, it shares the engine context with the text.`);
+    }
+    if (info.longest_silence_seconds > 1.5) {
+        warnings.push(`It contains a ${info.longest_silence_seconds.toFixed(1)} s pause: the model imitates it, which is the usual cause of long pauses after a few words. Prefer a continuous reading.`);
+    }
+    if (info.peak < 0.05) {
+        warnings.push(`The recording is very quiet (peak ${(info.peak * 100).toFixed(0)}%): normalize it before cloning.`);
+    }
+    if (transcriptId) {
+        const words = state.referenceTranscript.trim().split(/\s+/).filter(Boolean).length;
+        if (words > 40) {
+            warnings.push(`The transcript has ${words} words: keep the sample around 25-40 words.`);
+        }
+    }
+    const summary = `${info.duration_seconds.toFixed(1)} s · ${info.sample_rate} Hz · ${info.channels} ch · longest pause ${info.longest_silence_seconds.toFixed(1)} s`;
+    const warningHtml = warnings
+        .map((w) => `<p class="param-desc" style="color:#b45309">⚠ ${escapeHtml(w)}</p>`)
+        .join("");
+    return `<p class="field-help">Reference: ${escapeHtml(summary)}</p>${warningHtml}`;
+}
+
+function transcriptWordCount(): number {
+    return state.referenceTranscript.trim().split(/\s+/).filter(Boolean).length;
+}
+
 function renderQwenControls(): string {
     const mode = qwenModeFromEngineId(state.selectedEngineId);
     const modeBadge = `<p class="field-help">Mode: <strong>${mode}</strong></p>`;
 
     let modeControls = "";
-
-    const langOptions = ["Auto", "Chinese", "English", "German", "Italian", "Portuguese", "Spanish", "Japanese", "Korean", "French", "Russian"]
-        .map((l) => `<option value="${l}" ${state.selectedLanguage === l ? "selected" : ""}>${l}</option>`)
-        .join("");
 
     if (mode === "Custom Voice") {
         // Voices (with official native language) come from the registry via
@@ -118,10 +195,7 @@ function renderQwenControls(): string {
             <select class="select" id="qwen-speaker-select">${voiceOptions}</select>
             <p class="param-desc">Official notice: each preset voice gives its best quality in its native language. All voices can speak Italian, but accent and quality may degrade.</p>
           </div>
-          <div class="field-row">
-            <label class="field-label">Language</label>
-            <select class="select" id="qwen-language-select">${langOptions}</select>
-          </div>
+          ${renderLanguageSelect("qwen-language-select", "Language")}
           <div class="field-row">
             <label class="field-label">Additional Instructions (pre-filled — edit or delete as you like)</label>
             <input type="text" class="text-input" id="qwen-instruct-input" value="${escapeHtml(state.qwenInstruct || "Read calmly and evenly, like a professional audiobook narrator")}" />
@@ -137,24 +211,16 @@ function renderQwenControls(): string {
             <label class="field-label">Reference Transcription (optional — better quality if provided)</label>
             <textarea class="text-input" rows="2" id="qwen-ref-text" placeholder="Exact transcription of the reference audio">${escapeHtml(state.referenceTranscript || "")}</textarea>
           </div>
-          <div class="field-row">
-            <label class="field-label">Language</label>
-            <select class="select" id="qwen-language-select">${langOptions}</select>
-          </div>
+          ${renderReferenceInfo("qwen-ref-text", 20)}
+          ${renderLanguageSelect("qwen-language-select", "Language")}
         `;
     } else if (mode === "Voice Design") {
-        const designLangs = ["Chinese", "English", "German", "Italian", "Portuguese", "Spanish", "Japanese", "Korean", "French", "Russian"]
-            .map((l) => `<option value="${l}" ${state.selectedLanguage === l ? "selected" : ""}>${l}</option>`)
-            .join("");
         modeControls = `
           <div class="field-row">
             <label class="field-label">Voice Description (in English)</label>
             <textarea class="text-input" rows="3" id="qwen-instruct-input">${escapeHtml(state.qwenInstruct || "A calm middle-aged male announcer with a deep voice")}</textarea>
           </div>
-          <div class="field-row">
-            <label class="field-label">Language</label>
-            <select class="select" id="qwen-language-select">${designLangs}</select>
-          </div>
+          ${renderLanguageSelect("qwen-language-select", "Language")}
         `;
     }
 
@@ -168,6 +234,14 @@ function renderQwenControls(): string {
         ${paramSlider("qwen-top-p", "Top-P", "top_p")}
         ${paramSlider("qwen-rep-pen", "Repetition Penalty", "rep_pen")}
         ${paramSlider("qwen-max-new", "Max New Tokens", "max_new")}
+        ${paramSlider("qwen-sub-temp", "Sub-talker Temperature", "sub_temp")}
+        ${paramSlider("qwen-sub-top-k", "Sub-talker Top-K", "sub_top_k")}
+        ${paramSlider("qwen-sub-top-p", "Sub-talker Top-P", "sub_top_p")}
+        ${paramSlider("qwen-codec-chunk-dur", "Codec Decode Window (s)", "codec_chunk_dur")}
+        ${paramSlider("qwen-codec-left-dur", "Codec Left Context (s)", "codec_left_dur")}
+        ${paramCheckbox("qwen-greedy", "Greedy decoding (no sampling)", "greedy")}
+        ${paramCheckbox("qwen-no-fa", "Disable Flash Attention", "no_fa")}
+        ${paramCheckbox("qwen-clamp-fp16", "Clamp FP16 (older NVIDIA cards)", "clamp_fp16")}
         <div class="field-row">
           <label class="field-label">Seed (empty = random)</label>
           <input type="number" class="num-input" id="qwen-seed" placeholder="random" />
@@ -205,7 +279,12 @@ function renderOuteControls(): string {
         ${paramSlider("oute-top-p", "Top-P", "top_p")}
         ${paramSlider("oute-min-p", "Min-P", "min_p")}
         ${paramSlider("oute-rep-pen", "Repetition Penalty", "repetition_penalty")}
+        ${paramSlider("oute-repeat-last-n", "Repetition Window (tokens)", "repeat_last_n")}
         ${paramSlider("oute-max-tokens", "Max Tokens", "max_tokens")}
+        <div class="field-row">
+          <label class="field-label">Seed (empty = one random seed per book)</label>
+          <input type="number" class="num-input" id="oute-seed" placeholder="auto" />
+        </div>
       </details>
     `;
 }
@@ -226,6 +305,7 @@ function renderVoxControls(): string {
       <div class="field-row">
         <label class="field-label">Voice Description (in English, required)</label>
         <textarea class="text-input" rows="2" id="vox-voice-description">${escapeHtml(state.voxVoiceDescription || "A calm middle-aged male narrator with a deep voice")}</textarea>
+        <p class="param-desc">Voice Design has no reference sample, so the model invents the voice: name the language (e.g. "speaking Italian") and the intended delivery to steer accent and pace.</p>
       </div>`;
     }
 
@@ -255,8 +335,10 @@ function renderVoxControls(): string {
       </div>
       ${descControls}
       ${cloneControls}
+      ${mode === "clone" || mode === "ultimate" ? renderReferenceInfo(mode === "ultimate" ? "vox-ref-text" : undefined) : ""}
       <details class="accordion">
         <summary>Advanced Settings</summary>
+        ${paramSlider("vox-temperature", "Noise Temperature", "temperature")}
         ${paramSlider("vox-cfg", "CFG Guidance Scale", "cfg")}
         ${paramSlider("vox-timesteps", "CFM Timesteps", "timesteps")}
         ${paramSlider("vox-steps", "Max Decode Steps", "steps")}
@@ -275,13 +357,25 @@ function renderVoxControls(): string {
 function renderAudio8Controls(): string {
     return `
       <p class="field-help">Audio8-TTS-Realistic auto-detects the language from the input text (23 languages) and copies the pace of the reference voice. Output is 44.1 kHz.</p>
+      ${renderLanguageSelect(
+        "audio8-language-select",
+        "Language",
+        "Optional hint for the runtime (used for text normalization). Autodetect works for all 23 languages; the hint is accepted for Italian, English, French, German, Spanish, Dutch, Polish, Chinese, Cantonese, Japanese and Korean."
+      )}
       <div class="field-row">
-        <label class="field-label">Reference Audio (WAV, 10-30 s)</label>
+        <label class="field-label">Reference Audio (WAV, 10-30 s — about 25-40 spoken words)</label>
         <button class="btn-secondary" id="pick-reference-wav-btn">${state.referenceWavPath ? escapeHtml(state.referenceWavPath) : "Click to select a WAV file"}</button>
+        <p class="param-desc">
+          Use a clean single-speaker recording with <strong>continuous reading and no long pauses</strong>: the model copies the pace, the rhythm and the pauses of this sample.
+          Keep it short (10-30 s, roughly 25-40 words) because the sample and the text share a 2048-token context.
+          A long or pause-riddled sample is the usual cause of long pauses after a few words, or of a different voice between blocks.
+        </p>
+        ${renderReferenceInfo("audio8-ref-text")}
       </div>
       <div class="field-row">
         <label class="field-label">Reference Transcription (required — exact text of the reference audio)</label>
         <textarea class="text-input" rows="2" id="audio8-ref-text" placeholder="Exact transcription of the reference audio">${escapeHtml(state.referenceTranscript || "")}</textarea>
+        <p class="field-help" id="audio8-ref-words">Transcript: ${transcriptWordCount()} words (recommended 25-40).</p>
       </div>
       <details class="accordion">
         <summary>Advanced Settings</summary>
@@ -350,11 +444,13 @@ export function attachConfigurationListeners(render: () => void): void {
         });
     }
 
-    const langSelect = document.getElementById("qwen-language-select") as HTMLSelectElement | null;
-    if (langSelect) {
-        langSelect.addEventListener("change", () => {
-            state.selectedLanguage = langSelect.value;
-        });
+    for (const id of ["qwen-language-select", "audio8-language-select"]) {
+        const langSelect = document.getElementById(id) as HTMLSelectElement | null;
+        if (langSelect) {
+            langSelect.addEventListener("change", () => {
+                state.selectedLanguage = langSelect.value;
+            });
+        }
     }
 
     const instructInput = document.getElementById("qwen-instruct-input") as HTMLInputElement | HTMLTextAreaElement | null;
@@ -381,6 +477,15 @@ export function attachConfigurationListeners(render: () => void): void {
                 });
                 if (typeof path === "string") {
                     state.referenceWavPath = path;
+                    try {
+                        state.referenceInfo = await invoke<import("./types").ReferenceInfo | null>(
+                            "inspect_reference_audio",
+                            { path },
+                        );
+                    } catch (e) {
+                        state.referenceInfo = null;
+                        console.warn("inspect_reference_audio failed:", e);
+                    }
                     render();
                 }
             } catch (e) {
@@ -390,8 +495,10 @@ export function attachConfigurationListeners(render: () => void): void {
     }
 
     const advIds = ["qwen-temp", "qwen-top-k", "qwen-top-p", "qwen-rep-pen", "qwen-max-new", "qwen-seed",
-        "oute-temperature", "oute-top-k", "oute-top-p", "oute-min-p", "oute-rep-pen", "oute-max-tokens",
-        "vox-cfg", "vox-timesteps", "vox-steps", "vox-seed"];
+        "qwen-sub-temp", "qwen-sub-top-k", "qwen-sub-top-p", "qwen-codec-chunk-dur", "qwen-codec-left-dur",
+        "oute-temperature", "oute-top-k", "oute-top-p", "oute-min-p", "oute-rep-pen", "oute-repeat-last-n",
+        "oute-max-tokens", "oute-seed",
+        "vox-temperature", "vox-cfg", "vox-timesteps", "vox-steps", "vox-seed"];
     for (const id of advIds) {
         const el = document.getElementById(id) as HTMLInputElement | null;
         if (!el) continue;
@@ -480,6 +587,23 @@ export function attachConfigurationListeners(render: () => void): void {
     if (audio8RefTextInput) {
         audio8RefTextInput.addEventListener("input", () => {
             state.referenceTranscript = audio8RefTextInput.value;
+            const words = document.getElementById("audio8-ref-words");
+            if (words) {
+                const n = transcriptWordCount();
+                words.textContent = `Transcript: ${n} words (recommended 25-40).`;
+            }
+        });
+    }
+
+    // Boolean engine flags: persisted like the numeric overrides so a panel
+    // switch does not silently disable them.
+    for (const id of ["qwen-greedy", "qwen-no-fa", "qwen-clamp-fp16"]) {
+        const el = document.getElementById(id) as HTMLInputElement | null;
+        if (!el) continue;
+        const saved = state.engineParamOverrides[id];
+        if (saved !== undefined) el.checked = saved === "true";
+        el.addEventListener("change", () => {
+            state.engineParamOverrides[id] = el.checked ? "true" : "false";
         });
     }
 

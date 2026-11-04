@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { escapeHtml, ts, pickOutputDir, collectParamExtras } from "./helpers";
+import { escapeHtml, ts, pickOutputDir, collectParamExtras, effectiveLanguage } from "./helpers";
 import { renderEngineStrip } from "./engine-strip";
 import { state } from "./state";
 import type { BookInfo, EngineStatus } from "./types";
@@ -183,7 +183,7 @@ export function attachGenerateListeners(
         await invoke("start_generation", {
           engineId: state.selectedEngineId,
           voice: state.selectedVoiceId || null,
-          language: state.selectedLanguage || null,
+          language: effectiveLanguage(),
           speed: state.speed,
           epubPath: state.epubPath,
           outputDir,

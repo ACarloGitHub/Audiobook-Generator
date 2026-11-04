@@ -125,6 +125,73 @@ pub fn wav_duration_seconds(path: &Path) -> Option<f64> {
     Some(data_len as f64 / byte_rate as f64)
 }
 
+/// Summary of a reference recording, used to warn about samples that the
+/// models will imitate (pace, pauses) or that eat the engine context.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ReferenceInfo {
+    pub duration_seconds: f64,
+    pub sample_rate: u32,
+    pub channels: u16,
+    /// Absolute peak, normalised to 0..1.
+    pub peak: f32,
+    /// Longest run below 1% of the peak (≈ -40 dB), in seconds.
+    pub longest_silence_seconds: f64,
+    /// Share of the recording that sits below the silence threshold.
+    pub silence_ratio: f64,
+}
+
+/// Read a reference WAV and report duration, peak and the longest pause.
+/// Returns `None` when the file is not a readable PCM WAV.
+pub fn reference_info(path: &Path) -> Option<ReferenceInfo> {
+    let mut reader = hound::WavReader::open(path).ok()?;
+    let spec = reader.spec();
+    if spec.sample_rate == 0 {
+        return None;
+    }
+    let mut samples: Vec<f32> = Vec::new();
+    match spec.sample_format {
+        hound::SampleFormat::Int => {
+            let max = (1i64 << spec.bits_per_sample.saturating_sub(1)) as f32;
+            for sample in reader.samples::<i32>() {
+                let v = sample.ok()? as f32;
+                samples.push(if max > 0.0 { v / max } else { 0.0 });
+            }
+        }
+        hound::SampleFormat::Float => {
+            for sample in reader.samples::<f32>() {
+                samples.push(sample.ok()?);
+            }
+        }
+    }
+    if samples.is_empty() {
+        return None;
+    }
+    let channels = spec.channels.max(1) as f64;
+    let peak = samples.iter().fold(0f32, |acc, s| acc.max(s.abs()));
+    let threshold = (peak * 0.01).max(0.002);
+    let mut longest = 0usize;
+    let mut run = 0usize;
+    let mut silent = 0usize;
+    for sample in &samples {
+        if sample.abs() < threshold {
+            run += 1;
+            silent += 1;
+            longest = longest.max(run);
+        } else {
+            run = 0;
+        }
+    }
+    let frames = samples.len() as f64 / channels;
+    Some(ReferenceInfo {
+        duration_seconds: frames / spec.sample_rate as f64,
+        sample_rate: spec.sample_rate,
+        channels: spec.channels,
+        peak,
+        longest_silence_seconds: longest as f64 / channels / spec.sample_rate as f64,
+        silence_ratio: silent as f64 / samples.len() as f64,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,5 +279,40 @@ mod tests {
         let seconds = wav_duration_seconds(&path);
         let _ = std::fs::remove_file(&path);
         assert!(seconds.is_none());
+    }
+
+    #[test]
+    fn reference_info_measures_duration_and_longest_pause() {
+        let path = std::env::temp_dir().join("abg_reference_info.wav");
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 8000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut writer = hound::WavWriter::create(&path, spec).unwrap();
+        // 0.5 s tone, 1.0 s silence, 0.5 s tone = 2.0 s total.
+        for i in 0..4000 {
+            let v = if i % 2 == 0 { 8000i16 } else { -8000 };
+            writer.write_sample(v).unwrap();
+        }
+        for _ in 0..8000 {
+            writer.write_sample(0i16).unwrap();
+        }
+        for i in 0..4000 {
+            let v = if i % 2 == 0 { 8000i16 } else { -8000 };
+            writer.write_sample(v).unwrap();
+        }
+        writer.finalize().unwrap();
+
+        let info = reference_info(&path).expect("reference info");
+        let _ = std::fs::remove_file(&path);
+        assert!((info.duration_seconds - 2.0).abs() < 0.01, "{:?}", info);
+        assert!(
+            (info.longest_silence_seconds - 1.0).abs() < 0.01,
+            "longest pause: {}",
+            info.longest_silence_seconds
+        );
+        assert!(info.peak > 0.2, "peak: {}", info.peak);
     }
 }

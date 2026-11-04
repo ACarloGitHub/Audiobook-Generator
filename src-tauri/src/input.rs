@@ -19,7 +19,8 @@ pub fn parse_document(path: &Path) -> Result<Book> {
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "Untitled".to_string());
-    Ok(Book { title, chapters })
+    let language = crate::epub::read_language(path);
+    Ok(Book { title, language, chapters })
 }
 
 /// Extract chapters from any supported document, dispatching on the

@@ -30,44 +30,51 @@ pub const MAX_CHARS_PER_CHUNK: usize = MAX_TOKENS * CHARS_PER_TOKEN;
 /// `char_limits_by_lang`, e.g. 2300 for Italian, 1100 for Japanese).
 pub fn chunk_text(text: &str, max_words: usize, max_chars: usize) -> Vec<String> {
     let effective_max_chars = if max_chars == 0 { MAX_CHARS_PER_CHUNK } else { max_chars };
-    let sentences = split_sentences(text);
-    let mut chunks: Vec<String> = Vec::new();
-    let mut current: Vec<String> = Vec::new();
-    let mut current_words: usize = 0;
-    let mut current_chars: usize = 0;
+    let mut final_chunks: Vec<String> = Vec::new();
 
-    for sentence in sentences {
-        let trimmed = sentence.trim().to_string();
-        if trimmed.is_empty() {
-            continue;
+    // Never merge two paragraphs into one chunk: the model reads each chunk
+    // as a self-contained utterance, and a paragraph break is where a
+    // narrator would pause. `split_paragraphs` also re-joins hard-wrapped
+    // lines (TXT files) that do not end a sentence.
+    for paragraph in split_paragraphs(text) {
+        let sentences = split_sentences(&paragraph);
+        let mut current: Vec<String> = Vec::new();
+        let mut current_words: usize = 0;
+        let mut current_chars: usize = 0;
+
+        for sentence in sentences {
+            let trimmed = sentence.trim().to_string();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let words = trimmed.split_whitespace().count();
+            let chars = trimmed.chars().count();
+
+            // A single sentence that cannot fit the budget even alone: split
+            // it at the most natural boundary instead of letting the chunk
+            // overflow the engine limit.
+            if current.is_empty() && chars > effective_max_chars {
+                final_chunks.extend(hard_split(&trimmed, effective_max_chars));
+                continue;
+            }
+
+            let would_exceed_words = current_words + words > max_words && !current.is_empty();
+            let would_exceed_chars =
+                current_chars + chars + 1 > effective_max_chars && !current.is_empty();
+
+            if would_exceed_words || would_exceed_chars {
+                final_chunks.push(current.join(" "));
+                current.clear();
+                current_words = 0;
+                current_chars = 0;
+            }
+            current.push(trimmed);
+            current_words += words;
+            current_chars += chars + 1;
         }
-        let words = trimmed.split_whitespace().count();
-        let chars = trimmed.chars().count();
 
-        let would_exceed_words = current_words + words > max_words && !current.is_empty();
-        let would_exceed_chars = current_chars + chars + 1 > effective_max_chars && !current.is_empty();
-
-        if would_exceed_words || would_exceed_chars {
-            chunks.push(current.join(" "));
-            current.clear();
-            current_words = 0;
-            current_chars = 0;
-        }
-        current.push(trimmed);
-        current_words += words;
-        current_chars += chars + 1;
-    }
-
-    if !current.is_empty() {
-        chunks.push(current.join(" "));
-    }
-
-    let mut final_chunks: Vec<String> = Vec::with_capacity(chunks.len());
-    for chunk in chunks {
-        if chunk.chars().count() <= effective_max_chars {
-            final_chunks.push(chunk);
-        } else {
-            final_chunks.extend(hard_split(&chunk, effective_max_chars));
+        if !current.is_empty() {
+            final_chunks.push(current.join(" "));
         }
     }
 
@@ -78,16 +85,96 @@ pub fn chunk_text(text: &str, max_words: usize, max_chars: usize) -> Vec<String>
     final_chunks
 }
 
+/// Characters that may close a sentence (quotation marks, brackets) before
+/// the whitespace that starts the next one.
+const SENTENCE_CLOSERS: [char; 9] = ['»', '"', '\'', ')', ']', '”', '’', '›', '’'];
+
+/// Punctuation that can end a sentence.
+const SENTENCE_END: [char; 4] = ['.', '!', '?', '…'];
+
+/// Italian abbreviations that end with a period without ending the sentence.
+/// Compared lowercased, without the trailing dot.
+const ABBREVIATIONS: &[&str] = &[
+    "sig", "sig.ra", "sig.na", "dott", "dott.ssa", "prof", "prof.ssa", "avv", "ing",
+    "geom", "arch", "on", "sen", "art", "pag", "pagg", "fig", "tab", "cap", "ecc",
+    "es", "cfr", "n", "nn", "p", "pp", "s", "ss", "mons", "rev", "gen", "col",
+    "ten", "amm", "dir", "sez", "tel", "fax", "ca", "a.c", "p.c", "s.p.a",
+    "s.r.l", "s.n.c", "s.a.s", "etc", "vs", "mr", "mrs", "ms", "dr", "st", "jr",
+    "sr", "vol", "ed", "tav", "cit", "ibid",
+];
+
+/// Split the text into paragraphs. A newline ends a paragraph when the line
+/// ends with sentence punctuation, a closing quote or a colon; otherwise the
+/// line is treated as hard-wrapped prose and re-joined with the next one.
+/// Blank lines always break.
+fn split_paragraphs(text: &str) -> Vec<String> {
+    let mut paragraphs: Vec<String> = Vec::new();
+    let mut current = String::new();
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            if !current.trim().is_empty() {
+                paragraphs.push(std::mem::take(&mut current));
+            }
+            continue;
+        }
+        if !current.is_empty() {
+            current.push(' ');
+        }
+        current.push_str(trimmed);
+        if ends_sentence(trimmed) {
+            paragraphs.push(std::mem::take(&mut current));
+        }
+    }
+    if !current.trim().is_empty() {
+        paragraphs.push(current);
+    }
+    paragraphs
+}
+
+fn ends_sentence(line: &str) -> bool {
+    line.trim_end()
+        .chars()
+        .last()
+        .map(|c| matches!(c, '.' | '!' | '?' | '…' | ':' | ';' | '»' | '"' | '”' | '’' | ')' | ']'))
+        .unwrap_or(false)
+}
+
+/// True when the period at `dot` closes an abbreviation or an initial rather
+/// than a sentence ("Dott.", "Sig.ra", "J. R. R.", "S. Maria").
+fn closes_abbreviation(chars: &[char], dot: usize) -> bool {
+    let mut start = dot;
+    while start > 0 {
+        let c = chars[start - 1];
+        if c.is_alphanumeric() || c == '.' || c == '\'' {
+            start -= 1;
+        } else {
+            break;
+        }
+    }
+    let token: String = chars[start..dot].iter().collect::<String>().to_lowercase();
+    let token = token.trim_matches('.').to_string();
+    if token.is_empty() {
+        return false;
+    }
+    // Single initial: "J.", "R.", "S.".
+    if token.chars().count() == 1 && token.chars().all(|c| c.is_alphabetic()) {
+        return true;
+    }
+    if ABBREVIATIONS.contains(&token.as_str()) {
+        return true;
+    }
+    // Already-dotted abbreviations keep their internal dots: "s.r.l.".
+    let collapsed: String = token.chars().filter(|c| *c != '.').collect();
+    ABBREVIATIONS.contains(&collapsed.as_str())
+}
+
 /// Words that open a new clause in Italian narrative prose. Splitting before
 /// them keeps the break on a natural pause instead of an arbitrary word.
 const CONJUNCTIONS: [&str; 14] = [
     "e", "o", "ma", "però", "pero", "quindi", "dunque", "allora", "cioè", "cioe", "infatti",
     "mentre", "poiché", "poiche",
 ];
-
-/// Characters that may close a quotation or a parenthetical right after the
-/// final punctuation mark, before the space that starts the next sentence.
-const SENTENCE_CLOSERS: [char; 9] = ['»', '"', '\'', ')', ']', '”', '’', '›', '’'];
 
 /// Break an over-long fragment at the most natural boundary available.
 ///
@@ -113,13 +200,19 @@ fn hard_split(text: &str, max_chars: usize) -> Vec<String> {
 }
 
 /// Split after `,` `;` `:`, keeping the punctuation attached to the piece it
-/// closes.
+/// closes. A comma between digits is a decimal separator ("3,14") and is
+/// never a break point.
 fn split_after_punctuation(text: &str) -> Vec<String> {
+    let chars: Vec<char> = text.chars().collect();
     let mut out = Vec::new();
     let mut current = String::new();
-    for c in text.chars() {
-        current.push(c);
-        if matches!(c, ',' | ';' | ':') {
+    for (i, c) in chars.iter().enumerate() {
+        current.push(*c);
+        let decimal_comma = *c == ','
+            && i > 0
+            && chars[i - 1].is_ascii_digit()
+            && chars.get(i + 1).map(|n| n.is_ascii_digit()).unwrap_or(false);
+        if matches!(*c, ',' | ';' | ':') && !decimal_comma {
             let trimmed = current.trim().to_string();
             if !trimmed.is_empty() {
                 out.push(trimmed);
@@ -256,10 +349,16 @@ fn distribute_balanced(units: Vec<String>, n: usize) -> Vec<String> {
 }
 
 /// Sentence splitter that mirrors the legacy Python `split_into_sentences`.
-/// Splits on `.`, `!`, `?` followed by whitespace, keeping the punctuation
-/// attached to the preceding sentence. Ellipses (`..`) are not split because
-/// we require the punctuation char to NOT be preceded by another punctuation
-/// char (so ".." stays together).
+/// Splits on sentence-ending punctuation (`.`, `!`, `?`, `…`), keeping the
+/// punctuation attached to the preceding sentence.
+///
+/// Guards that keep a chunk boundary away from a mid-sentence point:
+/// - decimal points (`3.14`) are not sentence ends;
+/// - Italian abbreviations and initials (`Dott.`, `Sig.ra`, `J. R. R.`) are
+///   not sentence ends;
+/// - a period followed by a lowercase word is treated as a continuation,
+///   which catches abbreviations we do not list;
+/// - ellipses (`...`, `…`) do end a sentence, after the whole run.
 pub fn split_sentences(text: &str) -> Vec<String> {
     let chars: Vec<char> = text.chars().collect();
     let mut out: Vec<String> = Vec::new();
@@ -268,37 +367,70 @@ pub fn split_sentences(text: &str) -> Vec<String> {
     let mut i = 0;
     while i < chars.len() {
         let c = chars[i];
-        if c == '.' || c == '!' || c == '?' {
-            // Skip ellipses: if the previous char was also punctuation, don't split
-            let prev_is_punct = i > 0 && (chars[i - 1] == '.' || chars[i - 1] == '!' || chars[i - 1] == '?');
-            if !prev_is_punct {
-                // A sentence may close with a quotation mark or a bracket right
-                // after the punctuation («Non lo so.» / "Basta." / (davvero.)).
-                let mut end = i;
-                while end + 1 < chars.len() && SENTENCE_CLOSERS.contains(&chars[end + 1]) {
-                    end += 1;
-                }
-                let next_is_ws = end + 1 >= chars.len() || chars[end + 1].is_whitespace();
-                if next_is_ws {
-                    // Include the punctuation and any closing quotes in the sentence
-                    let sentence: String = chars[start..=end].iter().collect();
-                    let trimmed = sentence.trim().to_string();
-                    if !trimmed.is_empty() {
-                        out.push(trimmed);
-                    }
-                    // Skip trailing whitespace
-                    let mut j = end + 1;
-                    while j < chars.len() && chars[j].is_whitespace() {
-                        j += 1;
-                    }
-                    start = j;
-                    i = j;
+        if !SENTENCE_END.contains(&c) {
+            i += 1;
+            continue;
+        }
+
+        // Consume a run of repeated punctuation: "...", "!!", "?!", "……".
+        let mut end = i;
+        while end + 1 < chars.len() && SENTENCE_END.contains(&chars[end + 1]) {
+            end += 1;
+        }
+
+        // A period between digits is a decimal separator, not a full stop.
+        if c == '.' {
+            let prev_digit = i > 0 && chars[i - 1].is_ascii_digit();
+            let next_digit = chars.get(end + 1).map(|n| n.is_ascii_digit()).unwrap_or(false);
+            if prev_digit && next_digit {
+                i = end + 1;
+                continue;
+            }
+        }
+
+        // Abbreviations and initials only apply to a single period, not to a
+        // run like "...".
+        if c == '.' && end == i && closes_abbreviation(&chars, i) {
+            i += 1;
+            continue;
+        }
+
+        // A sentence may close with a quotation mark or a bracket right after
+        // the punctuation («Non lo so.» / "Basta." / (davvero.)).
+        while end + 1 < chars.len() && SENTENCE_CLOSERS.contains(&chars[end + 1]) {
+            end += 1;
+        }
+        let next_is_ws = end + 1 >= chars.len() || chars[end + 1].is_whitespace();
+        if !next_is_ws {
+            i = end + 1;
+            continue;
+        }
+
+        // "Basta. poi" is far more often an abbreviation or a numbering
+        // artifact than a real sentence break: keep it together.
+        if c == '.' {
+            let next_word = chars[end + 1..].iter().find(|ch| !ch.is_whitespace());
+            if let Some(nc) = next_word {
+                if nc.is_lowercase() {
+                    i = end + 1;
                     continue;
                 }
             }
         }
-        i += 1;
+
+        let sentence: String = chars[start..=end].iter().collect();
+        let trimmed = sentence.trim().to_string();
+        if !trimmed.is_empty() {
+            out.push(trimmed);
+        }
+        let mut j = end + 1;
+        while j < chars.len() && chars[j].is_whitespace() {
+            j += 1;
+        }
+        start = j;
+        i = j;
     }
+
     let tail: String = chars[start..].iter().collect();
     let trimmed = tail.trim().to_string();
     if !trimmed.is_empty() {
@@ -492,5 +624,84 @@ mod tests {
             );
         }
         assert_eq!(out.join(" "), text);
+    }
+
+    #[test]
+    fn italian_abbreviations_do_not_end_a_sentence() {
+        let text = "Il Dott. Rossi arrivò tardi. Poi uscì.";
+        let out = split_sentences(text);
+        assert_eq!(out.len(), 2, "parts: {out:?}");
+        assert_eq!(out[0], "Il Dott. Rossi arrivò tardi.");
+    }
+
+    #[test]
+    fn initials_do_not_end_a_sentence() {
+        let text = "J. R. R. Tolkien scrisse il libro. Fu un successo.";
+        let out = split_sentences(text);
+        assert_eq!(out.len(), 2, "parts: {out:?}");
+        assert!(out[0].starts_with("J. R. R. Tolkien"));
+    }
+
+    #[test]
+    fn ascii_ellipsis_ends_a_sentence() {
+        let text = "Non lo so... Disse altro.";
+        let out = split_sentences(text);
+        assert_eq!(out.len(), 2, "parts: {out:?}");
+        assert_eq!(out[0], "Non lo so...");
+    }
+
+    #[test]
+    fn unicode_ellipsis_ends_a_sentence() {
+        let text = "Non lo so… Disse altro.";
+        let out = split_sentences(text);
+        assert_eq!(out.len(), 2, "parts: {out:?}");
+        assert_eq!(out[0], "Non lo so…");
+    }
+
+    #[test]
+    fn period_followed_by_lowercase_is_a_continuation() {
+        let text = "Il numero è 3. poi segue.";
+        let out = split_sentences(text);
+        assert_eq!(out.len(), 1, "parts: {out:?}");
+    }
+
+    #[test]
+    fn decimal_comma_is_never_a_break_point() {
+        let text = "Il prezzo è 3,14 euro e sembra giusto.";
+        let out = hard_split(text, 18);
+        assert!(
+            out.iter().any(|p| p.contains("3,14")),
+            "decimal comma was split: {out:?}"
+        );
+    }
+
+    #[test]
+    fn chunks_never_cross_a_paragraph_break() {
+        let text = "Prima frase del paragrafo.\nSeconda frase del paragrafo.";
+        let out = chunk_text(text, 1000, 1000);
+        assert_eq!(out.len(), 2, "chunks: {out:?}");
+        assert_eq!(out[0], "Prima frase del paragrafo.");
+        assert_eq!(out[1], "Seconda frase del paragrafo.");
+    }
+
+    #[test]
+    fn long_paragraph_is_split_without_crossing_to_the_next_one() {
+        let long = "parola ".repeat(40) + "fine.";
+        let text = format!("{long}\nAltro paragrafo.");
+        let out = chunk_text(&text, 1000, 100);
+        assert!(out.len() >= 2, "chunks: {out:?}");
+        assert_eq!(out.last().unwrap(), "Altro paragrafo.");
+        for chunk in &out[..out.len() - 1] {
+            assert!(!chunk.contains("Altro paragrafo"), "crossed paragraph: {chunk}");
+        }
+    }
+
+    #[test]
+    fn hard_wrapped_lines_are_rejoined() {
+        let text = "una riga\nspezzata a metà\n\nnuovo paragrafo.";
+        let out = chunk_text(text, 1000, 1000);
+        assert_eq!(out.len(), 2, "chunks: {out:?}");
+        assert_eq!(out[0], "una riga spezzata a metà");
+        assert_eq!(out[1], "nuovo paragrafo.");
     }
 }

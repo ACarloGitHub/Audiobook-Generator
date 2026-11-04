@@ -1,16 +1,12 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { escapeHtml } from "./helpers";
-import { state, SEPARATOR_OPTIONS } from "./state";
+import { state } from "./state";
 import type { BookInfo } from "./types";
 
 export function renderEpub(): string {
   const wordGroupVisible = state.chunkStrategy === "Word Count Approx";
   const charGroupVisible = state.chunkStrategy === "Character Limit";
-  const sepOptions = SEPARATOR_OPTIONS.map(
-    (o) =>
-      `<option value="${escapeHtml(o.value)}" ${o.value === state.selectedSeparator ? "selected" : ""}>${escapeHtml(o.label)}</option>`,
-  ).join("");
 
   return `
     <div class="card">
@@ -22,16 +18,6 @@ export function renderEpub(): string {
     <div class="card">
       <h2>Audiobook Title</h2>
       <textarea class="text-input" rows="1" id="audiobook-title" placeholder="Enter title or leave blank">${escapeHtml(state.audioBookTitle)}</textarea>
-    </div>
-
-    <div class="card">
-      <h2>Text cleanup</h2>
-      <label class="checkbox-row">
-        <input type="checkbox" id="replace-guillemets" ${state.replaceGuillemets ? "checked" : ""} />
-        <span>Replace Guillemets (« »)</span>
-      </label>
-      <label class="field-label">Sentence Separator</label>
-      <select class="select" id="separator-select">${sepOptions}</select>
     </div>
 
     <div class="card">
@@ -48,8 +34,6 @@ export function renderEpub(): string {
       </div>
 
       <div class="group ${wordGroupVisible ? "" : "hidden"}" id="word-count-group">
-        <label class="field-label">Min Words</label>
-        <input type="number" class="num-input" id="min-words" min="10" step="10" value="${state.chunkMinWords}" />
         <label class="field-label">Max Words</label>
         <input type="number" class="num-input" id="max-words" min="50" step="10" value="${state.chunkMaxWords}" />
       </div>
@@ -72,6 +56,9 @@ export function attachEpubListeners(render: () => void, onEpubLoaded: (info: Boo
         if (typeof path === "string") {
           state.epubPath = path;
           const info = await invoke<BookInfo>("load_epub", { path });
+          // The book language drives the engine language (Qwen) and the
+          // Audio8 hint; unknown documents keep the current choice.
+          if (info.language) state.selectedLanguage = info.language;
           // Auto-fill the audiobook title (backup behavior): prefer the
           // book metadata title, fall back to the file name. The user can
           // still edit it afterwards.
@@ -94,20 +81,6 @@ export function attachEpubListeners(render: () => void, onEpubLoaded: (info: Boo
     });
   }
 
-  const sepSelect = document.getElementById("separator-select") as HTMLSelectElement | null;
-  if (sepSelect) {
-    sepSelect.addEventListener("change", () => {
-      state.selectedSeparator = sepSelect.value;
-    });
-  }
-
-  const guillemetCb = document.getElementById("replace-guillemets") as HTMLInputElement | null;
-  if (guillemetCb) {
-    guillemetCb.addEventListener("change", () => {
-      state.replaceGuillemets = guillemetCb.checked;
-    });
-  }
-
   for (const r of Array.from(document.querySelectorAll<HTMLInputElement>("input[name='chunk-strategy']"))) {
     r.addEventListener("change", () => {
       if (r.checked) {
@@ -117,8 +90,6 @@ export function attachEpubListeners(render: () => void, onEpubLoaded: (info: Boo
     });
   }
 
-  const minW = document.getElementById("min-words") as HTMLInputElement | null;
-  if (minW) minW.addEventListener("input", () => (state.chunkMinWords = Number(minW.value)));
   const maxW = document.getElementById("max-words") as HTMLInputElement | null;
   if (maxW) maxW.addEventListener("input", () => (state.chunkMaxWords = Number(maxW.value)));
   const maxC = document.getElementById("max-chars") as HTMLInputElement | null;

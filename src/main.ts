@@ -220,6 +220,7 @@ async function openCatalogBook(path: string): Promise<void> {
 async function loadBookIntoGenerate(path: string): Promise<void> {
   try {
     const info = await invoke<BookInfo>("load_epub", { path });
+    if (info.language) state.selectedLanguage = info.language;
     state.epubPath = path;
     const fromFile = path.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ?? "";
     state.audioBookTitle = info.title.trim() || fromFile;
@@ -271,6 +272,7 @@ async function loadJob(job: HistoryJobView, restart: boolean): Promise<void> {
   }
   try {
     const info = await invoke<BookInfo>("load_epub", { path: job.source_document });
+    if (info.language) state.selectedLanguage = info.language;
     state.epubPath = job.source_document;
     state.audioBookTitle = info.title.trim() || job.title || "audiobook";
     bookInfo = info;
@@ -321,6 +323,14 @@ function applySavedSettings(job: HistoryJobView): void {
     set("top_p", "qwen-top-p");
     set("rep_pen", "qwen-rep-pen");
     set("max_new", "qwen-max-new");
+    set("sub_temp", "qwen-sub-temp");
+    set("sub_top_k", "qwen-sub-top-k");
+    set("sub_top_p", "qwen-sub-top-p");
+    set("codec_chunk_dur", "qwen-codec-chunk-dur");
+    set("codec_left_dur", "qwen-codec-left-dur");
+    set("greedy", "qwen-greedy");
+    set("no_fa", "qwen-no-fa");
+    set("clamp_fp16", "qwen-clamp-fp16");
     set("seed", "qwen-seed");
   } else if (engine.startsWith("OuteTTS")) {
     set("temperature", "oute-temperature");
@@ -328,8 +338,11 @@ function applySavedSettings(job: HistoryJobView): void {
     set("top_p", "oute-top-p");
     set("min_p", "oute-min-p");
     set("repetition_penalty", "oute-rep-pen");
+    set("repeat_last_n", "oute-repeat-last-n");
     set("max_tokens", "oute-max-tokens");
+    set("seed", "oute-seed");
   } else if (engine.startsWith("VoxCPM2")) {
+    set("temperature", "vox-temperature");
     set("cfg", "vox-cfg");
     set("timesteps", "vox-timesteps");
     set("steps", "vox-steps");

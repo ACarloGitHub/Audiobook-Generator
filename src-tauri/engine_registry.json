@@ -303,14 +303,6 @@
         }
       ],
       "parameters": {
-        "speed": {
-          "type": "float",
-          "default": 1.0,
-          "min": 0.5,
-          "max": 2.0,
-          "step": 0.1,
-          "description": "Speech speed multiplier (not yet in qwentts.cpp CLI — controlled via text pacing)"
-        },
         "temp": {
           "type": "float",
           "default": 0.9,
@@ -355,12 +347,75 @@
         },
         "max_new": {
           "type": "int",
-          "default": 8192,
+          "default": 2048,
           "min": 256,
           "max": 8192,
           "step": 256,
-          "description": "Max new audio frames (qwentts.cpp --max-new, runtime default 2048). Official checkpoint generation_config: 8192 = full context; official evaluations used 2048",
+          "description": "Max new audio frames (qwentts.cpp --max-new). Runtime default and official evaluation value: 2048 (about 164 s at 12.5 frames/s), far above the longest chunk; a higher value only lets a runaway loop run longer before the duration check catches it",
           "cli_flag": "--max-new"
+        },
+        "greedy": {
+          "type": "bool",
+          "default": false,
+          "description": "Greedy decoding on both stacks (qwentts.cpp --greedy). Removes run-to-run variation but can ignore the end token and run to Max New Frames: keep it off for books unless you are diagnosing a specific chunk",
+          "cli_flag": "--greedy"
+        },
+        "sub_temp": {
+          "type": "float",
+          "default": 0.9,
+          "min": 0.0,
+          "max": 2.0,
+          "step": 0.05,
+          "description": "Sub-talker (Code Predictor) temperature (qwentts.cpp --sub-temp). Runtime default: 0.9",
+          "cli_flag": "--sub-temp"
+        },
+        "sub_top_k": {
+          "type": "int",
+          "default": 50,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "description": "Sub-talker top-k (qwentts.cpp --sub-top-k). Runtime default: 50",
+          "cli_flag": "--sub-top-k"
+        },
+        "sub_top_p": {
+          "type": "float",
+          "default": 1.0,
+          "min": 0.0,
+          "max": 1.0,
+          "step": 0.05,
+          "description": "Sub-talker top-p (qwentts.cpp --sub-top-p). Runtime default: 1.0",
+          "cli_flag": "--sub-top-p"
+        },
+        "codec_chunk_dur": {
+          "type": "float",
+          "default": 24.0,
+          "min": 4.0,
+          "max": 120.0,
+          "step": 1.0,
+          "description": "Codec decode window in seconds (qwentts.cpp --codec-chunk-dur). Audio longer than this is decoded in several passes; each seam leaves a small residual, so a window longer than the chunk avoids them (it costs VRAM)",
+          "cli_flag": "--codec-chunk-dur"
+        },
+        "codec_left_dur": {
+          "type": "float",
+          "default": 2.0,
+          "min": 0.0,
+          "max": 10.0,
+          "step": 0.5,
+          "description": "Left context kept between codec decode windows (qwentts.cpp --codec-left-dur). Runtime default: 2.0",
+          "cli_flag": "--codec-left-dur"
+        },
+        "no_fa": {
+          "type": "bool",
+          "default": false,
+          "description": "Disable flash attention (qwentts.cpp --no-fa). Useful to check or work around backend-specific noise",
+          "cli_flag": "--no-fa"
+        },
+        "clamp_fp16": {
+          "type": "bool",
+          "default": false,
+          "description": "Clamp hidden states to the FP16 range (qwentts.cpp --clamp-fp16). For older CUDA cards (pre-Ampere) that overflow FP16 accumulation",
+          "cli_flag": "--clamp-fp16"
         }
       },
       "mode_specific_params": {
@@ -459,6 +514,7 @@
             "type": "string",
             "default": "Italian",
             "options": [
+              "Auto",
               "Chinese",
               "English",
               "German",
@@ -618,10 +674,14 @@
           "step": 0.01,
           "description": "Repetition penalty (official default: 1.1)"
         },
-        "repetition_window": {
+        "repeat_last_n": {
           "type": "int",
           "default": 64,
-          "description": "Repetition penalty applied to last N tokens (CRITICAL: must be 64, not whole context)"
+          "min": 0,
+          "max": 256,
+          "step": 8,
+          "description": "Repetition penalty window, in tokens (llama-server repeat_last_n). CRITICAL: OuteTTS 1.0 requires exactly 64; penalising the whole context produces broken output",
+          "cli_flag": "repeat_last_n"
         },
         "max_tokens": {
           "type": "int",
@@ -801,6 +861,15 @@
         }
       ],
       "parameters": {
+        "temperature": {
+          "type": "float",
+          "default": 1.0,
+          "min": 0.2,
+          "max": 2.0,
+          "step": 0.05,
+          "description": "Flow-noise temperature (voxcpm2-cli --temperature, override of the runtime default 1.0). Keep at 1.0 unless a chunk is unstable; values below 0.2 produced empty audio in the 2026-07 tests",
+          "cli_flag": "--temperature"
+        },
         "cfg": {
           "type": "float",
           "default": 2.0,
