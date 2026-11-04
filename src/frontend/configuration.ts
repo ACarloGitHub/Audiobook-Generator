@@ -158,8 +158,8 @@ function renderReferenceInfo(transcriptId?: string, maxSeconds = 30): string {
     }
     if (transcriptId) {
         const words = state.referenceTranscript.trim().split(/\s+/).filter(Boolean).length;
-        if (words > 40) {
-            warnings.push(`The transcript has ${words} words: keep the sample around 25-40 words.`);
+        if (words > 30) {
+            warnings.push(`The transcript has ${words} words: keep the sample around 20-30 words.`);
         }
     }
     const summary = `${info.duration_seconds.toFixed(1)} s · ${info.sample_rate} Hz · ${info.channels} ch · longest pause ${info.longest_silence_seconds.toFixed(1)} s`;
@@ -363,11 +363,11 @@ function renderAudio8Controls(): string {
         "Optional hint for the runtime (used for text normalization). Autodetect works for all 23 languages; the hint is accepted for Italian, English, French, German, Spanish, Dutch, Polish, Chinese, Cantonese, Japanese and Korean."
       )}
       <div class="field-row">
-        <label class="field-label">Reference Audio (WAV, 10-30 s — about 25-40 spoken words)</label>
+        <label class="field-label">Reference Audio (WAV, 10-30 s — about 20-30 spoken words)</label>
         <button class="btn-secondary" id="pick-reference-wav-btn">${state.referenceWavPath ? escapeHtml(state.referenceWavPath) : "Click to select a WAV file"}</button>
         <p class="param-desc">
           Use a clean single-speaker recording with <strong>continuous reading and no long pauses</strong>: the model copies the pace, the rhythm and the pauses of this sample.
-          Keep it short (10-30 s, roughly 25-40 words) because the sample and the text share a 2048-token context.
+          Keep it short (10-30 s, roughly 20-30 words) because the sample and the text share a 2048-token context.
           A long or pause-riddled sample is the usual cause of long pauses after a few words, or of a different voice between blocks.
         </p>
         ${renderReferenceInfo("audio8-ref-text")}
@@ -375,7 +375,7 @@ function renderAudio8Controls(): string {
       <div class="field-row">
         <label class="field-label">Reference Transcription (required — exact text of the reference audio)</label>
         <textarea class="text-input" rows="2" id="audio8-ref-text" placeholder="Exact transcription of the reference audio">${escapeHtml(state.referenceTranscript || "")}</textarea>
-        <p class="field-help" id="audio8-ref-words">Transcript: ${transcriptWordCount()} words (recommended 25-40).</p>
+        <p class="field-help" id="audio8-ref-words">Transcript: ${transcriptWordCount()} words (recommended 20-30).</p>
       </div>
       <details class="accordion">
         <summary>Advanced Settings</summary>
@@ -590,7 +590,7 @@ export function attachConfigurationListeners(render: () => void): void {
             const words = document.getElementById("audio8-ref-words");
             if (words) {
                 const n = transcriptWordCount();
-                words.textContent = `Transcript: ${n} words (recommended 25-40).`;
+                words.textContent = `Transcript: ${n} words (recommended 20-30).`;
             }
         });
     }

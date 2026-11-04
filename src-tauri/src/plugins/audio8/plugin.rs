@@ -330,9 +330,9 @@ pub fn synthesize_book(
                 .unwrap_or(0);
             if words == 0 {
                 messages.push("reference transcript is empty (the runtime requires it)".to_string());
-            } else if words > 40 {
+            } else if words > 30 {
                 messages.push(format!(
-                    "reference transcript has {words} words: keep the sample around 25-40 words for a stable clone"
+                    "reference transcript has {words} words: keep the sample around 20-30 words for a stable clone"
                 ));
             } else {
                 let words_per_second = words as f64 / info.duration_seconds.max(0.1);
