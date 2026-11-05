@@ -4,10 +4,10 @@
 
 | Version | Supported |
 |---------|-----------|
-| New Tauri-based releases (1.x and later) | Yes |
-| Legacy Python + Gradio (0.x) | Best effort, no new fixes |
+| Tauri-based releases (0.1 and later, current line 0.5.x) | Yes |
+| Legacy Python + Gradio (pre-0.1) | Best effort, no new fixes |
 
-The project is being rewritten. New releases are Tauri-based; the legacy Python releases are still functional but no new security fixes will be backported to them.
+The project was rewritten from Python + Gradio to Tauri + Rust. Releases from 0.1 on are Tauri-based; the legacy Python releases are still functional but no new security fixes are backported to them.
 
 ## Security Model
 
@@ -22,11 +22,10 @@ The application is composed of:
 
 None of these components open outbound network connections except for:
 
-- The first-run wizard, which downloads the native runtime components (`llama-server`, `voxcpm2-cli`, `ffmpeg`) when the user explicitly confirms
 - The model downloader, which talks to `huggingface.co` when the user explicitly clicks "Download model"
 - The auto-update channel (if enabled in the build), which talks to the project's GitHub releases
 
-Both of these are opt-in. The Tauri shell can be built with the auto-update channel disabled.
+The first-run wizard downloads nothing: the engine binaries ship inside the installer. The AuraWrite integration does not use the network either — it only reads files that AuraWrite writes on the same machine. All network access is opt-in, and the Tauri shell can be built with the auto-update channel disabled.
 
 ## Important Notes
 
@@ -48,6 +47,7 @@ The retired engines are no longer shipped or supported:
 - ~~VibeVoice (Microsoft)~~ — retired; code removed by publisher
 - ~~Voxtral TTS (Mistral AI)~~ — excluded; CC BY-NC license (non-commercial only)
 - ~~MOSS-TTS~~ — excluded; requires Python at runtime
+- ~~Fish Audio S2 Pro~~ — excluded; no C++/GGUF runtime (Python only) and a research-only licence
 
 ### Reporting Vulnerabilities
 
