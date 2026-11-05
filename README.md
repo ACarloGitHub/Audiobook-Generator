@@ -39,7 +39,7 @@
 
 ## Supported TTS Engines
 
-All engines run locally through native C++ sidecar binaries (`llama-server`, `qwen-tts`, `voxcpm2-cli` and `audiocpp_cli`, built from the official [llama.cpp-omni](https://github.com/tc-mb/llama.cpp-omni), [qwentts.cpp](https://github.com/ServeurpersoCom/qwentts.cpp) and [audio.cpp](https://github.com/0xShug0/audio.cpp) sources). There is no Python and no per-engine virtual environment to manage.
+All engines run locally through native C++ sidecar binaries (`llama-server`, `qwen-tts`, `voxcpm2-cli` and `audiocpp_cli`, built from the official [llama.cpp-omni](https://github.com/tc-mb/llama.cpp-omni), [qwentts.cpp](https://github.com/ServeurpersoCom/qwentts.cpp) and [audio.cpp](https://github.com/0xShug0/audio.cpp) sources). There is no Python and no per-engine virtual environment to manage. The Audio8-TTS runtime ships on Windows only for now.
 
 | Engine | License | Format | Quality | Languages | Voice Cloning | Status |
 |--------|---------|--------|---------|-----------|---------------|--------|
@@ -57,6 +57,9 @@ Each model has its own license. You are responsible for reviewing and accepting 
 - **Multiple input formats** — EPUB, TXT, Markdown, DOCX and JSON books are all converted to chapters automatically
 - **Multiple TTS Engines** — Choose the best model for your needs, switch any time
 - **Voice Cloning** — Clone your own voice for a personal narrated audiobook (3-30 seconds of reference audio, depending on the engine; Audio8-TTS also needs the exact transcript and copies the pace and pauses of the sample)
+- **Text read the way it was written** — paragraphs and sentences are rebuilt from the book, so words are never glued together and a chunk never ends mid-sentence; Italian abbreviations, initials, ellipses and decimals are respected
+- **Automatic duration check** — after every chunk the app compares the audio length with the text it sent. A chunk that comes out truncated or stuck in a loop goes to Error Recovery instead of ending up in your book
+- **Voice sample checked before you start** — duration, pauses, clipping and the plausibility of the transcript are measured before a 20-chapter run, with a clear warning instead of a surprise at the end
 - **Multilingual** — the language is read from the book metadata (EPUB `dc:language`) and passed to the engines that accept it: Qwen3-TTS (`--lang`) and Audio8-TTS (language hint) expose a language picker in Configuration; OuteTTS and VoxCPM2 auto-detect the language from the text
 - **Recovery Mode** — Resume interrupted generations from where they left off, with full manual control: retry failed chunks, split long chunks and retry, or merge chunks by hand
 - **User-chosen quantization** — Pick the model quantization that fits your hardware (e.g. VoxCPM2 Q8_0 vs F16)
@@ -69,7 +72,7 @@ Each model has its own license. You are responsible for reviewing and accepting 
 - **GPU-only by design** — Requires a GPU (dedicated, or integrated with unified memory such as Apple Silicon or AMD AI Max). CUDA, Vulkan and Metal supported through llama.cpp. CPU-only machines are not supported: the app refuses to fall back to CPU rather than offering a slow, frustrating experience
 - **One installer** — No Python, no virtual environment, no `pip install`. The installer is self-contained
 
-**Retired engines:** Kokoro (English-only pronunciation), NeuTTS Air (English-only, watermarked), Chatterbox (upstream GGUF incomplete — would require self-maintained converted model files), VibeVoice (removed by Microsoft), XTTSv2 (no GGUF export), Voxtral TTS (CC BY-NC license — non-commercial only), MOSS-TTS (requires Python at runtime).
+**Retired engines:** Kokoro (English-only pronunciation), NeuTTS Air (English-only, watermarked), Chatterbox (upstream GGUF incomplete — would require self-maintained converted model files), VibeVoice (removed by Microsoft), XTTSv2 (no GGUF export), Voxtral TTS (CC BY-NC license — non-commercial only), MOSS-TTS (requires Python at runtime), Fish Audio S2 Pro (no C++/GGUF runtime, Python-only, research licence).
 
 ---
 
@@ -90,10 +93,10 @@ Then:
 
 # 2. Pick a TTS engine, download a model from the Models panel
 
-# 3. Drop in a book (EPUB, TXT, Markdown or DOCX), click Generate
+# 3. Drop in a book (EPUB, TXT, Markdown, DOCX or JSON), click Generate
 ```
 
-The installer bundles the app, all native engine binaries (`llama-server`, `qwen-tts`, `voxcpm2-cli`, `audiocpp_cli`) and the `abg-cli` companion (command-line tool and MCP server — see the "AI Agents" panel in the app), so everything works offline out of the box. Only the TTS model weights (GGUF) are downloaded on demand from inside the app. There is no Python, no `pip install`, no virtual environment to manage.
+The installer bundles the app, the native engine binaries (`llama-server`, `qwen-tts`, `voxcpm2-cli`, and `audiocpp_cli` on Windows), and the `abg-cli` companion (command-line tool and MCP server — see the "AI Agents" panel in the app), so everything works offline out of the box. Only the TTS model weights (GGUF) are downloaded on demand from inside the app. There is no Python, no `pip install`, no virtual environment to manage.
 
 ### Where is `abg-cli`?
 
