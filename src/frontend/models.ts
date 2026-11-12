@@ -90,8 +90,12 @@ Not installed: ${missingCount}</textarea>
       <details class="accordion">
         <summary>Manual Instructions</summary>
         <p class="field-help">
-          FFmpeg and llama-server are installed by the first-run wizard.
-          Re-run the wizard to install missing components.
+          Engine binaries (<code>llama-server</code>, <code>qwen-tts</code>,
+          <code>voxcpm2-cli</code>, <code>audiocpp_cli</code>) ship inside the
+          installer and are never downloaded: if one is missing, reinstall the app.
+          FFmpeg is optional and not bundled — install it yourself (it is picked up
+          from PATH, from the app resources, or from <code>bin/ffmpeg</code> in the
+          app data folder). Without it, chapters are saved as WAV instead of MP3.
         </p>
       </details>
     </div>
@@ -118,7 +122,7 @@ async function refreshRuntimeStatus(): Promise<void> {
     const deps = await invoke<{ ffmpeg_installed: boolean; llama_server_installed: boolean; audio8_installed?: boolean }>("check_dependencies");
     el.innerHTML = `
       FFmpeg: ${deps.ffmpeg_installed ? "✅ installed" : "not found — chapters will be saved as WAV"}<br/>
-      llama-server: ${deps.llama_server_installed ? "✅ installed" : "❌ missing (run wizard)"}<br/>
+      llama-server: ${deps.llama_server_installed ? "✅ installed" : "❌ missing (reinstall the app)"}<br/>
       audiocpp_cli (Audio8): ${deps.audio8_installed ? "✅ installed" : "❌ missing (reinstall the app)"}
     `;
   } catch (e) {

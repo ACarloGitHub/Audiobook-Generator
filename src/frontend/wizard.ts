@@ -23,6 +23,8 @@ export interface DependencyStatus {
   qwentts_path: string | null;
   voxcpm2_installed: boolean;
   voxcpm2_path: string | null;
+  audio8_installed: boolean;
+  audio8_path: string | null;
   ort_installed: boolean;
   cudnn_installed: boolean;
 }
@@ -77,12 +79,15 @@ function renderWelcome(): string {
     <p>Audiobook Generator converts EPUB books to audiobooks using local TTS (text-to-speech) models.</p>
     <p>Everything needed to run is <strong>bundled in the installer</strong> — no extra downloads, works offline:</p>
     <ul>
-      <li><strong>FFmpeg</strong> — merges audio chunks into MP3</li>
       <li><strong>llama-server</strong> — runs GGUF models (OuteTTS)</li>
       <li><strong>qwen-tts</strong> — the Qwen3-TTS engine binary</li>
       <li><strong>voxcpm2-cli</strong> — the VoxCPM2 engine binary</li>
+      <li><strong>audiocpp_cli</strong> — the Audio8-TTS engine binary</li>
       <li><strong>ONNX Runtime</strong> — built into the app (OuteTTS DAC decoder)</li>
     </ul>
+    <p><strong>FFmpeg is not included and is optional.</strong> Install it yourself if you
+    want MP3 chapters; without it, chapters are saved as WAV. It is picked up from PATH,
+    from the app resources, or from <code>bin/ffmpeg</code> in the app data folder.</p>
     <p>Only the TTS model weights are downloaded separately, from the <strong>Models</strong> panel, after setup.</p>
   `;
 }
@@ -117,29 +122,30 @@ function componentRow(label: string, installed: boolean, path: string | null): s
 
 function renderComponents(): string {
   const allOk =
-    (deps?.ffmpeg_installed ?? false) &&
     (deps?.llama_server_installed ?? false) &&
-    (deps?.qwentts_installed ?? false);
+    (deps?.qwentts_installed ?? false) &&
+    (deps?.voxcpm2_installed ?? false) &&
+    (deps?.audio8_installed ?? false);
   return `
     <h3>Bundled Components</h3>
     <p>These engine binaries ship inside the installer and should be present out of the box.</p>
     <table class="wizard-table">
-      ${componentRow("FFmpeg", deps?.ffmpeg_installed ?? false, deps?.ffmpeg_path ?? null)}
       ${componentRow("llama-server", deps?.llama_server_installed ?? false, deps?.llama_server_path ?? null)}
       ${componentRow("qwen-tts", deps?.qwentts_installed ?? false, deps?.qwentts_path ?? null)}
       ${componentRow("voxcpm2-cli", deps?.voxcpm2_installed ?? false, deps?.voxcpm2_path ?? null)}
+      ${componentRow("audiocpp_cli (Audio8)", deps?.audio8_installed ?? false, deps?.audio8_path ?? null)}
       <tr>
         <td><strong>ONNX Runtime</strong></td>
         <td>${deps?.ort_installed ? "✅ built-in" : "❌ not available"}</td>
         <td></td>
       </tr>
       <tr>
-        <td><strong>cuDNN 9</strong></td>
-        <td>not required</td>
-        <td></td>
+        <td><strong>FFmpeg</strong></td>
+        <td>${deps?.ffmpeg_installed ? "✅ found (optional)" : "not found (optional) — chapters will be WAV"}</td>
+        <td>${deps?.ffmpeg_path ? `<code>${escapeHtml(deps.ffmpeg_path)}</code>` : ""}</td>
       </tr>
     </table>
-    ${!allOk ? `<p class="field-help">Some components are missing. If you installed via the official installer, try reinstalling. In a development checkout, place the binaries under <code>resources/</code> in the working directory.</p>` : ""}
+    ${!allOk ? `<p class="field-help">Some engine binaries are missing. If you installed via the official installer, try reinstalling. In a development checkout, place the binaries under <code>resources/</code> in the working directory.</p>` : ""}
   `;
 }
 
@@ -148,7 +154,7 @@ function renderDone(): string {
     <h3>Setup Complete!</h3>
     <p>All components are in place. You can now:</p>
     <ol>
-      <li>Go to the <strong>Models</strong> panel to download TTS models (Qwen3-TTS, OuteTTS, VoxCPM2)</li>
+      <li>Go to the <strong>Models</strong> panel to download TTS models (Qwen3-TTS, OuteTTS, VoxCPM2, Audio8)</li>
       <li>Go to <strong>Configuration</strong> to select an engine and voice</li>
       <li>Go to <strong>EPUB & Options</strong> to load a book</li>
       <li>Go to <strong>Generate</strong> to create your audiobook</li>
