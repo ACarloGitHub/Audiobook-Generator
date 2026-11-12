@@ -92,10 +92,18 @@ Not installed: ${missingCount}</textarea>
         <p class="field-help">
           Engine binaries (<code>llama-server</code>, <code>qwen-tts</code>,
           <code>voxcpm2-cli</code>, <code>audiocpp_cli</code>) ship inside the
-          installer and are never downloaded: if one is missing, reinstall the app.
-          FFmpeg is optional and not bundled — install it yourself (it is picked up
-          from PATH, from the app resources, or from <code>bin/ffmpeg</code> in the
-          app data folder). Without it, chapters are saved as WAV instead of MP3.
+          installer and are never downloaded. They are looked up in this order:
+          the storage folder above (<code>resources/&lt;engine&gt;</code>), the app
+          installation folder, the per-user app data folder. If an engine is
+          reported missing, check the storage folder and press Refresh; if the
+          files are really gone, reinstall the app.
+        </p>
+        <p class="field-help">
+          FFmpeg is optional and not bundled: install it yourself and the app will
+          find it in <code>PATH</code>, in the app resources or in
+          <code>bin/ffmpeg</code> inside the app data folder. Without it, chapters
+          are saved as WAV instead of MP3.
+          <a href="https://ffmpeg.org/download.html" target="_blank" rel="noopener">Download FFmpeg from ffmpeg.org</a>
         </p>
       </details>
     </div>
