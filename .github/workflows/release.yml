@@ -27,6 +27,12 @@ permissions:
 #               tc-mb/llama.cpp-omni, commit b9d15b8. Windows build uses
 #               CUDA archs 86;89;90 (older GPUs fall back to the bundled
 #               ggml-cpu backend).
+#   audio8/     audiocpp_cli (audio.cpp, commit c0cd77fa), family audio8_tts.
+#               Windows: prebuilt zip from the "engine-bins" release (CUDA).
+#               macOS: compiled in CI with Metal. Linux: compiled in CI with
+#               Vulkan. Built with each project's own script (build_metal.sh /
+#               build_linux.sh), model set "custom"/audio8_tts only, so the
+#               binary carries just the family we use.
 #   llama.cpp/  llama-server[.exe] + ggml libs. Windows: custom multi-GPU
 #               build from the "engine-bins" release. macOS: official
 #               macos-arm64 binaries (Metal). Linux: official
@@ -44,6 +50,7 @@ permissions:
 env:
   LLAMACPP_VERSION: b9756
   VOXCPM2_COMMIT: b9d15b8
+  AUDIO8_COMMIT: c0cd77fa80285f8113883e0de06ffc781cf502f6
 
 jobs:
   build:
@@ -86,8 +93,8 @@ jobs:
             spirv-tools
 
       # ------------------------------------------------------------------
-      # Sidecar assembly — Windows (full: qwen-tts, voxcpm2-cli,
-      # llama-server, ffmpeg)
+      # Sidecar assembly - Windows (full: qwen-tts, voxcpm2-cli,
+      # audiocpp_cli, llama-server)
       # ------------------------------------------------------------------
 
       - name: Download prebuilt engine sidecars (Windows)
@@ -115,8 +122,8 @@ jobs:
           Get-ChildItem $dst -Recurse -File | Format-Table FullName, Length
 
       # ------------------------------------------------------------------
-      # Sidecar assembly — macOS (Apple Silicon): qwen-tts, voxcpm2-cli
-      # (compiled in CI with Metal) + official llama-server (Metal).
+      # Sidecar assembly - macOS (Apple Silicon): qwen-tts, voxcpm2-cli and
+      # audiocpp_cli (compiled in CI with Metal) + official llama-server (Metal).
       # ------------------------------------------------------------------
 
       - name: Checkout qwentts.cpp (unmodified upstream sources, macOS)
@@ -171,6 +178,39 @@ jobs:
           ls "$dst"/*.dylib >/dev/null 2>&1 || { echo "no dylib staged for voxcpm2-cli"; exit 1; }
           ls -la "$dst"
 
+      - name: Checkout audio.cpp for audiocpp_cli (macOS)
+        if: matrix.os == 'macos-latest'
+        uses: actions/checkout@v4
+        with:
+          repository: 0xShug0/audio.cpp
+          ref: ${{ env.AUDIO8_COMMIT }}
+          submodules: recursive
+          path: audio.cpp
+
+      - name: Build audiocpp_cli sidecar (macOS, Metal)
+        if: matrix.os == 'macos-latest'
+        run: |
+          # Official upstream build script, unmodified. Only the audio8_tts
+          # family is compiled in (model set "custom") so the binary stays lean.
+          chmod +x audio.cpp/scripts/build_metal.sh
+          audio.cpp/scripts/build_metal.sh \
+            --build-dir audio.cpp/build \
+            --build-type Release \
+            --model-set custom \
+            --models audio8_tts \
+            --target audiocpp_cli \
+            --native-cpu OFF \
+            --jobs 4
+          dst="src-tauri/sidecars/bundled/audio8"
+          mkdir -p "$dst"
+          exe=$(find audio.cpp/build -name "audiocpp_cli" -type f -perm +111 | head -1)
+          [ -n "$exe" ] || { echo "audiocpp_cli not found"; exit 1; }
+          cp "$exe" "$dst/"
+          # ggml is usually linked statically; copy any dylib anyway so a
+          # future shared build cannot ship a bare executable.
+          find audio.cpp/build -name "*.dylib" -exec cp -a {} "$dst/" \; 2>/dev/null || true
+          ls -la "$dst"
+
       - name: Download official llama.cpp binaries (macOS arm64)
         if: matrix.os == 'macos-latest'
         run: |
@@ -189,10 +229,10 @@ jobs:
           test -x "$dst/llama-server"
 
       # ------------------------------------------------------------------
-      # Sidecar assembly — Linux: qwen-tts and voxcpm2-cli compiled in CI
-      # with Vulkan (covers NVIDIA, AMD and Intel iGPUs with one binary),
-      # plus the official ubuntu-vulkan llama-server. GPU-only app: no CPU
-      # binaries are shipped.
+      # Sidecar assembly - Linux: qwen-tts, voxcpm2-cli and audiocpp_cli
+      # compiled in CI with Vulkan (covers NVIDIA, AMD and Intel iGPUs with one
+      # binary), plus the official ubuntu-vulkan llama-server. GPU-only app: no
+      # CPU binaries are shipped.
       # ------------------------------------------------------------------
 
       - name: Checkout qwentts.cpp (unmodified upstream sources, Linux)
@@ -246,6 +286,41 @@ jobs:
           # differs from stock llama.cpp), not just the ggml backends.
           find llama.cpp-omni/build -name "*.so*" -exec cp -a {} "$dst/" \; 2>/dev/null || true
           ls "$dst"/*.so >/dev/null 2>&1 || { echo "no shared library staged for voxcpm2-cli"; exit 1; }
+          ls -la "$dst"
+
+      - name: Checkout audio.cpp for audiocpp_cli (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/checkout@v4
+        with:
+          repository: 0xShug0/audio.cpp
+          ref: ${{ env.AUDIO8_COMMIT }}
+          submodules: recursive
+          path: audio.cpp
+
+      - name: Build audiocpp_cli sidecar (Linux, Vulkan)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          # Official upstream build script, unmodified. Only the audio8_tts
+          # family is compiled in (model set "custom") so the binary stays lean.
+          chmod +x audio.cpp/scripts/build_linux.sh
+          audio.cpp/scripts/build_linux.sh \
+            --build-dir audio.cpp/build \
+            --build-type Release \
+            --backend vulkan \
+            --model-set custom \
+            --models audio8_tts \
+            --target audiocpp_cli \
+            --native-cpu OFF \
+            --jobs 4
+          dst="src-tauri/sidecars/bundled/audio8"
+          mkdir -p "$dst"
+          exe=$(find audio.cpp/build -name "audiocpp_cli" -type f | head -1)
+          [ -n "$exe" ] || { echo "audiocpp_cli not found"; exit 1; }
+          cp "$exe" "$dst/"
+          chmod +x "$dst/audiocpp_cli" || true
+          # ggml is usually linked statically; copy any shared library anyway so
+          # a future shared build cannot ship a bare executable.
+          find audio.cpp/build -name "*.so*" -exec cp -a {} "$dst/" \; 2>/dev/null || true
           ls -la "$dst"
 
       - name: Download official llama.cpp binaries (Linux x64, Vulkan)
@@ -436,7 +511,7 @@ jobs:
                 sections.push(fmt(breaking));
               }
               sections.push("## First run");
-              sections.push('- Everything needed to run is bundled inside the installer (`llama-server`, `qwen-tts`, `voxcpm2-cli`). No runtime downloads of engine binaries — the app works offline out of the box. Only the TTS model weights (GGUF) are downloaded on demand from the Models panel.');
+              sections.push('- Everything needed to run is bundled inside the installer (`llama-server`, `qwen-tts`, `voxcpm2-cli`, `audiocpp_cli`). No runtime downloads of engine binaries - the app works offline out of the box. Only the TTS model weights (GGUF) are downloaded on demand from the Models panel.');
               sections.push('- **GPU required**: a dedicated GPU (NVIDIA, AMD) or an integrated GPU with unified memory (Apple Silicon, AMD AI Max+ and similar). CPU-only machines are not supported.');
               sections.push("## Notes");
               sections.push('- **No Python required**: everything runs through native sidecar binaries shipped in the installer.');

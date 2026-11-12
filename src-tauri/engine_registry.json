@@ -980,8 +980,8 @@
       "runtime_binary": "audiocpp_cli",
       "runtime_build_commands": {
         "windows_cuda": ".\\scripts\\build_windows.ps1 -Preset windows-cuda-release -Target audiocpp_cli -ModelSet custom -Models \"audio8_tts\" -CudaArchitectures auto",
-        "macos_metal": "TODO: build with metal backend and AUDIOCPP_MODEL_SET=custom AUDIOCPP_MODELS=audio8_tts",
-        "linux_vulkan": "TODO: build with vulkan backend and AUDIOCPP_MODEL_SET=custom AUDIOCPP_MODELS=audio8_tts"
+        "macos_metal": "scripts/build_metal.sh --build-dir build --build-type Release --model-set custom --models audio8_tts --target audiocpp_cli --native-cpu OFF --jobs 4",
+        "linux_vulkan": "scripts/build_linux.sh --build-dir build --build-type Release --backend vulkan --model-set custom --models audio8_tts --target audiocpp_cli --native-cpu OFF --jobs 4"
       },
       "runtime_help": "Usage: audiocpp_cli --task clon --family audio8_tts --model <gguf> --voice-ref <wav> --reference-text \"<transcript>\" --text \"<text>\" --out <wav>",
       "runtime_args": {
