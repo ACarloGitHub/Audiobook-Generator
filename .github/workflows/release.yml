@@ -515,7 +515,7 @@ jobs:
               }
               sections.push("## First run");
               sections.push('- Everything needed to run is bundled inside the installer (`llama-server`, `qwen-tts`, `voxcpm2-cli`, `audiocpp_cli`). No runtime downloads of engine binaries - the app works offline out of the box. Only the TTS model weights (GGUF) are downloaded on demand from the Models panel.');
-              sections.push('- **GPU required**: a dedicated GPU (NVIDIA, AMD) or an integrated GPU with unified memory (Apple Silicon, AMD AI Max+ and similar). CPU-only machines are not supported.');
+              sections.push('- **GPU required**: on Windows an NVIDIA card (CUDA); on Linux NVIDIA, AMD and Intel (Vulkan); on macOS Apple Silicon (Metal). CPU-only machines are not supported.');
               sections.push("## Notes");
               sections.push('- **No Python required**: everything runs through native sidecar binaries shipped in the installer.');
               sections.push('- **No code signing**: Audiobook Generator is open source (MIT) but not yet code-signed. You may see a SmartScreen warning on Windows or a Gatekeeper block on macOS.');
