@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <strong>Status: active development — v0.5.0</strong> — Qwen3-TTS, OuteTTS, VoxCPM2 and Audio8-TTS working end-to-end (Audio8 on Windows for now). See the <a href="https://github.com/ACarloGitHub/Audiobook-Generator/releases">Releases</a> page for the changelog.
+  <strong>Status: active development - v0.6.0</strong> - Qwen3-TTS, OuteTTS, VoxCPM2 and Audio8-TTS working end-to-end on Windows, macOS and Linux. See the <a href="https://github.com/ACarloGitHub/Audiobook-Generator/releases">Releases</a> page for the changelog.
 </p>
 
 <p align="center">
@@ -39,7 +39,7 @@
 
 ## Supported TTS Engines
 
-All engines run locally through native C++ sidecar binaries (`llama-server`, `qwen-tts`, `voxcpm2-cli` and `audiocpp_cli`, built from the official [llama.cpp-omni](https://github.com/tc-mb/llama.cpp-omni), [qwentts.cpp](https://github.com/ServeurpersoCom/qwentts.cpp) and [audio.cpp](https://github.com/0xShug0/audio.cpp) sources). There is no Python and no per-engine virtual environment to manage. The Audio8-TTS runtime ships on Windows only for now.
+All engines run locally through native C++ sidecar binaries (`llama-server`, `qwen-tts`, `voxcpm2-cli` and `audiocpp_cli`, built from the official [llama.cpp-omni](https://github.com/tc-mb/llama.cpp-omni), [qwentts.cpp](https://github.com/ServeurpersoCom/qwentts.cpp) and [audio.cpp](https://github.com/0xShug0/audio.cpp) sources). There is no Python and no per-engine virtual environment to manage. All four runtimes ship inside the installer on every platform.
 
 | Engine | License | Format | Quality | Languages | Voice Cloning | Status |
 |--------|---------|--------|---------|-----------|---------------|--------|

@@ -9,9 +9,9 @@ local: no cloud, no account, no telemetry, and no Python at runtime.
 ## Project Status
 
 The project is **published and actively developed**. The current release is
-**v0.5.0** and ships installers for Windows, macOS and Linux with four working
-engines: Qwen3-TTS, OuteTTS, VoxCPM2 and Audio8-TTS (the Audio8 runtime is
-Windows-only for now).
+**v0.6.0** and ships installers for Windows, macOS and Linux with four working
+engines: Qwen3-TTS, OuteTTS, VoxCPM2 and Audio8-TTS, all bundled on every
+platform.
 
 The stack is **Tauri 2 + TypeScript (vanilla + Vite) + Rust**, with each TTS
 engine running as a native C++ binary compiled from unmodified upstream sources
