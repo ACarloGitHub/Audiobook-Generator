@@ -302,16 +302,19 @@ jobs:
         run: |
           # Official upstream build script, unmodified. Only the audio8_tts
           # family is compiled in (model set "custom") so the binary stays lean.
+          # The script configures CMake with the current directory as the source
+          # tree, so it must run from inside the audio.cpp checkout (subshell
+          # keeps the rest of the step at the repository root).
           chmod +x audio.cpp/scripts/build_linux.sh
-          audio.cpp/scripts/build_linux.sh \
-            --build-dir audio.cpp/build \
-            --build-type Release \
-            --backend vulkan \
-            --model-set custom \
-            --models audio8_tts \
-            --target audiocpp_cli \
-            --native-cpu OFF \
-            --jobs 4
+          ( cd audio.cpp && ./scripts/build_linux.sh \
+              --build-dir build \
+              --build-type Release \
+              --backend vulkan \
+              --model-set custom \
+              --models audio8_tts \
+              --target audiocpp_cli \
+              --native-cpu OFF \
+              --jobs 4 )
           dst="src-tauri/sidecars/bundled/audio8"
           mkdir -p "$dst"
           exe=$(find audio.cpp/build -name "audiocpp_cli" -type f | head -1)
