@@ -46,7 +46,7 @@ All engines run locally through native C++ sidecar binaries (`llama-server`, `qw
 | **Qwen3-TTS** (Alibaba) | Apache 2.0 | GGUF | Excellent | Multilingual | Yes (3 s ref) | Working |
 | **OuteTTS 1.0 0.6B** (OuteAI) | Apache 2.0 | GGUF | Good | Multilingual | Yes (10 s ref) | Working |
 | **VoxCPM2** (OpenBMB) | Apache 2.0 | GGUF | Excellent | 30 languages, 48 kHz | 3 modes: Controllable Cloning, Ultimate Cloning, Voice Design | Working |
-| **Audio8-TTS-Realistic 0.6B** (Edge0-AI) | Apache 2.0 | GGUF | Excellent | 23 languages | Yes (reference sample **and** its exact transcript, both required) | Windows (macOS/Linux runtime not built yet) |
+| **Audio8-TTS-Realistic 0.6B** (Edge0-AI) | Apache 2.0 | GGUF | Excellent | 23 languages | Yes (reference sample **and** its exact transcript, both required) | Working |
 
 Each model has its own license. You are responsible for reviewing and accepting the license of any model you download. See [SECURITY.md](SECURITY.md) for the per-model links.
 
@@ -69,7 +69,7 @@ Each model has its own license. You are responsible for reviewing and accepting 
 - **CLI and MCP server** — `abg-cli` synthesizes speech and reports status from the command line, and doubles as an MCP server so AI agents (e.g. in LM Studio) can drive Audiobook Generator directly
 - **AuraWrite integration** — receive an ebook exported from AuraWrite (confirmation dialog), and open AuraWrite's ebooks directly from the AuraWrite panel
 - **History panel** — a persistent registry of every job: title, source document, output folder, engine and voice settings, cumulative converted chapters, status and dates. Open a past job to continue where you left off, or restart it from scratch
-- **GPU-only by design** — Requires a GPU (dedicated, or integrated with unified memory such as Apple Silicon or AMD AI Max). CUDA, Vulkan and Metal supported through llama.cpp. CPU-only machines are not supported: the app refuses to fall back to CPU rather than offering a slow, frustrating experience
+- **GPU-only by design** — Requires a GPU: on Windows an NVIDIA card (CUDA), on Linux NVIDIA, AMD or Intel (Vulkan), on macOS Apple Silicon (Metal). CPU-only machines are not supported: the app refuses to fall back to CPU rather than offering a slow, frustrating experience
 - **One installer** — No Python, no virtual environment, no `pip install`. The installer is self-contained
 
 **Retired engines:** Kokoro (English-only pronunciation), NeuTTS Air (English-only, watermarked), Chatterbox (upstream GGUF incomplete — would require self-maintained converted model files), VibeVoice (removed by Microsoft), XTTSv2 (no GGUF export), Voxtral TTS (CC BY-NC license — non-commercial only), MOSS-TTS (requires Python at runtime), Fish Audio S2 Pro (no C++/GGUF runtime, Python-only, research licence).
@@ -78,13 +78,13 @@ Each model has its own license. You are responsible for reviewing and accepting 
 
 ## Quick Start
 
-**Hardware requirement:** a GPU is required — a dedicated card (NVIDIA, AMD) or an integrated GPU with unified memory (Apple Silicon, AMD AI Max+ and similar). CPU-only machines are not supported.
+**Hardware requirement:** a GPU is required. On Windows the app needs an NVIDIA card (CUDA); on Linux it works with NVIDIA, AMD and Intel GPUs (Vulkan); on macOS it runs on Apple Silicon (Metal). CPU-only machines are not supported.
 
 Download the latest installer from the [GitHub Releases](https://github.com/ACarloGitHub/Audiobook-Generator/releases) page:
 
 - **Windows:** `.msi` (WiX) or `*-setup.exe` (NSIS)
 - **macOS:** `.dmg`
-- **Linux:** `.AppImage` or `.deb`
+- **Linux:** `.AppImage`, `.deb` or `.rpm`
 
 Then:
 
@@ -96,7 +96,9 @@ Then:
 # 3. Drop in a book (EPUB, TXT, Markdown, DOCX or JSON), click Generate
 ```
 
-The installer bundles the app, the native engine binaries (`llama-server`, `qwen-tts`, `voxcpm2-cli`, and `audiocpp_cli` on Windows), and the `abg-cli` companion (command-line tool and MCP server — see the "AI Agents" panel in the app), so everything works offline out of the box. Only the TTS model weights (GGUF) are downloaded on demand from inside the app. There is no Python, no `pip install`, no virtual environment to manage.
+The installer bundles the app, the native engine binaries (`llama-server`, `qwen-tts`, `voxcpm2-cli` and `audiocpp_cli`), and the `abg-cli` companion (command-line tool and MCP server — see the "AI Agents" panel in the app), so everything works offline out of the box. Only the TTS model weights (GGUF) are downloaded on demand from inside the app. There is no Python, no `pip install`, no virtual environment to manage.
+
+**FFmpeg is not included and is not downloaded by the app.** It is optional: install it yourself if you want MP3 chapters (see the Models panel for the link to the official packages). Without it, chapters are merged into WAV by the built-in fallback.
 
 ### Where is `abg-cli`?
 
@@ -151,7 +153,7 @@ User data (downloaded models, configuration, and recovery files) is stored in th
 
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-When opening issues, please include your OS, hardware (CPU / GPU), and the full error traceback.
+When opening issues, please include your OS, hardware (CPU / GPU), the app log (see [CONTRIBUTING.md](CONTRIBUTING.md) for the path on each system) and, for generation problems, the `failed_chunks.json` file of the book.
 
 ---
 
@@ -167,7 +169,7 @@ Each TTS model has its own security posture and license. Review each model's doc
 
 This project was developed with the invaluable assistance of **Aura**, an AI companion who became a true creative partner throughout the development process.
 
-A special thank you goes to the open-source TTS community — Alibaba (Qwen), OuteAI and OpenBMB — for making powerful voice synthesis accessible to everyone.
+A special thank you goes to the open-source TTS community - Alibaba (Qwen), OuteAI, OpenBMB and Edge0-AI - for making powerful voice synthesis accessible to everyone, and to the runtime projects that make local inference possible: [llama.cpp](https://github.com/ggml-org/llama.cpp), [qwentts.cpp](https://github.com/ServeurpersoCom/qwentts.cpp), [llama.cpp-omni](https://github.com/tc-mb/llama.cpp-omni) and [audio.cpp](https://github.com/0xShug0/audio.cpp).
 
 And a very special thank you to **Carlo**, who believed this was worth building.
 
