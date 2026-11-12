@@ -103,7 +103,7 @@ Not installed: ${missingCount}</textarea>
           find it in <code>PATH</code>, in the app resources or in
           <code>bin/ffmpeg</code> inside the app data folder. Without it, chapters
           are saved as WAV instead of MP3.
-          <a href="https://ffmpeg.org/download.html" target="_blank" rel="noopener">Download FFmpeg from ffmpeg.org</a>
+          <a href="https://ffmpeg.org/download.html#build-windows" target="_blank" rel="noopener">Download FFmpeg (official packages)</a>
         </p>
       </details>
     </div>
