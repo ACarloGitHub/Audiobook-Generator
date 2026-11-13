@@ -109,7 +109,7 @@ To register `abg-cli` as an MCP server (e.g. in LM Studio's `mcp.json`) or to ca
 - **Windows (MSI, default location):**
   `C:\Program Files\Audiobook Generator\resources\cli\abg-cli.exe`
 - **macOS:** `/Applications/Audiobook Generator.app/Contents/Resources/resources/cli/abg-cli`
-- **Linux (.deb):** `/usr/lib/audiobook-generator/resources/cli/abg-cli`
+- **Linux (.deb):** `/usr/lib/Audiobook Generator/resources/cli/abg-cli`
 - **Linux (AppImage):** run the AppImage once, then look for `resources/cli/abg-cli` inside the extracted/mounted folder.
 
 Notes:
